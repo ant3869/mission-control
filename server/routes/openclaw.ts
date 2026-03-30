@@ -213,10 +213,12 @@ openclawRouter.get('/sessions', (_req, res) => {
       r.event_type === 'message:received' || r.event_type === 'message:sent'
     )
 
+    const isHeartbeat = items.some(r => r.session_key?.includes(':cron:'))
+
     return {
       id,
       projectSlug: 'openclaw',
-      title: extractTitle(firstPayload, firstContent),
+      title: isHeartbeat ? 'Heartbeat check-in' : extractTitle(firstPayload, firstContent),
       firstMessage: firstContent || 'OpenClaw activity',
       messages: [],
       messageCount: messageRows.length,
@@ -225,6 +227,7 @@ openclawRouter.get('/sessions', (_req, res) => {
       cwd: 'openclaw/live',
       inputTokens: 0,
       outputTokens: 0,
+      isHeartbeat,
     }
   }).sort((a, b) => new Date(b.lastActiveAt).getTime() - new Date(a.lastActiveAt).getTime())
 
@@ -257,11 +260,13 @@ openclawRouter.get('/sessions/:id', (req, res) => {
     })
     .filter(m => m.content.trim() && !m.content.startsWith('[message:'))
 
+    const isHeartbeat = rows.some(r => r.session_key?.includes(':cron:'))
+
     res.json({
       session: {
         id: req.params.id,
         projectSlug: 'openclaw',
-        title: extractTitle(firstPayload, firstContent),
+        title: isHeartbeat ? 'Heartbeat check-in' : extractTitle(firstPayload, firstContent),
         firstMessage: firstContent || 'OpenClaw activity',
         messages,
         messageCount: messages.length,
@@ -270,6 +275,7 @@ openclawRouter.get('/sessions/:id', (req, res) => {
         cwd: 'openclaw/live',
         inputTokens: 0,
         outputTokens: 0,
+        isHeartbeat,
       },
       fetchedAt: new Date().toISOString(),
     })
@@ -412,7 +418,7 @@ export function getOpenClawAgents() {
     // Unique session keys = sub-sessions
     const sessionKeys = new Set(items.map(r => r.session_key).filter(Boolean))
 
-    const relAge = (iso: string) => {
+    const fmtAgo = (iso: string) => {
       if (!iso) return 'unknown'
       const diff = Date.now() - new Date(iso).getTime()
       const sec = Math.floor(diff / 1000)
@@ -440,7 +446,7 @@ export function getOpenClawAgents() {
       totalTokens:   0,
       cost:          0,
       lastActiveAt:  lastRow.ts,
-      lastActiveAgo: relAge(lastRow.ts),
+      lastActiveAgo: fmtAgo(lastRow.ts),
       startedAt:     firstRow.ts,
       source:        'openclaw' as const,
     })
@@ -478,3 +484,72 @@ openclawRouter.get('/events', (_req, res) => {
     fetchedAt: new Date().toISOString(),
   })
 })
+
+// ─── Memory entries from OpenClaw conversations ──────────────────────────────
+
+function relAge(ms: number): string {
+  const diff = Date.now() - ms
+  const mins  = Math.floor(diff / 60_000)
+  const hrs   = Math.floor(diff / 3_600_000)
+  const days  = Math.floor(diff / 86_400_000)
+  if (mins < 1)  return 'just now'
+  if (mins < 60) return `${mins}m ago`
+  if (hrs  < 24) return `${hrs}h ago`
+  if (days < 7)  return `${days}d ago`
+  return new Date(ms).toLocaleDateString()
+}
+
+export function getOpenClawMemoryEntries() {
+  try {
+    const stmt = db.prepare(`
+      SELECT id, source, event_type, session_key, agent_id, ts, payload_json
+      FROM openclaw_events
+      ORDER BY ts ASC, id ASC
+    `)
+    const rows = stmt.all() as StoredRow[]
+    if (rows.length === 0) return []
+
+    const buckets = new Map<string, StoredRow[]>()
+    for (const row of rows) {
+      const id = stableId(getSessionGroupKey(row))
+      const arr = buckets.get(id) ?? []
+      arr.push(row)
+      buckets.set(id, arr)
+    }
+
+    const entries = []
+
+    for (const [id, items] of buckets) {
+      const isHeartbeat = items.some(r => r.session_key?.includes(':cron:'))
+      const sentMessages = items.filter(r => r.event_type === 'message:sent')
+      const lastSent = sentMessages[sentMessages.length - 1]
+      if (!lastSent) continue
+
+      const payload = JSON.parse(lastSent.payload_json || '{}')
+      const content = extractContent(payload)
+      if (!content || content.startsWith('[message:')) continue
+
+      const firstPayload = asObj(JSON.parse(items[0].payload_json || '{}'))
+      const title = extractTitle(firstPayload, content)
+      const ts = new Date(lastSent.ts).getTime()
+
+      entries.push({
+        id:          `oc-${id}`,
+        filename:    `openclaw-${id}.md`,
+        name:        isHeartbeat ? `Status: ${content.slice(0, 60)}` : title,
+        description: content.slice(0, 140),
+        type:        isHeartbeat ? 'reference' as const : 'user' as const,
+        content,
+        wordCount:   content.split(/\s+/).filter(Boolean).length,
+        updatedAt:   ts,
+        updatedAgo:  relAge(ts),
+        source:      'openclaw' as const,
+      })
+    }
+
+    entries.sort((a, b) => b.updatedAt - a.updatedAt)
+    return entries
+  } catch {
+    return []
+  }
+}

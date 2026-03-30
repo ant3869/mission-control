@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.3.0] — 2026-03-30
+
+### Added
+
+- **Heartbeat collapsing** (Chats view): Heartbeat check-in sessions are now separated from regular conversations and displayed in a collapsible emerald-green stack, preventing them from flooding the session list.
+- **OpenClaw in Office view**: OpenClaw now appears as a live integration with dynamic health status (connected/error/disconnected) and last-event timing.
+- **OpenClaw in Memory view**: Conversation summaries from OpenClaw sessions are synthesised as memory entries, so the Memory view works even without `.auto-memory/` files.
+- Backend `getOpenClawMemoryEntries()` export for cross-route memory synthesis.
+- `isHeartbeat` flag on OpenClaw session endpoints for frontend filtering.
+
+---
+
 ## [0.2.0] — 2026-03-30
 
 ### Fixed

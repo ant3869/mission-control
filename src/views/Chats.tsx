@@ -4,7 +4,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { clsx } from 'clsx'
-import { MessageSquare, Clock, Hash, Search, Activity, FolderOpen, RefreshCw, AlertCircle } from 'lucide-react'
+import { MessageSquare, Clock, Hash, Search, Activity, FolderOpen, RefreshCw, AlertCircle, HeartPulse, ChevronRight } from 'lucide-react'
 import { chats, openclawChats, type LiveSession, type LiveChatMessage } from '../lib/api'
 
 // if you already have CombinedSession / openclawChats, keep those types/imports
@@ -193,6 +193,67 @@ function SectionHeader({ title, count }: { title: string; count: number }) {
     <div className="flex items-center gap-2 px-1 pt-2 pb-1">
       <span className="text-xxs font-semibold uppercase tracking-wide text-text-muted">{title}</span>
       <span className="ml-auto text-xxs text-text-muted">{count} found</span>
+    </div>
+  )
+}
+
+function HeartbeatStack({ sessions, selected, onSelect }: {
+  sessions: CombinedSession[]
+  selected: CombinedSession | null
+  onSelect: (s: CombinedSession) => void
+}) {
+  const [expanded, setExpanded] = useState(false)
+  if (sessions.length === 0) return null
+
+  const latest = sessions[0]
+  const anyActive = selected && sessions.some(s => sourceKey(s) === sourceKey(selected))
+
+  return (
+    <div className={clsx(
+      'rounded border mb-1 transition-all',
+      anyActive
+        ? 'bg-emerald-950/30 border-emerald-900/50'
+        : 'bg-surface border-border hover:border-emerald-900/30',
+    )}>
+      <button
+        onClick={() => setExpanded(e => !e)}
+        className="w-full flex items-center gap-2 px-3 py-2 text-left"
+      >
+        <HeartPulse size={12} className="text-emerald-400 shrink-0" />
+        <span className="text-xs font-medium text-emerald-300">
+          {sessions.length} heartbeat check-in{sessions.length !== 1 ? 's' : ''}
+        </span>
+        <span className="text-xxs text-text-muted ml-auto mr-1">
+          {relativeTime(latest.lastActiveAt)}
+        </span>
+        <ChevronRight size={11} className={clsx(
+          'text-text-muted transition-transform',
+          expanded && 'rotate-90',
+        )} />
+      </button>
+
+      {expanded && (
+        <div className="border-t border-border/50 px-1 pb-1">
+          {sessions.map(session => (
+            <button
+              key={sourceKey(session)}
+              onClick={() => onSelect(session)}
+              className={clsx(
+                'w-full text-left px-2.5 py-2 rounded text-xxs transition-all mt-0.5',
+                selected && sourceKey(selected) === sourceKey(session)
+                  ? 'bg-emerald-900/30 text-emerald-200'
+                  : 'text-text-muted hover:bg-card hover:text-text-secondary',
+              )}
+            >
+              <div className="flex items-center gap-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500/60 shrink-0" />
+                <span className="truncate">{session.firstMessage?.slice(0, 60) || 'Heartbeat'}</span>
+                <span className="ml-auto shrink-0 text-text-muted">{relativeTime(session.lastActiveAt)}</span>
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
@@ -409,10 +470,11 @@ export function Chats() {
     return () => window.clearInterval(timer)
   }, [loadSessions])
 
-  const claudeSessions = filtered.filter(s => s.source === 'claude')
-  const clawSessions   = filtered.filter(s => s.source === 'openclaw')
-  const totalTok       = filtered.reduce((sum, s) => sum + s.inputTokens + s.outputTokens, 0)
-  const assistantBadge = selected?.source === 'openclaw' ? 'O' : 'C'
+  const claudeSessions    = filtered.filter(s => s.source === 'claude')
+  const clawSessions      = filtered.filter(s => s.source === 'openclaw' && !s.isHeartbeat)
+  const heartbeatSessions = filtered.filter(s => s.source === 'openclaw' && s.isHeartbeat)
+  const totalTok          = filtered.reduce((sum, s) => sum + s.inputTokens + s.outputTokens, 0)
+  const assistantBadge    = selected?.source === 'openclaw' ? 'O' : 'C'
 
   return (
     <div className="flex h-full overflow-hidden">
@@ -440,7 +502,9 @@ export function Chats() {
             <div className="flex items-center gap-2 rounded border border-border bg-base px-2.5 py-2">
               <span className={clsx('w-1.5 h-1.5 rounded-full', sourceDotClass('openclaw'))} />
               <span className="text-xs text-text-secondary">Claw Sessions</span>
-              <span className="ml-auto text-xxs text-text-muted">{clawSessions.length} found</span>
+              <span className="ml-auto text-xxs text-text-muted">
+                {clawSessions.length + heartbeatSessions.length} found
+              </span>
             </div>
           </div>
 
@@ -501,9 +565,14 @@ export function Chats() {
               </div>
 
               <div>
-                <SectionHeader title="Claw Sessions" count={clawSessions.length} />
+                <SectionHeader title="Claw Sessions" count={clawSessions.length + heartbeatSessions.length} />
+                <HeartbeatStack
+                  sessions={heartbeatSessions}
+                  selected={selected}
+                  onSelect={selectSession}
+                />
                 <div className="space-y-1">
-                  {clawSessions.length === 0 ? (
+                  {clawSessions.length === 0 && heartbeatSessions.length === 0 ? (
                     <div className="px-2 py-2 text-xxs text-text-muted">No Claw sessions</div>
                   ) : (
                     clawSessions.map(session => (
@@ -546,6 +615,11 @@ export function Chats() {
                   <span className={clsx('px-1.5 py-0.5 rounded border text-xxs shrink-0', sourceChipClass(selected.source))}>
                     {sourceLabel(selected.source)}
                   </span>
+                  {selected.isHeartbeat && (
+                    <span className="px-1.5 py-0.5 rounded border text-xxs bg-emerald-950/40 border-emerald-900/40 text-emerald-300">
+                      Heartbeat
+                    </span>
+                  )}
                 </div>
 
                 <div className="flex items-center gap-3 flex-wrap text-xxs text-text-muted">

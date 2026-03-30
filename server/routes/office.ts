@@ -12,6 +12,7 @@ import { Router } from 'express'
 import { existsSync, readFileSync, readdirSync, statSync } from 'fs'
 import { homedir } from 'os'
 import { join, basename } from 'path'
+import { getOpenClawHealth } from './openclaw'
 
 export const officeRouter = Router()
 
@@ -137,6 +138,30 @@ officeRouter.get('/integrations', (_req, res) => {
     detail:      'claude-sonnet-4-6, claude-opus-4',
     source:      'auth',
     lastSync:    hasAnthropic ? nowLabel : undefined,
+  })
+
+  // ── 1b. OpenClaw ─────────────────────────────────────────────────────────
+  const ocHealth = getOpenClawHealth()
+  const ocStatus: IntegrationStatus =
+    ocHealth.status === 'healthy' ? 'connected'
+    : ocHealth.status === 'warning' ? 'error'
+    : 'disconnected'
+
+  integrations.push({
+    id:          'openclaw',
+    name:        'OpenClaw',
+    description: 'AI agent orchestration & communication bridge',
+    category:    'ai',
+    status:      ocStatus,
+    icon:        '🐾',
+    connectedAs: ocHealth.eventCount > 0 ? `${ocHealth.eventCount} events tracked` : undefined,
+    detail:      ocHealth.lastEventAt
+                   ? `Last event ${new Date(ocHealth.lastEventAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} · ${ocHealth.latencyMs}ms`
+                   : 'No events yet',
+    source:      'system',
+    lastSync:    ocHealth.lastEventAt
+                   ? new Date(ocHealth.lastEventAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                   : undefined,
   })
 
   // ── 2. Installed plugins ──────────────────────────────────────────────────

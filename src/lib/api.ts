@@ -161,6 +161,7 @@ export interface LiveSession {
   cwd:          string
   inputTokens:  number
   outputTokens: number
+  isHeartbeat?: boolean
 }
 
 export interface ChatsListResponse {
