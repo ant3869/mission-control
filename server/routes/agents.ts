@@ -11,6 +11,7 @@ import { Router } from 'express'
 import { existsSync, readdirSync, readFileSync, statSync } from 'fs'
 import { homedir } from 'os'
 import { join, basename } from 'path'
+import { getOpenClawAgents } from './openclaw.js'
 
 export const agentsRouter = Router()
 
@@ -365,6 +366,17 @@ agentsRouter.get('/projects', (_req, res) => {
 
   // Sort by most recently active
   agents.sort((a, b) => new Date(b.lastActiveAt).getTime() - new Date(a.lastActiveAt).getTime())
+
+  // Merge OpenClaw agents
+  try {
+    const clawAgents = getOpenClawAgents()
+    for (const ca of clawAgents) {
+      agents.push({ ...ca, source: 'openclaw' } as any)
+    }
+    agents.sort((a, b) => new Date(b.lastActiveAt).getTime() - new Date(a.lastActiveAt).getTime())
+  } catch (err) {
+    console.error('Failed to load OpenClaw agents:', err)
+  }
 
   res.json({ agents, fetchedAt: new Date().toISOString(), projectsDir })
 })

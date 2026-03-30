@@ -51,6 +51,7 @@ function shortCwd(cwd: string): string {
 function AgentCard({ agent, onClick }: { agent: LiveAgent; onClick: () => void }) {
   const s      = STATE_CFG[agent.state]
   const isActive = !['idle', 'sleeping', 'error'].includes(agent.state)
+  const isClaw = agent.source === 'openclaw'
 
   return (
     <div
@@ -73,6 +74,11 @@ function AgentCard({ agent, onClick }: { agent: LiveAgent; onClick: () => void }
             <div className="flex items-center gap-1.5 mb-0.5">
               <span className={clsx('w-1.5 h-1.5 rounded-full shrink-0', s.dot, isActive && 'animate-pulse')} />
               <h3 className="text-sm font-semibold text-text-primary truncate">{agent.name}</h3>
+              {isClaw && (
+                <span className="px-1.5 py-0.5 rounded bg-amber-950/40 border border-amber-900/40 text-amber-300 text-xxs shrink-0">
+                  Claw
+                </span>
+              )}
             </div>
             <p className="text-xxs text-text-muted truncate">{shortCwd(agent.cwd)}</p>
           </div>
@@ -149,7 +155,14 @@ function AgentDrawer({ agent, onClose }: { agent: LiveAgent; onClose: () => void
         <div className="flex items-center gap-2.5">
           <AgentStateVisual state={agent.state} size={32} />
           <div className="min-w-0">
-            <p className="text-sm font-semibold text-text-primary truncate">{agent.name}</p>
+            <div className="flex items-center gap-1.5">
+              <p className="text-sm font-semibold text-text-primary truncate">{agent.name}</p>
+              {agent.source === 'openclaw' && (
+                <span className="px-1.5 py-0.5 rounded bg-amber-950/40 border border-amber-900/40 text-amber-300 text-xxs shrink-0">
+                  Claw
+                </span>
+              )}
+            </div>
             <p className="text-xxs text-text-muted truncate">{shortCwd(agent.cwd)}</p>
           </div>
         </div>
@@ -276,6 +289,8 @@ export function Agents() {
   const activeCount = agentList.filter(a => !['idle', 'sleeping', 'error'].includes(a.state)).length
   const totalCost   = agentList.reduce((s, a) => s + a.cost, 0)
   const totalTokens = agentList.reduce((s, a) => s + a.totalTokens, 0)
+  const clawCount   = agentList.filter(a => a.source === 'openclaw').length
+  const claudeCount = agentList.length - clawCount
 
   const fetchedLabel = fetchedAt
     ? new Date(fetchedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
@@ -292,7 +307,9 @@ export function Agents() {
               <p className="text-xs text-text-muted mt-0.5">
                 <span className="text-green-400">{activeCount} active</span>
                 &nbsp;·&nbsp;
-                <span className="text-text-secondary">{agentList.length} projects</span>
+                <span className="text-text-secondary">{claudeCount} Claude</span>
+                &nbsp;·&nbsp;
+                <span className="text-amber-400">{clawCount} Claw</span>
                 &nbsp;·&nbsp;
                 <span className="text-text-secondary">{fmtTokens(totalTokens)} tokens</span>
                 &nbsp;·&nbsp;

@@ -6,6 +6,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.2.0] — 2026-03-30
+
+### Fixed
+
+- **Chats view**: Resolved 3 bugs preventing OpenClaw responses from displaying — null-prev race in `fetchTranscript`, duplicate `useEffect` triggering double loads, and unnecessary transcript re-fetches during polling.
+
+### Added
+
+- **OpenClaw agents endpoint** (`GET /api/openclaw/agents`) — derives live agent state from event recency and type.
+- **Agents view**: OpenClaw agents now appear alongside Claude agents with amber "Claw" source badges, drawer badge, and separate header counts.
+- **System view**: OpenClaw registered as a monitored component with live health status (healthy/warning/offline) based on event recency.
+- **Radar view**: OpenClaw activity bar chart with hover tooltips showing per-day event and message counts.
+- API types updated with `source` field on `LiveAgent` and `openclawStats` on `RadarUsageResponse`.
+
+---
+
 ## [0.1.0] — 2026-03-30
 
 ### Added

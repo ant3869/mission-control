@@ -10,6 +10,7 @@ import { Router } from 'express'
 import { readFileSync, existsSync, readdirSync, statSync } from 'fs'
 import { homedir } from 'os'
 import { join } from 'path'
+import { getOpenClawHealth } from './openclaw.js'
 
 export const systemRouter = Router()
 
@@ -157,6 +158,21 @@ systemRouter.get('/components', async (_req, res) => {
       lastChecked: now,
     })
   }
+
+  // ── OpenClaw ────────────────────────────────────────────────────────────
+  try {
+    const claw = getOpenClawHealth()
+    components.push({
+      id:          'ext-openclaw',
+      name:        'OpenClaw',
+      type:        'extension',
+      status:      claw.status === 'healthy' ? 'healthy' : claw.status === 'warning' ? 'warning' : 'offline',
+      latencyMs:   claw.latencyMs,
+      error:       claw.status === 'offline' ? 'No recent events' : undefined,
+      description: `OpenClaw event bus · ${claw.eventCount} events${claw.lastEventAt ? ` · last: ${new Date(claw.lastEventAt).toLocaleTimeString()}` : ''}`,
+      lastChecked: now,
+    })
+  } catch { /* skip if openclaw db not available */ }
 
   res.json({
     components,

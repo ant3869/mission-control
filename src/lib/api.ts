@@ -132,6 +132,7 @@ export interface RadarUsageResponse {
   totalRuns:      number
   dailyUsage:     DailyUsageLive[]
   modelBreakdown: Array<{ model: string; tokens: number; cost: number; runs: number }>
+  openclawStats?: Array<{ date: string; events: number; messages: number }>
   fetchedAt:      string
 }
 
@@ -263,6 +264,7 @@ export interface LiveAgent {
   lastActiveAt:  string
   lastActiveAgo: string
   startedAt:     string
+  source?:       'claude' | 'openclaw'
 }
 
 export interface AgentsResponse {

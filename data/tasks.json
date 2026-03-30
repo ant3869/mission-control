@@ -3,7 +3,7 @@
     "id": "1c5eca7a-4ba5-4b37-8a1d-baa5789efb1b",
     "title": "Install CLI-Anything",
     "description": "Install CLI-Anything across A.I platforms.",
-    "status": "queued",
+    "status": "completed",
     "priority": "medium",
     "agentName": "",
     "project": "",
@@ -15,7 +15,7 @@
       "install",
       "skill"
     ],
-    "completedAt": ""
+    "completedAt": "2026-03-30T07:00:12.789Z"
   },
   {
     "id": "8c23ea8f-e9c9-4924-9522-e6cdbf63da73",

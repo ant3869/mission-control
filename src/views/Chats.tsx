@@ -222,7 +222,10 @@ export function Chats() {
 
       const hydrated: CombinedSession = { ...data.session, source: session.source }
 
-      setSelected(prev => prev && keyOf(prev) === keyOf(session) ? hydrated : prev)
+      setSelected(prev => {
+        if (!prev) return hydrated                          // initial auto-select
+        return keyOf(prev) === keyOf(session) ? hydrated : prev
+      })
       setSessions(prev => prev.map(s => keyOf(s) === keyOf(session) ? hydrated : s))
     } catch (err) {
       console.error('Failed to refresh transcript', err)
@@ -368,15 +371,16 @@ export function Chats() {
 
       const updatedSelected = merged.find(s => keyOf(s) === keyOf(current))
       if (updatedSelected) {
+        // Preserve existing messages during polling; only re-fetch if we have none
         setSelected(prev => prev ? { ...updatedSelected, messages: prev.messages } : updatedSelected)
-        await fetchTranscript(updatedSelected, true)
+        if (!current.messages?.length) {
+          await fetchTranscript(updatedSelected, true)
+        }
       }
     } finally {
       if (!silent) setLoading(false)
     }
   }, [fetchTranscript])
-
-  useEffect(() => { loadSessions() }, [loadSessions])
 
   const filtered = sessions.filter(s => {
     if (!search.trim()) return true
