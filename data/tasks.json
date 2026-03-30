@@ -1,0 +1,126 @@
+[
+  {
+    "id": "1c5eca7a-4ba5-4b37-8a1d-baa5789efb1b",
+    "title": "Install CLI-Anything",
+    "description": "Install CLI-Anything across A.I platforms.",
+    "status": "queued",
+    "priority": "medium",
+    "agentName": "",
+    "project": "",
+    "createdAt": "2026-03-29T20:13:34.594Z",
+    "dueDate": "",
+    "tags": [
+      "github",
+      "repo",
+      "install",
+      "skill"
+    ],
+    "completedAt": ""
+  },
+  {
+    "id": "8c23ea8f-e9c9-4924-9522-e6cdbf63da73",
+    "title": "Note Organize Script Creation",
+    "description": "Write script that take in a large test file from clumsy stick-note notes, that parses and organizes values into clean notes structure.",
+    "status": "queued",
+    "priority": "medium",
+    "agentName": "",
+    "project": "",
+    "createdAt": "2026-03-29T18:26:26.140Z",
+    "dueDate": "",
+    "tags": [
+      "notes",
+      "script",
+      "coding",
+      "powershell",
+      "task",
+      "idea",
+      "organization",
+      "clean-up"
+    ],
+    "completedAt": ""
+  },
+  {
+    "id": "9189dc95-d6ac-4bca-821a-ca648cf95da0",
+    "title": "Call House Realtor",
+    "description": "Call about potential house buying venture, contacts provided by renting realtor.",
+    "status": "queued",
+    "priority": "urgent",
+    "agentName": "",
+    "project": "",
+    "createdAt": "2026-03-29T12:00:33.122Z",
+    "dueDate": "",
+    "tags": [
+      "house",
+      "realtor",
+      "lease up",
+      "phone call",
+      "move",
+      "house hunt",
+      "buy"
+    ],
+    "completedAt": ""
+  },
+  {
+    "id": "aba20284-74ea-4b4a-bef1-a9c8e2349448",
+    "title": "Review and merge pipeline route PR",
+    "description": "Check the new pipeline stages logic and confirm token aggregation is correct.",
+    "status": "active",
+    "priority": "high",
+    "agentName": "Claude",
+    "project": "Mission Control",
+    "createdAt": "2026-03-29T07:01:06.489Z",
+    "dueDate": "",
+    "tags": [
+      "backend",
+      "review"
+    ],
+    "completedAt": ""
+  },
+  {
+    "id": "56ceeb7f-2cc8-400c-b938-5a6d376ce121",
+    "title": "Add dark mode support to Office view",
+    "description": "Ensure all integration cards respect the dark theme CSS variables.",
+    "status": "active",
+    "priority": "medium",
+    "agentName": "Claude",
+    "project": "Mission Control",
+    "createdAt": "2026-03-29T04:01:06.491Z",
+    "dueDate": "",
+    "tags": [
+      "frontend",
+      "ui"
+    ],
+    "completedAt": ""
+  },
+  {
+    "id": "67d7c882-9eec-493d-b472-220b93aaa7cb",
+    "title": "Write unit tests for radar route",
+    "description": "Cover JSONL token aggregation edge cases — empty files, malformed JSON lines.",
+    "status": "queued",
+    "priority": "medium",
+    "agentName": "",
+    "project": "Mission Control",
+    "createdAt": "2026-03-27T09:01:06.491Z",
+    "dueDate": "",
+    "tags": [
+      "testing"
+    ],
+    "completedAt": ""
+  },
+  {
+    "id": "0a495860-7acd-417e-9a3f-b1005f387326",
+    "title": "Google OAuth refresh token expired",
+    "description": "Token stored in .env has expired. Need to re-authorise via /api/auth/google.",
+    "status": "blocked",
+    "priority": "urgent",
+    "agentName": "",
+    "project": "Mission Control",
+    "createdAt": "2026-03-29T08:01:06.491Z",
+    "dueDate": "",
+    "tags": [
+      "auth",
+      "bug"
+    ],
+    "completedAt": ""
+  }
+]

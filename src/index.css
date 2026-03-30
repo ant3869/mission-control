@@ -1,0 +1,119 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg-base: #0b0b0d;
+  --bg-surface: #0f0f12;
+  --bg-card: #141417;
+  --bg-card-hover: #1a1a1e;
+  --border: #1e1e24;
+  --border-subtle: #17171c;
+  --text-primary: #e4e4e8;
+  --text-secondary: #7a7a8a;
+  --text-muted: #4a4a58;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  background-color: var(--bg-base);
+  color: var(--text-primary);
+  font-family: 'Outfit', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #2a2a32;
+  border-radius: 2px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #3a3a46;
+}
+
+/* Custom utilities */
+@layer utilities {
+  .text-xxs {
+    font-size: 0.625rem;
+    line-height: 1rem;
+  }
+}
+
+/* ── Agent state animations ── */
+@keyframes node-pulse {
+  0%, 100% { opacity: 0.3; r: 3; }
+  50%       { opacity: 1;   r: 4.5; }
+}
+@keyframes line-draw {
+  0%   { stroke-dashoffset: 40; opacity: 0; }
+  50%  { opacity: 0.6; }
+  100% { stroke-dashoffset: 0; opacity: 0.25; }
+}
+@keyframes radar-sweep {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+@keyframes radar-ping {
+  0%, 100% { opacity: 0; r: 2; }
+  40%       { opacity: 1; r: 2; }
+  60%       { opacity: 0.6; r: 3.5; }
+}
+@keyframes type-cursor {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0; }
+}
+@keyframes line-appear {
+  from { clip-path: inset(0 100% 0 0); opacity: 0; }
+  to   { clip-path: inset(0 0% 0 0);   opacity: 1; }
+}
+@keyframes float-zzz {
+  0%   { transform: translateY(0)   scale(1);    opacity: 0.8; }
+  100% { transform: translateY(-28px) scale(0.7); opacity: 0; }
+}
+@keyframes breathe {
+  0%, 100% { opacity: 0.15; }
+  50%       { opacity: 0.45; }
+}
+@keyframes ekg-idle {
+  0%, 75%, 100% { transform: translateX(0); }
+  80%           { transform: translateX(-2px); }
+  85%           { transform: translateX(2px); }
+  90%           { transform: translateX(-1px); }
+}
+@keyframes highlight-scan {
+  0%   { top: 8px;  opacity: 0; }
+  10%  { opacity: 1; }
+  90%  { opacity: 1; }
+  100% { top: 56px; opacity: 0; }
+}
+@keyframes plan-node {
+  from { opacity: 0; transform: scale(0.6); }
+  to   { opacity: 1; transform: scale(1); }
+}
+@keyframes code-scroll {
+  0%   { transform: translateY(0); }
+  100% { transform: translateY(-40px); }
+}
