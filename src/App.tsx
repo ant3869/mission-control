@@ -19,28 +19,30 @@ import { People } from './views/People'
 import { Office } from './views/Office'
 import { Feedback } from './views/Feedback'
 import { Notes } from './views/Notes'
+import { Inventory } from './views/Inventory'
 import { ComingSoon } from './views/ComingSoon'
 import type { View } from './types'
 
 const VIEW_TITLES: Record<View, string> = {
-  tasks:     'Tasks',
-  agents:    'Agents',
-  content:   'Content',
-  approvals: 'Approvals',
-  council:   'Chats',
-  calendar:  'Scheduled Tasks',
-  projects:  'Projects',
-  memory:    'Memory',
-  docs:      'Docs',
-  people:    'People',
-  office:    'Office',
-  team:      'Team',
-  system:    'System',
-  radar:     'Radar',
-  factory:   'Factory',
-  pipeline:  'Pipeline',
-  feedback:  'Feedback',
-  notes:     'Notes',
+  tasks:      'Tasks',
+  agents:     'Agents',
+  content:    'Content',
+  approvals:  'Approvals',
+  council:    'Chats',
+  calendar:   'Scheduled Tasks',
+  projects:   'Projects',
+  memory:     'Memory',
+  docs:       'Docs',
+  people:     'People',
+  office:     'Office',
+  team:       'Team',
+  system:     'System',
+  radar:      'Radar',
+  factory:    'Factory',
+  pipeline:   'Pipeline',
+  feedback:   'Feedback',
+  notes:      'Notes',
+  inventory:  'Inventory',
 }
 
 // Render each view once (on first visit) and keep it mounted — hidden via CSS.
@@ -92,6 +94,7 @@ export default function App() {
           <ViewPane view="office"    active={activeView} mounted={mounted}><Office /></ViewPane>
           <ViewPane view="feedback"  active={activeView} mounted={mounted}><Feedback /></ViewPane>
           <ViewPane view="notes"     active={activeView} mounted={mounted}><Notes /></ViewPane>
+          <ViewPane view="inventory" active={activeView} mounted={mounted}><Inventory /></ViewPane>
           <ViewPane view="team"      active={activeView} mounted={mounted}><ComingSoon view="team" /></ViewPane>
 
         </main>

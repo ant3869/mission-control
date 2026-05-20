@@ -15,6 +15,7 @@ import { tasksRouter }    from './routes/tasks.js'
 import { projectsRouter }  from './routes/projects.js'
 import { approvalsRouter } from './routes/approvals.js'
 import { notesRouter }     from './routes/notes.js'
+import { inventoryRouter } from './routes/inventory.js'
 import { openclawRouter } from './routes/openclaw.js'
 
 const app = express()
@@ -37,6 +38,7 @@ app.use('/api/tasks',    tasksRouter)
 app.use('/api/projects',  projectsRouter)
 app.use('/api/approvals', approvalsRouter)
 app.use('/api/notes',    notesRouter)
+app.use('/api/inventory', inventoryRouter)
 app.use('/api/openclaw', openclawRouter)
 
 app.get('/api/health', (_req, res) => res.json({ ok: true, ts: new Date().toISOString() }))

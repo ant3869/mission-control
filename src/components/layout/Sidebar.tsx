@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import {
   CheckSquare, Bot, FileText, ThumbsUp, Calendar, FolderKanban,
   Brain, BookOpen, UserCircle, Building2, Network, Settings,
-  Radar, Factory, GitBranch, MessageSquare, ChevronRight, NotebookPen,
+  Radar, Factory, GitBranch, MessageSquare, ChevronRight, NotebookPen, Package,
 } from 'lucide-react'
 import { clsx } from 'clsx'
 import type { View } from '../../types'
@@ -36,6 +36,7 @@ const NAV_SECTIONS: NavSection[] = [
       { id: 'notes',    label: 'Notes',    icon: <NotebookPen size={iconSize} /> },
       { id: 'people',   label: 'People',   icon: <UserCircle size={iconSize} /> },
       { id: 'office',   label: 'Office',   icon: <Building2 size={iconSize} /> },
+      { id: 'inventory', label: 'Inventory', icon: <Package size={iconSize} /> },
       { id: 'team',     label: 'Team',     icon: <Network size={iconSize} /> },
     ],
   },
