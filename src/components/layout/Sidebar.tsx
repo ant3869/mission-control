@@ -105,7 +105,7 @@ export function Sidebar({ activeView, onNavigate }: SidebarProps) {
       </div>
 
       {/* Nav */}
-      <nav className="flex flex-col flex-1 py-2 gap-4 px-2">
+      <nav className="flex flex-col flex-1 py-2 gap-4 px-2 overflow-y-auto min-h-0">
         {NAV_SECTIONS.map((section, si) => (
           <div key={si} className="flex flex-col gap-0.5">
             {section.items.map((item) => {
