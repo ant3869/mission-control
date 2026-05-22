@@ -104,11 +104,50 @@ function normalize(raw: any): LiveEvent | null {
 
   if (event === 'health') {
     const ch = Object.keys(p.channels ?? {}).length
+    // Extract active session keys from health payload for the polling loop.
+    // Format: p.sessions is an array of { path, count, recent: [{key, updatedAt, age}] }
+    const freshKeys: string[] = []
+    const sessArr: any[] = Array.isArray(p.sessions) ? p.sessions : []
+    for (const group of sessArr) {
+      const recent: any[] = Array.isArray(group?.recent) ? group.recent : []
+      for (const s of recent.slice(0, 3)) {
+        const k = String(s?.key ?? '').trim()
+        if (k && !freshKeys.includes(k)) freshKeys.push(k)
+      }
+    }
+    // Also try flat format: p.sessions is an array of session objects.
+    if (freshKeys.length === 0 && Array.isArray(p.sessions)) {
+      for (const s of p.sessions.slice(0, 3)) {
+        const k = String(s?.key ?? s?.id ?? s?.sessionKey ?? '').trim()
+        if (k && !freshKeys.includes(k)) freshKeys.push(k)
+      }
+    }
+    if (freshKeys.length > 0) {
+      // Keep the most recently active sessions for polling.
+      activeSessionIds = freshKeys.slice(0, 3)
+      sessRefreshAt = Date.now() + 8_000 // defer RPC refresh since we just got fresh data
+    }
     return { ...base, kind: 'health', title: 'health check',
       sub: `event-loop ${Math.round(p.eventLoop?.delayP99Ms ?? 0)}ms · ${ch} channels · ${(p.sessions?.active ?? p.sessions?.length ?? '')}`.trim(),
       health: { eventLoop: p.eventLoop, channels: p.channels, channelLabels: p.channelLabels, agents: p.agents, sessions: p.sessions, ok: p.ok } }
   }
   if (/error|fail|exception/i.test(event)) return { ...base, kind: 'error', sub: deepText(p, ['message', 'error', 'reason', 'content']).slice(0, 160) }
+  // sessions.changed fires when a session completes — extract provider/surface for Watch status.
+  if (event === 'sessions.changed') {
+    const provider = String(p.provider ?? p.surface ?? p.channel ?? '').toLowerCase()
+    const phase    = String(p.phase ?? '')
+    const direction: 'in' | 'out' = phase === 'end' ? 'out' : 'in'
+    const channel  = provider.includes('discord') ? 'Discord'
+      : provider.includes('slack') ? 'Slack'
+      : provider.includes('telegram') ? 'Telegram'
+      : provider
+    if (channel) {
+      return { ...base, kind: 'message',
+        sub: phase === 'end' ? 'response sent' : 'message received',
+        meta: { channel, direction } }
+    }
+    return { ...base, kind: 'session', sub: String(p.phase ?? '').slice(0, 60) }
+  }
   if (/message|chat/i.test(event)) {
     const channel   = String(p.channelId ?? p.channel ?? p.to ?? p.source ?? p.platform ?? '')
     const direction: 'in' | 'out' = /sent|send|outbound|reply/i.test(event) ? 'out' : 'in'
