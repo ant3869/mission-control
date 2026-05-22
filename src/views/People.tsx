@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { clsx } from 'clsx'
-import { Search, Mail, Phone, Globe, Plus, Tag } from 'lucide-react'
+import { Search, Mail, Phone, Globe, Plus, Tag, Trash2 } from 'lucide-react'
 import { people } from '../data/mockData'
 import type { Person, PersonType } from '../types'
 
@@ -43,11 +43,9 @@ function PersonCard({ person, onDelete }: { person: Person, onDelete: (id: strin
           aria-label="Delete contact"
           title="Delete contact"
           onClick={() => onDelete(person.id)}
-          className="ml-2 p-1 rounded hover:bg-red-50 text-red-500 hover:text-red-700 transition-colors"
-          style={{ lineHeight: 0 }}
+          className="ml-2 p-1 rounded hover:bg-red-950/40 text-text-muted hover:text-red-400 transition-colors"
         >
-          {/* Trash icon from lucide-react */}
-          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m2 0v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6h16zm5 0v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6h16z" /></svg>
+          <Trash2 size={14} />
         </button>
       </div>
 
