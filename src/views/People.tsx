@@ -152,48 +152,52 @@ export function People() {
     <div className="flex flex-col h-full overflow-hidden">
       {/* Add Person Modal */}
       {showAdd && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
-          <form onSubmit={handleAddPerson} className="bg-white rounded-lg shadow-lg p-6 w-full max-w-sm flex flex-col gap-3">
-            <h2 className="text-lg font-semibold mb-2">Add Person</h2>
-            <input
-              className="border rounded px-2 py-1 text-sm"
-              placeholder="Name"
-              value={newPerson.name || ''}
-              onChange={e => setNewPerson(p => ({ ...p, name: e.target.value }))}
-              required
-              autoFocus
-            />
-            <input
-              className="border rounded px-2 py-1 text-sm"
-              placeholder="Role"
-              value={newPerson.role || ''}
-              onChange={e => setNewPerson(p => ({ ...p, role: e.target.value }))}
-              required
-            />
-            <input
-              className="border rounded px-2 py-1 text-sm"
-              placeholder="Company (optional)"
-              value={newPerson.company || ''}
-              onChange={e => setNewPerson(p => ({ ...p, company: e.target.value }))}
-            />
-            <input
-              className="border rounded px-2 py-1 text-sm"
-              placeholder="Email (optional)"
-              value={newPerson.email || ''}
-              onChange={e => setNewPerson(p => ({ ...p, email: e.target.value }))}
-              type="email"
-            />
-            <select
-              className="border rounded px-2 py-1 text-sm"
-              value={newPerson.type || 'collaborator'}
-              onChange={e => setNewPerson(p => ({ ...p, type: e.target.value as PersonType }))}
-              required
-            >
-              {TYPES.map(t => <option key={t} value={t}>{typeConfig[t].label}</option>)}
-            </select>
-            <div className="flex gap-2 mt-2">
-              <button type="submit" className="bg-blue-600 text-white px-3 py-1 rounded hover:bg-blue-700 text-sm">Add</button>
-              <button type="button" className="px-3 py-1 rounded border text-sm" onClick={() => setShowAdd(false)}>Cancel</button>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={() => setShowAdd(false)}>
+          <form onSubmit={handleAddPerson} className="w-full max-w-sm rounded-xl border border-border bg-card shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+              <h2 className="text-sm font-semibold text-text-primary">Add Person</h2>
+            </div>
+            <div className="p-5 flex flex-col gap-3">
+              <input
+                className="w-full px-3 py-2 rounded-lg border border-border bg-base text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-blue-500/60 transition-colors"
+                placeholder="Name"
+                value={newPerson.name || ''}
+                onChange={e => setNewPerson(p => ({ ...p, name: e.target.value }))}
+                required
+                autoFocus
+              />
+              <input
+                className="w-full px-3 py-2 rounded-lg border border-border bg-base text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-blue-500/60 transition-colors"
+                placeholder="Role"
+                value={newPerson.role || ''}
+                onChange={e => setNewPerson(p => ({ ...p, role: e.target.value }))}
+                required
+              />
+              <input
+                className="w-full px-3 py-2 rounded-lg border border-border bg-base text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-blue-500/60 transition-colors"
+                placeholder="Company (optional)"
+                value={newPerson.company || ''}
+                onChange={e => setNewPerson(p => ({ ...p, company: e.target.value }))}
+              />
+              <input
+                className="w-full px-3 py-2 rounded-lg border border-border bg-base text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-blue-500/60 transition-colors"
+                placeholder="Email (optional)"
+                value={newPerson.email || ''}
+                onChange={e => setNewPerson(p => ({ ...p, email: e.target.value }))}
+                type="email"
+              />
+              <select
+                className="w-full px-3 py-2 rounded-lg border border-border bg-base text-sm text-text-primary focus:outline-none focus:border-blue-500/60 transition-colors"
+                value={newPerson.type || 'collaborator'}
+                onChange={e => setNewPerson(p => ({ ...p, type: e.target.value as PersonType }))}
+                required
+              >
+                {TYPES.map(t => <option key={t} value={t}>{typeConfig[t].label}</option>)}
+              </select>
+            </div>
+            <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-border">
+              <button type="button" className="px-4 py-2 rounded-lg border border-border text-xs text-text-muted hover:text-text-secondary transition-colors" onClick={() => setShowAdd(false)}>Cancel</button>
+              <button type="submit" className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-xs font-semibold text-white transition-colors">Add</button>
             </div>
           </form>
         </div>
