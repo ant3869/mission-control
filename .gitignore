@@ -32,6 +32,9 @@ RUN.bat
 *.db-shm
 *.db-wal
 
+# ─── Connector secrets (gateway base URLs + tokens) ───────────────────────────
+data/connectors.json
+
 # ─── Logs ─────────────────────────────────────────────────────────────────────
 *.log
 npm-debug.log*

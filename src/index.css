@@ -117,3 +117,20 @@ body {
   0%   { transform: translateY(0); }
   100% { transform: translateY(-40px); }
 }
+/* ── Message-flow animation (platform metrics) ── */
+@keyframes flow-sweep {
+  0%   { left: -30%; opacity: 0; }
+  20%  { opacity: 1; }
+  80%  { opacity: 1; }
+  100% { left: 100%; opacity: 0; }
+}
+@keyframes flow-node-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 currentColor; opacity: 0.9; }
+  50%       { box-shadow: 0 0 0 4px transparent; opacity: 1; }
+}
+@keyframes link-flow { from { stroke-dashoffset: 28; } to { stroke-dashoffset: 0; } }
+@keyframes brain-pulse {
+  0%, 100% { opacity: 0.35; transform: scale(1); }
+  50%       { opacity: 0.7;  transform: scale(1.12); }
+}
+@keyframes gauge-fill { from { stroke-dashoffset: var(--gauge-len); } }

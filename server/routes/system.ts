@@ -10,7 +10,7 @@ import { Router } from 'express'
 import { readFileSync, existsSync, readdirSync, statSync } from 'fs'
 import { homedir } from 'os'
 import { join } from 'path'
-import { getOpenClawHealth } from './openclaw.js'
+import { deriveHealth, type AgentSource } from '../lib/agentEvents.js'
 
 export const systemRouter = Router()
 
@@ -159,20 +159,22 @@ systemRouter.get('/components', async (_req, res) => {
     })
   }
 
-  // ── OpenClaw ────────────────────────────────────────────────────────────
-  try {
-    const claw = getOpenClawHealth()
-    components.push({
-      id:          'ext-openclaw',
-      name:        'OpenClaw',
-      type:        'extension',
-      status:      claw.status === 'healthy' ? 'healthy' : claw.status === 'warning' ? 'warning' : 'offline',
-      latencyMs:   claw.latencyMs,
-      error:       claw.status === 'offline' ? 'No recent events' : undefined,
-      description: `OpenClaw event bus · ${claw.eventCount} events${claw.lastEventAt ? ` · last: ${new Date(claw.lastEventAt).toLocaleTimeString()}` : ''}`,
-      lastChecked: now,
-    })
-  } catch { /* skip if openclaw db not available */ }
+  // ── Agent platforms (OpenClaw + Hermes) ───────────────────────────────────
+  for (const [source, label] of [['openclaw', 'OpenClaw'], ['hermes', 'Hermes']] as Array<[AgentSource, string]>) {
+    try {
+      const h = deriveHealth(source)
+      components.push({
+        id:          `ext-${source}`,
+        name:        label,
+        type:        'extension',
+        status:      h.status === 'healthy' ? 'healthy' : h.status === 'warning' ? 'warning' : 'offline',
+        latencyMs:   h.latencyMs,
+        error:       h.status === 'offline' ? 'No recent events' : undefined,
+        description: `${label} event bus · ${h.eventCount} events${h.lastEventAt ? ` · last: ${new Date(h.lastEventAt).toLocaleTimeString()}` : ''}`,
+        lastChecked: now,
+      })
+    } catch { /* skip if db not available */ }
+  }
 
   res.json({
     components,

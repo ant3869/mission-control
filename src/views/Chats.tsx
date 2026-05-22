@@ -5,10 +5,10 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { clsx } from 'clsx'
 import { MessageSquare, Clock, Hash, Search, Activity, FolderOpen, RefreshCw, AlertCircle, HeartPulse, ChevronRight } from 'lucide-react'
-import { chats, openclawChats, type LiveSession, type LiveChatMessage } from '../lib/api'
+import { chats, openclawChats, hermesChats, type LiveSession, type LiveChatMessage } from '../lib/api'
 
 // if you already have CombinedSession / openclawChats, keep those types/imports
-type SessionSource = 'claude' | 'openclaw'
+type SessionSource = 'claude' | 'openclaw' | 'hermes'
 type CombinedSession = LiveSession & { source: SessionSource }
 
 const POLL_MS = 3000
@@ -41,38 +41,47 @@ function sourceKey(session: Pick<CombinedSession, 'id' | 'source'>) {
 }
 
 function sourceLabel(source: SessionSource) {
-  return source === 'claude' ? 'Claude' : 'Claw'
+  return source === 'claude' ? 'Claude' : source === 'hermes' ? 'Hermes' : 'OpenClaw'
 }
 
 function sourceBadge(source: SessionSource) {
-  return source === 'claude' ? 'C' : 'O'
+  return source === 'claude' ? 'C' : source === 'hermes' ? 'H' : 'O'
 }
 
 function sourceAvatar(source: SessionSource, id: string) {
-  const claude = [
-    'from-violet-500 to-indigo-600',
-    'from-blue-500 to-cyan-600',
-    'from-teal-500 to-green-600',
-  ]
-  const claw = [
-    'from-amber-500 to-orange-600',
-    'from-rose-500 to-red-600',
-    'from-fuchsia-500 to-pink-600',
-  ]
-  const palette = source === 'claude' ? claude : claw
+  const palettes: Record<SessionSource, string[]> = {
+    claude: [
+      'from-violet-500 to-indigo-600',
+      'from-blue-500 to-cyan-600',
+      'from-teal-500 to-green-600',
+    ],
+    openclaw: [
+      'from-amber-500 to-orange-600',
+      'from-rose-500 to-red-600',
+      'from-fuchsia-500 to-pink-600',
+    ],
+    hermes: [
+      'from-violet-500 to-purple-700',
+      'from-purple-500 to-fuchsia-700',
+      'from-indigo-500 to-violet-700',
+    ],
+  }
+  const palette = palettes[source]
   let h = 0
   for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) | 0
   return palette[Math.abs(h) % palette.length]
 }
 
 function sourceChipClass(source: SessionSource) {
-  return source === 'claude'
-    ? 'bg-violet-950/40 border-violet-900/40 text-violet-300'
-    : 'bg-amber-950/40 border-amber-900/40 text-amber-300'
+  if (source === 'claude') return 'bg-violet-950/40 border-violet-900/40 text-violet-300'
+  if (source === 'hermes') return 'bg-purple-950/40 border-purple-900/40 text-purple-300'
+  return 'bg-amber-950/40 border-amber-900/40 text-amber-300'
 }
 
 function sourceDotClass(source: SessionSource) {
-  return source === 'claude' ? 'bg-violet-400' : 'bg-amber-400'
+  if (source === 'claude') return 'bg-violet-400'
+  if (source === 'hermes') return 'bg-purple-400'
+  return 'bg-amber-400'
 }
 
 function SessionItem({ session, isActive, onClick }: {
@@ -279,6 +288,8 @@ export function Chats() {
     try {
       const data = session.source === 'claude'
         ? await chats.session(session.id)
+        : session.source === 'hermes'
+        ? await hermesChats.session(session.id)
         : await openclawChats.session(session.id)
 
       const hydrated: CombinedSession = { ...data.session, source: session.source }
@@ -391,9 +402,10 @@ export function Chats() {
     setError(null)
 
     try {
-      const [claudeRes, clawRes] = await Promise.allSettled([
+      const [claudeRes, clawRes, hermesRes] = await Promise.allSettled([
         chats.sessions(50),
         openclawChats.sessions(50),
+        hermesChats.sessions(50),
       ])
 
       const merged: CombinedSession[] = []
@@ -409,6 +421,12 @@ export function Chats() {
         merged.push(...clawRes.value.sessions.map(s => ({ ...s, source: 'openclaw' as const })))
       } else {
         errors.push(`Claw: ${clawRes.reason?.message ?? 'load failed'}`)
+      }
+
+      if (hermesRes.status === 'fulfilled') {
+        merged.push(...hermesRes.value.sessions.map(s => ({ ...s, source: 'hermes' as const })))
+      } else {
+        errors.push(`Hermes: ${hermesRes.reason?.message ?? 'load failed'}`)
       }
 
       merged.sort((a, b) => new Date(b.lastActiveAt).getTime() - new Date(a.lastActiveAt).getTime())
@@ -473,8 +491,10 @@ export function Chats() {
   const claudeSessions    = filtered.filter(s => s.source === 'claude')
   const clawSessions      = filtered.filter(s => s.source === 'openclaw' && !s.isHeartbeat)
   const heartbeatSessions = filtered.filter(s => s.source === 'openclaw' && s.isHeartbeat)
+  const hermesSessions    = filtered.filter(s => s.source === 'hermes' && !s.isHeartbeat)
+  const hermesHeartbeats  = filtered.filter(s => s.source === 'hermes' && s.isHeartbeat)
   const totalTok          = filtered.reduce((sum, s) => sum + s.inputTokens + s.outputTokens, 0)
-  const assistantBadge    = selected?.source === 'openclaw' ? 'O' : 'C'
+  const assistantBadge    = selected?.source === 'hermes' ? 'H' : selected?.source === 'openclaw' ? 'O' : 'C'
 
   return (
     <div className="flex h-full overflow-hidden">
@@ -501,9 +521,16 @@ export function Chats() {
             </div>
             <div className="flex items-center gap-2 rounded border border-border bg-base px-2.5 py-2">
               <span className={clsx('w-1.5 h-1.5 rounded-full', sourceDotClass('openclaw'))} />
-              <span className="text-xs text-text-secondary">Claw Sessions</span>
+              <span className="text-xs text-text-secondary">OpenClaw Sessions</span>
               <span className="ml-auto text-xxs text-text-muted">
                 {clawSessions.length + heartbeatSessions.length} found
+              </span>
+            </div>
+            <div className="flex items-center gap-2 rounded border border-border bg-base px-2.5 py-2">
+              <span className={clsx('w-1.5 h-1.5 rounded-full', sourceDotClass('hermes'))} />
+              <span className="text-xs text-text-secondary">Hermes Sessions</span>
+              <span className="ml-auto text-xxs text-text-muted">
+                {hermesSessions.length + hermesHeartbeats.length} found
               </span>
             </div>
           </div>
@@ -565,7 +592,7 @@ export function Chats() {
               </div>
 
               <div>
-                <SectionHeader title="Claw Sessions" count={clawSessions.length + heartbeatSessions.length} />
+                <SectionHeader title="OpenClaw Sessions" count={clawSessions.length + heartbeatSessions.length} />
                 <HeartbeatStack
                   sessions={heartbeatSessions}
                   selected={selected}
@@ -573,9 +600,32 @@ export function Chats() {
                 />
                 <div className="space-y-1">
                   {clawSessions.length === 0 && heartbeatSessions.length === 0 ? (
-                    <div className="px-2 py-2 text-xxs text-text-muted">No Claw sessions</div>
+                    <div className="px-2 py-2 text-xxs text-text-muted">No OpenClaw sessions</div>
                   ) : (
                     clawSessions.map(session => (
+                      <SessionItem
+                        key={sourceKey(session)}
+                        session={session}
+                        isActive={selected ? sourceKey(selected) === sourceKey(session) : false}
+                        onClick={() => selectSession(session)}
+                      />
+                    ))
+                  )}
+                </div>
+              </div>
+
+              <div>
+                <SectionHeader title="Hermes Sessions" count={hermesSessions.length + hermesHeartbeats.length} />
+                <HeartbeatStack
+                  sessions={hermesHeartbeats}
+                  selected={selected}
+                  onSelect={selectSession}
+                />
+                <div className="space-y-1">
+                  {hermesSessions.length === 0 && hermesHeartbeats.length === 0 ? (
+                    <div className="px-2 py-2 text-xxs text-text-muted">No Hermes sessions — add a token in Settings</div>
+                  ) : (
+                    hermesSessions.map(session => (
                       <SessionItem
                         key={sourceKey(session)}
                         session={session}

@@ -37,6 +37,13 @@ async function patch<T>(path: string, body: unknown): Promise<T> {
   return json as T
 }
 
+async function put<T>(path: string, body: unknown): Promise<T> {
+  const res  = await fetch(`/api${path}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+  const json = await res.json().catch(() => ({ error: res.statusText }))
+  if (!res.ok) throw new ApiError(res.status, json.error ?? res.statusText)
+  return json as T
+}
+
 async function del<T>(path: string): Promise<T> {
   const res  = await fetch(`/api${path}`, { method: 'DELETE' })
   const json = await res.json().catch(() => ({ error: res.statusText }))
@@ -183,7 +190,143 @@ export const chats = {
 
 export const openclawChats = {
   sessions: (limit = 50) => get<ChatsListResponse>('/openclaw/sessions', { limit }),
-  session:  (id: string) => get<ChatSessionResponse>(`/openclaw/sessions/${id}`),
+  session:  (id: string) => get<ChatSessionResponse>(`/openclaw/sessions/${encodeURIComponent(id)}`),
+}
+
+export const hermesChats = {
+  sessions: (limit = 50) => get<ChatsListResponse>('/hermes/sessions', { limit }),
+  session:  (id: string) => get<ChatSessionResponse>(`/hermes/sessions/${encodeURIComponent(id)}`),
+}
+
+// ─── Agent platform connectors (Settings) ──────────────────────────────────────
+
+export type ConnectorId = 'openclaw' | 'hermes'
+export type ConnectorStatus = 'connected' | 'error' | 'incomplete' | 'disabled'
+
+export interface ConnectorInfo {
+  id:              ConnectorId
+  label:           string
+  baseUrl:         string
+  enabled:         boolean
+  hasToken:        boolean
+  tokenHint:       string
+  status:          ConnectorStatus
+  reachable:       boolean
+  version:         string | null
+  gatewayStatus?:  string | null
+  platforms?:      Array<{ name: string; status: string }>
+  activeSessions:  number | null
+  latencyMs:       number
+  error:           string | null
+}
+
+export interface ConnectorsResponse {
+  connectors: ConnectorInfo[]
+  fetchedAt:  string
+}
+
+export interface ConnectorTestResult {
+  ok:             boolean
+  reachable:      boolean
+  version:        string | null
+  gatewayStatus?: string | null
+  platforms?:     Array<{ name: string; status: string }>
+  activeSessions: number | null
+  latencyMs:      number
+  error:          string | null
+}
+
+export type ConnectorUpdateBody = { baseUrl?: string; token?: string; enabled?: boolean }
+
+export const settings = {
+  connectors: ()                                          => get<ConnectorsResponse>('/settings/connectors'),
+  update:     (id: ConnectorId, body: ConnectorUpdateBody) => put<{ connector: ConnectorInfo }>(`/settings/connectors/${id}`, body),
+  test:       (id: ConnectorId)                            => post<ConnectorTestResult>(`/settings/connectors/${id}/test`, {}),
+}
+
+// ─── Agent cron jobs (OpenClaw / Hermes) ───────────────────────────────────────
+
+export interface AgentCronJob {
+  id:           string
+  rawId:        string
+  source:       ConnectorId
+  name:         string
+  schedule:     string
+  cronExpr:     string
+  prompt:       string
+  deliver:      string
+  enabled:      boolean
+  nextRunAt:    string | null
+  lastRunAt:    string | null
+  nextRunLabel: string
+  lastRunLabel: string
+  runCount:     number
+  successRate:  number
+  origin:       'live' | 'derived'
+  sample:       string
+}
+
+export interface AgentCronResponse {
+  jobs:      AgentCronJob[]
+  fetchedAt: string
+}
+
+export type CronAction = 'pause' | 'resume' | 'trigger'
+
+export const agentCron = {
+  openclaw: () => get<AgentCronResponse>('/openclaw/cron'),
+  hermes:   () => get<AgentCronResponse>('/hermes/cron'),
+  action:   (source: ConnectorId, jobId: string, action: CronAction) =>
+              post<{ ok: boolean; error?: string }>(`/${source}/cron/${encodeURIComponent(jobId)}/${action}`, {}),
+}
+
+// ─── Platform metrics (OpenClaw / Hermes dashboards) ───────────────────────────
+
+export interface MetricBreakdown { name: string; tokens: number; cost: number; count: number }
+export interface MetricSessionRow { key: string; title: string; channel: string; model: string; kind: string; tokens: number; cost: number; updatedAt: string | null; startedAt: string | null; status: string; runtimeMs: number; isHeartbeat: boolean }
+export interface MetricCronJob { id: string; name: string; agentId: string; enabled: boolean; schedule: string; delivery: string; lastRunAt: string | null; nextRunAt: string | null }
+export interface MetricCronRun { ts: string; jobId: string; status: string; action: string; error: string | null }
+export interface MetricChannel { id: string; label: string; enabled: boolean; configured: boolean; running: boolean; lastStartAt: string | null }
+export interface MetricMemoryFile { name: string; size: number; updatedAt: string | null; missing: boolean }
+export interface MetricSubAgent { key: string; title: string; status: string; tokens: number; updatedAt: string | null }
+export interface MetricAutonomyFactor { label: string; score: number; detail: string }
+export interface MetricAutonomy { score: number; level: string; factors: MetricAutonomyFactor[] }
+
+export interface PlatformMetrics {
+  source:    ConnectorId
+  reachable: boolean
+  version:   string | null
+  error:     string | null
+  latencyMs: number
+  fetchedAt: string
+  tokens:    { input: number; output: number; cacheRead: number; cacheWrite: number; total: number }
+  cost:      { total: number; input: number; output: number; cacheRead: number; cacheWrite: number }
+  daily:     Array<{ date: string; tokens: number; cost: number; input: number; output: number }>
+  messages:  { total: number; user: number; assistant: number; toolCalls: number; errors: number } | null
+  tools:     Array<{ name: string; count: number }>
+  byModel:    MetricBreakdown[]
+  byProvider: MetricBreakdown[]
+  byAgent:    MetricBreakdown[]
+  byChannel:  MetricBreakdown[]
+  latency:   { count?: number; avgMs?: number; minMs?: number; maxMs?: number; p95Ms?: number } | null
+  sessions:  { total: number }
+  sessionList: MetricSessionRow[]
+  channels:  MetricChannel[]
+  cron:      { total: number; enabled: boolean; nextWakeAt: string | null; jobs: MetricCronJob[]; runs: MetricCronRun[]; runsTotal: number; failures: number; successRate: number }
+  models:    Array<{ id: string; name: string; provider: string }>
+  skills:    Array<{ name: string; description: string }>
+  health:    { ok: boolean; eventLoop: any | null; memory: any | null; updateAvailable: boolean }
+  heartbeat: Array<{ agentId: string; every: string; enabled: boolean }>
+  memoryFiles: MetricMemoryFile[]
+  subAgents: { total: number; recent: MetricSubAgent[] }
+  autonomy:  MetricAutonomy
+}
+
+export interface PlatformMetricsResponse { metrics: PlatformMetrics; fetchedAt: string }
+
+export const metrics = {
+  openclaw: (force = false) => get<PlatformMetricsResponse>('/openclaw/metrics', force ? { force: 1 } : undefined),
+  hermes:   (force = false) => get<PlatformMetricsResponse>('/hermes/metrics',   force ? { force: 1 } : undefined),
 }
 
 // ─── Memory ───────────────────────────────────────────────────────────────────
@@ -200,6 +343,7 @@ export interface LiveMemoryEntry {
   wordCount:   number
   updatedAt:   number
   updatedAgo:  string
+  source?:     'openclaw' | 'hermes'
 }
 
 export interface MemoryEntriesResponse {
@@ -265,7 +409,8 @@ export interface LiveAgent {
   lastActiveAt:  string
   lastActiveAgo: string
   startedAt:     string
-  source?:       'claude' | 'openclaw'
+  source?:       'claude' | 'openclaw' | 'hermes'
+  cronRuns?:     number
 }
 
 export interface AgentsResponse {

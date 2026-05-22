@@ -11,7 +11,7 @@ import { Router } from 'express'
 import { existsSync, readdirSync, readFileSync, statSync } from 'fs'
 import { homedir } from 'os'
 import { join, basename } from 'path'
-import { getOpenClawAgents } from './openclaw.js'
+import { getAgents } from '../lib/agentSources.js'
 
 export const agentsRouter = Router()
 
@@ -262,7 +262,7 @@ export interface LiveAgent {
   startedAt:     string
 }
 
-agentsRouter.get('/projects', (_req, res) => {
+agentsRouter.get('/projects', async (_req, res) => {
   const projectsDir = findClaudeProjectsDir()
   if (!projectsDir) {
     return res.json({ agents: [], fetchedAt: new Date().toISOString(), error: 'Could not locate ~/.claude/projects' })
@@ -367,15 +367,13 @@ agentsRouter.get('/projects', (_req, res) => {
   // Sort by most recently active
   agents.sort((a, b) => new Date(b.lastActiveAt).getTime() - new Date(a.lastActiveAt).getTime())
 
-  // Merge OpenClaw agents
+  // Merge OpenClaw + Hermes agents (captured events and/or live gateway pull)
   try {
-    const clawAgents = getOpenClawAgents()
-    for (const ca of clawAgents) {
-      agents.push({ ...ca, source: 'openclaw' } as any)
-    }
+    const [oc, hm] = await Promise.all([getAgents('openclaw'), getAgents('hermes')])
+    for (const ca of [...oc, ...hm]) agents.push(ca as any)
     agents.sort((a, b) => new Date(b.lastActiveAt).getTime() - new Date(a.lastActiveAt).getTime())
   } catch (err) {
-    console.error('Failed to load OpenClaw agents:', err)
+    console.error('Failed to load agent-platform agents:', err)
   }
 
   res.json({ agents, fetchedAt: new Date().toISOString(), projectsDir })

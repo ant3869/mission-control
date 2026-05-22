@@ -11,7 +11,7 @@ import { Router } from 'express'
 import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'fs'
 import { homedir } from 'os'
 import { join, extname } from 'path'
-import { getOpenClawMemoryEntries } from './openclaw'
+import { getMemory } from '../lib/agentSources.js'
 
 export const memoryRouter = Router()
 
@@ -109,10 +109,9 @@ memoryRouter.get('/entries', (_req, res) => {
     } catch { /* ignore */ }
   }
 
-  // ── Source 2: OpenClaw conversation memory ────────────────────────────────
+  // ── Source 2: OpenClaw + Hermes conversation memory ───────────────────────
   try {
-    const ocEntries = getOpenClawMemoryEntries()
-    entries.push(...ocEntries)
+    entries.push(...getMemory('openclaw'), ...getMemory('hermes'))
   } catch { /* ignore */ }
 
   if (entries.length === 0) {

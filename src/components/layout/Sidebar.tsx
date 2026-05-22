@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react'
 import {
   CheckSquare, Bot, FileText, ThumbsUp, Calendar, FolderKanban,
   Brain, BookOpen, UserCircle, Building2, Network, Settings,
-  Radar, Factory, GitBranch, MessageSquare, ChevronRight, NotebookPen,
+  Radar, Factory, GitBranch, MessageSquare, ChevronRight, NotebookPen, Cog,
+  Activity, Gauge,
 } from 'lucide-react'
 import { clsx } from 'clsx'
 import type { View } from '../../types'
@@ -46,6 +47,13 @@ const NAV_SECTIONS: NavSection[] = [
       { id: 'factory',  label: 'Factory',  icon: <Factory size={iconSize} /> },
       { id: 'pipeline', label: 'Pipeline', icon: <GitBranch size={iconSize} /> },
       { id: 'feedback', label: 'Feedback', icon: <MessageSquare size={iconSize} /> },
+      { id: 'settings', label: 'Settings', icon: <Cog size={iconSize} /> },
+    ],
+  },
+  {
+    items: [
+      { id: 'openclaw', label: 'OpenClaw', icon: <Activity size={iconSize} /> },
+      { id: 'hermes',   label: 'Hermes',   icon: <Gauge size={iconSize} /> },
     ],
   },
 ]
@@ -137,7 +145,7 @@ export function Sidebar({ activeView, onNavigate }: SidebarProps) {
       {/* Footer */}
       <div className="shrink-0 px-4 py-3 border-t border-border">
         <div className="flex items-center gap-2">
-          <div className="w-6 h-6 rounded-full bg-gradient-to-br from-violet-500 to-indigo-600 shrink-0" />
+          <div className="w-6 h-6 rounded-full bg-gradient-to-br from-emerald-500 to-green-600 shrink-0" />
           <div className="flex flex-col min-w-0">
             <span className="text-xs font-medium text-text-primary truncate">Ant</span>
             <span className="text-xxs text-text-muted truncate">anthon3869@gmail.com</span>

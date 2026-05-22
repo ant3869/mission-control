@@ -46,12 +46,24 @@ function shortCwd(cwd: string): string {
   return parts.slice(-2).join('/')
 }
 
+const SOURCE_BADGE: Partial<Record<NonNullable<LiveAgent['source']>, { label: string; cls: string }>> = {
+  openclaw: { label: 'OpenClaw', cls: 'bg-amber-950/40 border-amber-900/40 text-amber-300' },
+  hermes:   { label: 'Hermes',   cls: 'bg-purple-950/40 border-purple-900/40 text-purple-300' },
+}
+
+function SourceBadge({ source }: { source: LiveAgent['source'] }) {
+  const cfg = source ? SOURCE_BADGE[source] : undefined
+  if (!cfg) return null
+  return (
+    <span className={clsx('px-1.5 py-0.5 rounded border text-xxs shrink-0', cfg.cls)}>{cfg.label}</span>
+  )
+}
+
 // ─── Agent card ────────────────────────────────────────────────────────────────
 
 function AgentCard({ agent, onClick }: { agent: LiveAgent; onClick: () => void }) {
   const s      = STATE_CFG[agent.state]
   const isActive = !['idle', 'sleeping', 'error'].includes(agent.state)
-  const isClaw = agent.source === 'openclaw'
 
   return (
     <div
@@ -74,11 +86,7 @@ function AgentCard({ agent, onClick }: { agent: LiveAgent; onClick: () => void }
             <div className="flex items-center gap-1.5 mb-0.5">
               <span className={clsx('w-1.5 h-1.5 rounded-full shrink-0', s.dot, isActive && 'animate-pulse')} />
               <h3 className="text-sm font-semibold text-text-primary truncate">{agent.name}</h3>
-              {isClaw && (
-                <span className="px-1.5 py-0.5 rounded bg-amber-950/40 border border-amber-900/40 text-amber-300 text-xxs shrink-0">
-                  Claw
-                </span>
-              )}
+              <SourceBadge source={agent.source} />
             </div>
             <p className="text-xxs text-text-muted truncate">{shortCwd(agent.cwd)}</p>
           </div>
@@ -95,9 +103,12 @@ function AgentCard({ agent, onClick }: { agent: LiveAgent; onClick: () => void }
             : <p className="text-xxs text-text-muted italic">No recorded task</p>
           }
           {agent.lastActiveAgo && (
-            <div className="flex items-center gap-1 mt-1">
+            <div className="flex items-center gap-1.5 mt-1">
               <Clock size={9} className="text-text-muted" />
               <span className="text-xxs text-text-muted">{agent.lastActiveAgo}</span>
+              {!!agent.cronRuns && agent.cronRuns > 0 && (
+                <span className="text-xxs text-text-muted opacity-70">· {agent.cronRuns} scheduled run{agent.cronRuns !== 1 ? 's' : ''}</span>
+              )}
             </div>
           )}
         </div>
@@ -157,11 +168,7 @@ function AgentDrawer({ agent, onClose }: { agent: LiveAgent; onClose: () => void
           <div className="min-w-0">
             <div className="flex items-center gap-1.5">
               <p className="text-sm font-semibold text-text-primary truncate">{agent.name}</p>
-              {agent.source === 'openclaw' && (
-                <span className="px-1.5 py-0.5 rounded bg-amber-950/40 border border-amber-900/40 text-amber-300 text-xxs shrink-0">
-                  Claw
-                </span>
-              )}
+              <SourceBadge source={agent.source} />
             </div>
             <p className="text-xxs text-text-muted truncate">{shortCwd(agent.cwd)}</p>
           </div>
@@ -290,7 +297,8 @@ export function Agents() {
   const totalCost   = agentList.reduce((s, a) => s + a.cost, 0)
   const totalTokens = agentList.reduce((s, a) => s + a.totalTokens, 0)
   const clawCount   = agentList.filter(a => a.source === 'openclaw').length
-  const claudeCount = agentList.length - clawCount
+  const hermesCount = agentList.filter(a => a.source === 'hermes').length
+  const claudeCount = agentList.length - clawCount - hermesCount
 
   const fetchedLabel = fetchedAt
     ? new Date(fetchedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
@@ -309,7 +317,9 @@ export function Agents() {
                 &nbsp;·&nbsp;
                 <span className="text-text-secondary">{claudeCount} Claude</span>
                 &nbsp;·&nbsp;
-                <span className="text-amber-400">{clawCount} Claw</span>
+                <span className="text-amber-400">{clawCount} OpenClaw</span>
+                &nbsp;·&nbsp;
+                <span className="text-purple-400">{hermesCount} Hermes</span>
                 &nbsp;·&nbsp;
                 <span className="text-text-secondary">{fmtTokens(totalTokens)} tokens</span>
                 &nbsp;·&nbsp;
