@@ -7,8 +7,9 @@
 //          first listener attaches; reconnects with backoff.
 
 import { randomUUID } from 'crypto'
-import { getConnector } from './connectors.js'
+import { getConnector, isLive } from './connectors.js'
 import { toWsUrl, toHttpOrigin } from './openclawWs.js'
+import { fetchSessions, fetchSessionMessages } from './gateway.js'
 
 export interface LiveEventMeta {
   tool?:      string        // normalized lowercase tool name: "bash", "read", "webfetch", …
@@ -40,6 +41,10 @@ let stopped = true
 let seq = 0
 let backoff = 1000
 let reconnectTimer: NodeJS.Timeout | null = null
+let pollTimer: NodeJS.Timeout | null = null
+let sessRefreshAt = 0
+let activeSessionIds: string[] = []
+const toolSeen = new Set<string>()
 const listeners = new Set<Listener>()
 const buffer: LiveEvent[] = []
 const pending = new Map<string, { resolve: (v: any) => void; reject: (e: any) => void; timer: NodeJS.Timeout }>()
@@ -133,6 +138,101 @@ function push(e: LiveEvent) {
   for (const fn of listeners) { try { fn(e) } catch { /* ignore */ } }
 }
 
+async function pollSessionActivity() {
+  if (!isLive('openclaw')) return
+  // Refresh active session list every 9 s.
+  if (Date.now() - sessRefreshAt > 9_000) {
+    sessRefreshAt = Date.now()
+    try {
+      const sr = await fetchSessions('openclaw')
+      if (sr.ok && Array.isArray(sr.data)) {
+        const live = sr.data
+          .filter((s: any) => s.is_active || s.status === 'active' || s.active)
+          .map((s: any) => s.id ?? s.key ?? s.sessionId)
+          .filter(Boolean)
+        const recent = [...sr.data]
+          .sort((a: any, b: any) =>
+            new Date(b.last_active ?? b.updated_at ?? b.updatedAt ?? 0).getTime() -
+            new Date(a.last_active ?? a.updated_at ?? a.updatedAt ?? 0).getTime())
+          .map((s: any) => s.id ?? s.key ?? s.sessionId)
+          .filter(Boolean)
+        activeSessionIds = (live.length ? live : recent).slice(0, 2)
+      }
+    } catch { /* ignore */ }
+  }
+  for (const sid of activeSessionIds) {
+    try {
+      const mr = await fetchSessionMessages('openclaw', sid, true)
+      if (!mr.ok || !Array.isArray(mr.data)) continue
+      for (const msg of mr.data.slice(-30)) {
+        const calls: any[] = Array.isArray(msg.tool_calls) && msg.tool_calls.length
+          ? msg.tool_calls
+          : msg.tool_name ? [{ name: msg.tool_name }] : []
+        for (let i = 0; i < calls.length; i++) {
+          const name = String(calls[i]?.function?.name ?? calls[i]?.name ?? msg.tool_name ?? 'tool')
+          const sig  = `${sid}:${msg.id ?? msg.timestamp}:${i}:${name}`
+          if (toolSeen.has(sig)) continue
+          toolSeen.add(sig)
+          if (toolSeen.size > 800) toolSeen.clear()
+          const rawInput  = calls[i]?.function?.arguments ?? calls[i]?.arguments ?? calls[i]?.input ?? {}
+          const parsed    = typeof rawInput === 'string'
+            ? (() => { try { return JSON.parse(rawInput) } catch { return { _raw: rawInput } } })()
+            : (rawInput ?? {})
+          const toolInput = String(
+            parsed?.command ?? parsed?.file_path ?? parsed?.path ?? parsed?.url ??
+            parsed?.query ?? parsed?.description ?? parsed?._raw ?? ''
+          ).slice(0, 200)
+          const ts = (() => {
+            const d = new Date(msg.timestamp ?? msg.created_at ?? '')
+            return isNaN(d.getTime()) ? new Date().toISOString() : d.toISOString()
+          })()
+          push({ seq: ++seq, ts, event: 'tool', kind: 'tool', title: 'tool call',
+            sub: name, sessionKey: sid, meta: { tool: name.toLowerCase(), toolInput } })
+        }
+        // Also surface message events (inbound Discord/Slack messages, etc.)
+        if (msg.role === 'user' || msg.role === 'human') {
+          const channel   = String(msg.channel ?? msg.platform ?? msg.source ?? '')
+          const direction: 'in' | 'out' = 'in'
+          const sig = `${sid}:msg:${msg.id ?? msg.timestamp}:in`
+          if (!toolSeen.has(sig)) {
+            toolSeen.add(sig)
+            const d = new Date(msg.timestamp ?? msg.created_at ?? '')
+            push({ seq: ++seq, ts: isNaN(d.getTime()) ? new Date().toISOString() : d.toISOString(),
+              event: 'message', kind: 'message', title: 'incoming message',
+              sub: String(msg.content ?? '').slice(0, 160), sessionKey: sid,
+              meta: { channel, direction } })
+          }
+        }
+        if (msg.role === 'assistant' && msg.content && !calls.length) {
+          const channel   = String(msg.channel ?? msg.platform ?? msg.target ?? '')
+          const direction: 'in' | 'out' = 'out'
+          const sig = `${sid}:msg:${msg.id ?? msg.timestamp}:out`
+          if (!toolSeen.has(sig)) {
+            toolSeen.add(sig)
+            const d = new Date(msg.timestamp ?? msg.created_at ?? '')
+            push({ seq: ++seq, ts: isNaN(d.getTime()) ? new Date().toISOString() : d.toISOString(),
+              event: 'message.sent', kind: 'message', title: 'outgoing message',
+              sub: String(msg.content ?? '').slice(0, 160), sessionKey: sid,
+              meta: { channel, direction } })
+          }
+        }
+      }
+    } catch { /* ignore */ }
+  }
+}
+
+function startPolling() {
+  if (pollTimer) return
+  pollSessionActivity()
+  pollTimer = setInterval(pollSessionActivity, 3_000)
+}
+
+function stopPolling() {
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null }
+  sessRefreshAt = 0
+  activeSessionIds = []
+}
+
 function scheduleReconnect() {
   if (stopped || listeners.size === 0) return
   if (reconnectTimer) return
@@ -202,11 +302,12 @@ export function recent(): LiveEvent[] {
 
 export function addListener(fn: Listener): () => void {
   listeners.add(fn)
-  if (listeners.size === 1) { stopped = false; open() }
+  if (listeners.size === 1) { stopped = false; open(); startPolling() }
   return () => {
     listeners.delete(fn)
     if (listeners.size === 0) {
       stopped = true
+      stopPolling()
       if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null }
       try { ws?.close() } catch { /* ignore */ }
       ws = null
