@@ -37,6 +37,7 @@ const NAV_SECTIONS: NavSection[] = [
       { id: 'notes',    label: 'Notes',    icon: <NotebookPen size={iconSize} /> },
       { id: 'people',   label: 'People',   icon: <UserCircle size={iconSize} /> },
       { id: 'office',   label: 'Office',   icon: <Building2 size={iconSize} /> },
+      { id: 'inventory', label: 'Inventory', icon: <Package size={iconSize} /> },
       { id: 'team',     label: 'Team',     icon: <Network size={iconSize} /> },
     ],
   },

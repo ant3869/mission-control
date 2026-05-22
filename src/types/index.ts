@@ -374,3 +374,34 @@ export type FeedbackItem = {
   tags?: string[]
   project?: string
 }
+
+// ─── Inventory ─────────────────────────────────────────────────────────────────
+
+export type InventoryStatus = 'in-stock' | 'low' | 'out-of-stock' | 'discontinued'
+export type InventoryCategory = 'hardware' | 'software' | 'consumables' | 'documentation' | 'other'
+export type InventoryCondition = 'new' | 'good' | 'fair' | 'poor' | 'broken'
+
+export type InventoryItem = {
+  id: string
+  name: string
+  sku: string
+  category: InventoryCategory
+  quantity: number
+  minThreshold: number
+  maxThreshold: number
+  status: InventoryStatus
+  condition?: InventoryCondition
+  location?: string
+  cost?: number
+  supplier?: string
+  lastRestockedAgo?: string
+  notes?: string
+  tags?: string[]
+}
+
+export type InventoryStat = {
+  totalItems: number
+  totalValue: number
+  lowStockCount: number
+  outOfStockCount: number
+}
