@@ -9,7 +9,6 @@
 import { randomUUID } from 'crypto'
 import { getConnector, isLive } from './connectors.js'
 import { toWsUrl, toHttpOrigin } from './openclawWs.js'
-import { fetchSessions, fetchSessionMessages } from './gateway.js'
 
 export interface LiveEventMeta {
   tool?:      string        // normalized lowercase tool name: "bash", "read", "webfetch", …
@@ -139,85 +138,88 @@ function push(e: LiveEvent) {
 }
 
 async function pollSessionActivity() {
-  if (!isLive('openclaw')) return
-  // Refresh active session list every 9 s.
+  if (!connected) return
+  // Refresh active session list every 9 s via WS RPC.
   if (Date.now() - sessRefreshAt > 9_000) {
     sessRefreshAt = Date.now()
     try {
-      const sr = await fetchSessions('openclaw')
-      if (sr.ok && Array.isArray(sr.data)) {
-        const live = sr.data
-          .filter((s: any) => s.is_active || s.status === 'active' || s.active)
-          .map((s: any) => s.id ?? s.key ?? s.sessionId)
-          .filter(Boolean)
-        const recent = [...sr.data]
-          .sort((a: any, b: any) =>
-            new Date(b.last_active ?? b.updated_at ?? b.updatedAt ?? 0).getTime() -
-            new Date(a.last_active ?? a.updated_at ?? a.updatedAt ?? 0).getTime())
-          .map((s: any) => s.id ?? s.key ?? s.sessionId)
-          .filter(Boolean)
-        activeSessionIds = (live.length ? live : recent).slice(0, 2)
-      }
-    } catch { /* ignore */ }
+      const list = await request('sessions.list', {}, 6000)
+      const arr: any[] = Array.isArray(list) ? list
+        : (list?.sessions ?? list?.data ?? list?.items ?? [])
+      const live = arr.filter((s: any) => s.active || s.is_active || /active|running/i.test(String(s.status ?? '')))
+        .map((s: any) => s.key ?? s.id ?? s.sessionKey).filter(Boolean)
+      const recent = [...arr]
+        .sort((a: any, b: any) =>
+          new Date(b.lastActiveAt ?? b.last_active ?? b.updatedAt ?? 0).getTime() -
+          new Date(a.lastActiveAt ?? a.last_active ?? a.updatedAt ?? 0).getTime())
+        .map((s: any) => s.key ?? s.id ?? s.sessionKey).filter(Boolean)
+      activeSessionIds = (live.length ? live : recent).slice(0, 2)
+    } catch { /* not connected yet or rpc unavailable */ }
   }
   for (const sid of activeSessionIds) {
     try {
-      const mr = await fetchSessionMessages('openclaw', sid, true)
-      if (!mr.ok || !Array.isArray(mr.data)) continue
-      for (const msg of mr.data.slice(-30)) {
-        const calls: any[] = Array.isArray(msg.tool_calls) && msg.tool_calls.length
-          ? msg.tool_calls
-          : msg.tool_name ? [{ name: msg.tool_name }] : []
-        for (let i = 0; i < calls.length; i++) {
-          const name = String(calls[i]?.function?.name ?? calls[i]?.name ?? msg.tool_name ?? 'tool')
-          const sig  = `${sid}:${msg.id ?? msg.timestamp}:${i}:${name}`
+      // OpenClaw transcripts come via chat.history RPC, not REST.
+      const hist = await request('chat.history', { sessionKey: sid, limit: 30, maxChars: 50_000 }, 8000)
+      const messages: any[] = Array.isArray(hist) ? hist
+        : (hist?.messages ?? hist?.history ?? hist?.entries ?? [])
+      for (let mi = 0; mi < messages.length; mi++) {
+        const msg = messages[mi]
+        const msgTs = (() => {
+          const d = new Date(msg.ts ?? msg.timestamp ?? msg.created_at ?? '')
+          return isNaN(d.getTime()) ? new Date().toISOString() : d.toISOString()
+        })()
+        // Content can be a string or an array of typed blocks.
+        const content = msg.content ?? msg.body ?? ''
+        const blocks: any[] = Array.isArray(content) ? content : []
+
+        // Extract tool_use blocks.
+        for (let bi = 0; bi < blocks.length; bi++) {
+          const b = blocks[bi]
+          if (b?.type !== 'tool_use' && b?.type !== 'toolUse') continue
+          const name = String(b.name ?? b.tool ?? 'tool').toLowerCase()
+          const sig  = `${sid}:${msg.id ?? msgTs}:${bi}:${name}`
           if (toolSeen.has(sig)) continue
           toolSeen.add(sig)
           if (toolSeen.size > 800) toolSeen.clear()
-          const rawInput  = calls[i]?.function?.arguments ?? calls[i]?.arguments ?? calls[i]?.input ?? {}
-          const parsed    = typeof rawInput === 'string'
-            ? (() => { try { return JSON.parse(rawInput) } catch { return { _raw: rawInput } } })()
-            : (rawInput ?? {})
+          const inp = b.input ?? b.arguments ?? {}
           const toolInput = String(
-            parsed?.command ?? parsed?.file_path ?? parsed?.path ?? parsed?.url ??
-            parsed?.query ?? parsed?.description ?? parsed?._raw ?? ''
+            inp?.command ?? inp?.file_path ?? inp?.path ?? inp?.url ??
+            inp?.query ?? inp?.description ?? inp?.content?.slice?.(0, 80) ??
+            (typeof inp === 'string' ? inp : '') ?? ''
           ).slice(0, 200)
-          const ts = (() => {
-            const d = new Date(msg.timestamp ?? msg.created_at ?? '')
-            return isNaN(d.getTime()) ? new Date().toISOString() : d.toISOString()
-          })()
-          push({ seq: ++seq, ts, event: 'tool', kind: 'tool', title: 'tool call',
-            sub: name, sessionKey: sid, meta: { tool: name.toLowerCase(), toolInput } })
+          push({ seq: ++seq, ts: msgTs, event: 'tool', kind: 'tool', title: 'tool call',
+            sub: name, sessionKey: sid, meta: { tool: name, toolInput } })
         }
-        // Also surface message events (inbound Discord/Slack messages, etc.)
-        if (msg.role === 'user' || msg.role === 'human') {
-          const channel   = String(msg.channel ?? msg.platform ?? msg.source ?? '')
-          const direction: 'in' | 'out' = 'in'
-          const sig = `${sid}:msg:${msg.id ?? msg.timestamp}:in`
+
+        // Surface inbound user messages (Discord / Slack etc.).
+        const isUser = /^(user|human)$/i.test(String(msg.role ?? ''))
+        if (isUser) {
+          const channel = String(msg.channelId ?? msg.channel ?? msg.platform ?? msg.source ?? '')
+          const sig = `${sid}:msg-in:${msg.id ?? msgTs}`
           if (!toolSeen.has(sig)) {
             toolSeen.add(sig)
-            const d = new Date(msg.timestamp ?? msg.created_at ?? '')
-            push({ seq: ++seq, ts: isNaN(d.getTime()) ? new Date().toISOString() : d.toISOString(),
-              event: 'message', kind: 'message', title: 'incoming message',
-              sub: String(msg.content ?? '').slice(0, 160), sessionKey: sid,
-              meta: { channel, direction } })
+            push({ seq: ++seq, ts: msgTs, event: 'message', kind: 'message', title: 'incoming message',
+              sub: String(typeof content === 'string' ? content : '').slice(0, 160),
+              sessionKey: sid, meta: { channel, direction: 'in' } })
           }
         }
-        if (msg.role === 'assistant' && msg.content && !calls.length) {
-          const channel   = String(msg.channel ?? msg.platform ?? msg.target ?? '')
-          const direction: 'in' | 'out' = 'out'
-          const sig = `${sid}:msg:${msg.id ?? msg.timestamp}:out`
+        // Surface assistant text replies (not tool-use blocks).
+        const isAssistant = /^(assistant|agent|bot)$/i.test(String(msg.role ?? ''))
+        const hasText = blocks.length
+          ? blocks.some((b: any) => b?.type === 'text' && b?.text?.trim())
+          : (typeof content === 'string' && content.trim())
+        if (isAssistant && hasText && !blocks.some((b: any) => b?.type === 'tool_use' || b?.type === 'toolUse')) {
+          const channel = String(msg.channelId ?? msg.channel ?? msg.platform ?? msg.target ?? '')
+          const sig = `${sid}:msg-out:${msg.id ?? msgTs}`
           if (!toolSeen.has(sig)) {
             toolSeen.add(sig)
-            const d = new Date(msg.timestamp ?? msg.created_at ?? '')
-            push({ seq: ++seq, ts: isNaN(d.getTime()) ? new Date().toISOString() : d.toISOString(),
-              event: 'message.sent', kind: 'message', title: 'outgoing message',
-              sub: String(msg.content ?? '').slice(0, 160), sessionKey: sid,
-              meta: { channel, direction } })
+            const text = blocks.find((b: any) => b?.type === 'text')?.text ?? (typeof content === 'string' ? content : '')
+            push({ seq: ++seq, ts: msgTs, event: 'message.sent', kind: 'message', title: 'outgoing message',
+              sub: String(text).slice(0, 160), sessionKey: sid, meta: { channel, direction: 'out' } })
           }
         }
       }
-    } catch { /* ignore */ }
+    } catch { /* session unavailable */ }
   }
 }
 
