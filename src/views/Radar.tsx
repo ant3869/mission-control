@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { clsx } from 'clsx'
-import { TrendingUp, Activity, DollarSign, Zap, BarChart2, RefreshCw, AlertCircle, Bot } from 'lucide-react'
-import { radar, type DailyUsageLive, type RadarUsageResponse } from '../lib/api'
+import { TrendingUp, Activity, DollarSign, Zap, BarChart2, RefreshCw, AlertCircle, Bot, Grid3x3, AlertTriangle, Repeat2 } from 'lucide-react'
+import { radar, type DailyUsageLive, type RadarUsageResponse, type RadarInsightsResponse, type InsightsToolAnomaly } from '../lib/api'
 
 type Period = '7d' | '14d' | '30d'
 
@@ -149,6 +149,210 @@ function SetupBanner({ error }: { error: string }) {
   )
 }
 
+// ─── Activity heatmap ─────────────────────────────────────────────────────────
+
+const DAY_LABELS  = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+
+function hourLabel(h: number): string {
+  if (h === 0)  return '12a'
+  if (h < 12)   return `${h}a`
+  if (h === 12) return '12p'
+  return `${h - 12}p`
+}
+
+function ActivityHeatmap({ data }: { data: RadarInsightsResponse['heatmap'] }) {
+  const { cells, maxCount, peakDay, peakHour, totalEvents } = data
+
+  const cellMap = new Map<string, number>()
+  for (const c of cells) cellMap.set(`${c.day}-${c.hour}`, c.count)
+
+  if (totalEvents === 0) return null
+
+  return (
+    <div className="bg-card border border-border rounded-lg overflow-hidden">
+      <div className="flex items-center gap-2 px-4 py-3 border-b border-border">
+        <Grid3x3 size={12} className="text-violet-400" />
+        <span className="text-xxs font-semibold uppercase tracking-wider text-text-muted">Activity Heatmap — last 30 days (UTC)</span>
+        <span className="ml-auto flex items-center gap-3 text-xxs text-text-muted">
+          <span>{fmt(totalEvents)} events</span>
+          <span>peak: {DAY_LABELS[peakDay]} {hourLabel(peakHour)}</span>
+        </span>
+      </div>
+      <div className="px-4 py-3">
+        {/* Hour axis labels */}
+        <div className="flex ml-9 mb-1">
+          {Array.from({ length: 24 }, (_, h) => (
+            <div key={h} className="flex-1 text-center" style={{ fontSize: '9px', color: 'var(--color-text-muted)' }}>
+              {h % 6 === 0 ? hourLabel(h) : ''}
+            </div>
+          ))}
+        </div>
+        {/* Grid rows */}
+        {DAY_LABELS.map((day, dayIdx) => (
+          <div key={dayIdx} className="flex items-center mb-0.5">
+            <span className="w-9 shrink-0 text-right pr-2" style={{ fontSize: '9px', color: 'var(--color-text-muted)' }}>{day}</span>
+            <div className="flex flex-1 gap-px">
+              {Array.from({ length: 24 }, (_, hour) => {
+                const count     = cellMap.get(`${dayIdx}-${hour}`) ?? 0
+                const intensity = maxCount > 0 ? count / maxCount : 0
+                return (
+                  <div key={hour} className="group relative flex-1 h-5">
+                    <div
+                      className="absolute inset-0 rounded-sm"
+                      style={{
+                        backgroundColor: count === 0
+                          ? 'rgba(139,92,246,0.06)'
+                          : `rgba(139,92,246,${(0.15 + intensity * 0.8).toFixed(2)})`,
+                      }}
+                    />
+                    {count > 0 && (
+                      <div className="absolute bottom-full mb-1 left-1/2 -translate-x-1/2 hidden group-hover:block z-10 pointer-events-none">
+                        <div className="bg-surface border border-border rounded px-2 py-1 text-xxs text-text-primary whitespace-nowrap">
+                          {count} · {day} {hourLabel(hour)} UTC
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        ))}
+        {/* Legend */}
+        <div className="flex items-center justify-end gap-1.5 mt-2 pt-2 border-t border-border-subtle">
+          <span className="text-xxs text-text-muted">less</span>
+          {[0.06, 0.25, 0.45, 0.65, 0.9].map(op => (
+            <div key={op} className="w-3 h-3 rounded-sm" style={{ backgroundColor: `rgba(139,92,246,${op})` }} />
+          ))}
+          <span className="text-xxs text-text-muted">more</span>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Cost run-rate + top sessions ──────────────────────────────────────────────
+
+function RunRate({ data }: { data: RadarInsightsResponse['runRate'] }) {
+  const { avgDailyCost, projectedMonthlyCost, projectedWeeklyCost, daysWithData, trendPct, topSessions } = data
+
+  if (daysWithData === 0) return null
+
+  const trendUp   = trendPct > 5
+  const trendDown = trendPct < -5
+  const showTrend = daysWithData >= 6
+
+  return (
+    <div className="bg-card border border-border rounded-lg overflow-hidden">
+      <div className="flex items-center gap-2 px-4 py-3 border-b border-border">
+        <TrendingUp size={12} className="text-green-400" />
+        <span className="text-xxs font-semibold uppercase tracking-wider text-text-muted">Cost Run-Rate</span>
+        <span className="ml-auto text-xxs text-text-muted">based on {daysWithData} day{daysWithData !== 1 ? 's' : ''} of data</span>
+      </div>
+      <div className="px-4 py-4">
+        {/* Summary stats */}
+        <div className="grid grid-cols-3 gap-3 mb-4">
+          <div className="flex flex-col gap-1">
+            <span className="text-xxs text-text-muted uppercase tracking-wider">Daily avg</span>
+            <span className="text-xl font-bold text-text-primary tabular-nums">${avgDailyCost.toFixed(4)}</span>
+            {showTrend && (
+              <span className={clsx('text-xxs font-medium', trendUp ? 'text-red-400' : trendDown ? 'text-green-400' : 'text-text-muted')}>
+                {trendUp ? '↑' : trendDown ? '↓' : '→'} {Math.abs(trendPct)}% vs prior period
+              </span>
+            )}
+          </div>
+          <div className="flex flex-col gap-1">
+            <span className="text-xxs text-text-muted uppercase tracking-wider">Weekly proj.</span>
+            <span className="text-xl font-bold text-text-primary tabular-nums">${projectedWeeklyCost.toFixed(2)}</span>
+            <span className="text-xxs text-text-muted">7-day forecast</span>
+          </div>
+          <div className="flex flex-col gap-1">
+            <span className="text-xxs text-text-muted uppercase tracking-wider">Monthly proj.</span>
+            <span className="text-xl font-bold text-text-primary tabular-nums">${projectedMonthlyCost.toFixed(2)}</span>
+            <span className="text-xxs text-text-muted">30-day forecast</span>
+          </div>
+        </div>
+
+        {/* Top sessions */}
+        {topSessions.length > 0 && (
+          <div className="border-t border-border pt-3">
+            <p className="text-xxs font-semibold uppercase tracking-wider text-text-muted mb-2">Top sessions by cost</p>
+            <div className="flex flex-col gap-0">
+              {topSessions.map((s, i) => {
+                const barPct = topSessions[0].cost > 0 ? (s.cost / topSessions[0].cost) * 100 : 0
+                return (
+                  <div key={i} className="flex items-center gap-3 py-1.5 border-b border-border-subtle last:border-b-0">
+                    <span className="font-mono text-xxs text-text-muted w-20 shrink-0 truncate">{s.sessionId}…</span>
+                    <div className="flex-1 relative h-1.5 bg-border rounded-full overflow-hidden">
+                      <div className="absolute inset-y-0 left-0 bg-green-500/60 rounded-full" style={{ width: `${barPct}%` }} />
+                    </div>
+                    <span className="text-xs font-semibold text-green-400 tabular-nums w-16 text-right shrink-0">${s.cost.toFixed(4)}</span>
+                    <span className="text-xxs text-text-muted w-14 shrink-0">{fmt(s.tokens)} tok</span>
+                    <span className="text-xxs text-text-muted w-14 shrink-0">{modelShortName(s.model)}</span>
+                    <span className="text-xxs text-text-muted w-16 shrink-0 text-right">{s.date}</span>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ─── Tool-loop anomalies ──────────────────────────────────────────────────────
+
+const SEVERITY_STYLES: Record<InsightsToolAnomaly['severity'], { dot: string; badge: string; label: string }> = {
+  high:   { dot: 'bg-red-400',    badge: 'bg-red-950/40 text-red-300 border-red-900/40',    label: 'High' },
+  medium: { dot: 'bg-amber-400',  badge: 'bg-amber-950/40 text-amber-300 border-amber-900/40', label: 'Med' },
+  low:    { dot: 'bg-yellow-600', badge: 'bg-yellow-950/40 text-yellow-400 border-yellow-900/30', label: 'Low' },
+}
+
+function ToolAnomalies({ anomalies }: { anomalies: InsightsToolAnomaly[] }) {
+  if (anomalies.length === 0) {
+    return (
+      <div className="bg-card border border-border rounded-lg overflow-hidden">
+        <div className="flex items-center gap-2 px-4 py-3 border-b border-border">
+          <Repeat2 size={12} className="text-text-muted" />
+          <span className="text-xxs font-semibold uppercase tracking-wider text-text-muted">Tool-Loop Anomalies</span>
+        </div>
+        <div className="flex items-center gap-2 px-4 py-4">
+          <div className="w-1.5 h-1.5 rounded-full bg-green-400" />
+          <span className="text-xs text-text-muted">No tool-loop anomalies detected in the last 30 days</span>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="bg-card border border-border rounded-lg overflow-hidden">
+      <div className="flex items-center gap-2 px-4 py-3 border-b border-border">
+        <AlertTriangle size={12} className="text-amber-400" />
+        <span className="text-xxs font-semibold uppercase tracking-wider text-text-muted">Tool-Loop Anomalies</span>
+        <span className="ml-auto text-xxs text-text-muted">{anomalies.length} session{anomalies.length !== 1 ? 's' : ''} flagged · 5+ consecutive same-tool calls</span>
+      </div>
+      <div className="divide-y divide-border">
+        {anomalies.map((a, i) => {
+          const sty = SEVERITY_STYLES[a.severity]
+          return (
+            <div key={i} className="flex items-center gap-3 px-4 py-2.5">
+              <div className={clsx('w-1.5 h-1.5 rounded-full shrink-0', sty.dot)} />
+              <span className={clsx('text-xxs font-semibold px-1.5 py-0.5 rounded border shrink-0', sty.badge)}>{sty.label}</span>
+              <span className="text-xs font-semibold text-text-primary shrink-0">{a.tool}</span>
+              <span className="text-xxs text-text-muted">
+                {a.maxConsecutive}× consecutive · {a.totalCalls} total calls
+              </span>
+              <span className="ml-auto font-mono text-xxs text-text-muted">{a.sessionId}…</span>
+              <span className="text-xxs text-text-muted shrink-0 w-20 text-right">{a.date}</span>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 // ─── Main view ─────────────────────────────────────────────────────────────────
 
 export function Radar() {
@@ -156,6 +360,9 @@ export function Radar() {
   const [data, setData]     = useState<RadarUsageResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError]   = useState<string | null>(null)
+
+  const [insights, setInsights]             = useState<RadarInsightsResponse | null>(null)
+  const [insightsLoading, setInsightsLoading] = useState(true)
 
   const periodDays: Record<Period, number> = { '7d': 7, '14d': 14, '30d': 30 }
 
@@ -173,6 +380,16 @@ export function Radar() {
   }, [period])
 
   useEffect(() => { load() }, [load])
+
+  useEffect(() => {
+    let cancelled = false
+    setInsightsLoading(true)
+    radar.insights(30)
+      .then(d  => { if (!cancelled) setInsights(d) })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setInsightsLoading(false) })
+    return () => { cancelled = true }
+  }, [])
 
   const daily    = data?.dailyUsage ?? []
   const models   = data?.modelBreakdown ?? []
@@ -338,6 +555,23 @@ export function Radar() {
             </div>
           )
         })()}
+
+        {/* ── Insights sections ────────────────────────────────────────── */}
+
+        {insightsLoading && (
+          <div className="flex items-center gap-2 text-xxs text-text-muted animate-pulse px-1">
+            <RefreshCw size={10} className="animate-spin" />
+            Loading insights…
+          </div>
+        )}
+
+        {insights && (
+          <>
+            <ActivityHeatmap data={insights.heatmap} />
+            <RunRate         data={insights.runRate} />
+            <ToolAnomalies   anomalies={insights.toolAnomalies} />
+          </>
+        )}
 
         {/* Empty state when API key not set */}
         {!loading && !data && !error && (

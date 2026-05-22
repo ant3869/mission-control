@@ -143,8 +143,49 @@ export interface RadarUsageResponse {
   fetchedAt:      string
 }
 
+export interface HeatmapCell    { day: number; hour: number; count: number }
+
+export interface InsightsTopSession {
+  sessionId: string
+  date:      string
+  model:     string
+  tokens:    number
+  cost:      number
+}
+
+export interface InsightsToolAnomaly {
+  sessionId:      string
+  date:           string
+  tool:           string
+  maxConsecutive: number
+  totalCalls:     number
+  severity:       'high' | 'medium' | 'low'
+}
+
+export interface RadarInsightsResponse {
+  days: number
+  heatmap: {
+    cells:       HeatmapCell[]
+    maxCount:    number
+    peakDay:     number
+    peakHour:    number
+    totalEvents: number
+  }
+  runRate: {
+    avgDailyCost:         number
+    projectedMonthlyCost: number
+    projectedWeeklyCost:  number
+    daysWithData:         number
+    trendPct:             number
+    topSessions:          InsightsTopSession[]
+  }
+  toolAnomalies: InsightsToolAnomaly[]
+  fetchedAt:     string
+}
+
 export const radar = {
-  usage: (days = 7) => get<RadarUsageResponse>('/radar/usage', { days }),
+  usage:    (days = 7)  => get<RadarUsageResponse>('/radar/usage', { days }),
+  insights: (days = 30) => get<RadarInsightsResponse>('/radar/insights', { days }),
 }
 
 // ─── Chats ────────────────────────────────────────────────────────────────────
