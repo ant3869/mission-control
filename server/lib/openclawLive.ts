@@ -33,6 +33,11 @@ type Listener = (e: LiveEvent) => void
 
 const SCOPES = ['operator.admin', 'operator.read', 'operator.write', 'operator.approvals', 'operator.pairing']
 const BUFFER_MAX = 120
+const rawLog: { ts: string; event: string; payload: any }[] = []
+const RAW_MAX = 60
+
+/** Expose last N raw events for debugging — GET /api/watch/debug */
+export function rawEvents(): typeof rawLog { return [...rawLog] }
 
 let ws: WebSocket | null = null
 let connected = false
@@ -282,6 +287,9 @@ function open() {
       return
     }
     if (m.type === 'event') {
+      // Log every raw event for debugging (/api/watch/debug)
+      rawLog.push({ ts: new Date().toISOString(), event: String(m.event ?? ''), payload: m.payload ?? {} })
+      if (rawLog.length > RAW_MAX) rawLog.shift()
       const n = normalize(m)
       if (n) push(n)
     }

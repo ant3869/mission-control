@@ -5,7 +5,7 @@
 //          with its source so the frontend can split/filter as needed.
 
 import { Router } from 'express'
-import { addListener as ocAddListener, recent as ocRecent } from '../lib/openclawLive.js'
+import { addListener as ocAddListener, recent as ocRecent, rawEvents as ocRawEvents } from '../lib/openclawLive.js'
 import { addListener as hAddListener,  recent as hRecent  } from '../lib/hermesLive.js'
 import { addListener as cAddListener,  recent as cRecent  } from '../lib/claudeLive.js'
 import type { LiveEvent } from '../lib/openclawLive.js'
@@ -45,4 +45,8 @@ watchRouter.get('/stream', (req, res) => {
   const ping     = setInterval(() => { try { res.write(': ping\n\n') } catch { /* ignore */ } }, 25_000)
 
   req.on('close', () => { clearInterval(ping); removeOC(); removeH(); removeC(); res.end() })
+})
+
+watchRouter.get('/debug', (_req, res) => {
+  res.json({ rawEvents: ocRawEvents() })
 })
