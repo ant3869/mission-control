@@ -105,7 +105,7 @@ export function Sidebar({ activeView, onNavigate }: SidebarProps) {
       </div>
 
       {/* Nav */}
-      <nav className="flex flex-col flex-1 py-2 gap-4 px-2 overflow-y-auto min-h-0">
+      <nav className="flex flex-col flex-1 py-2 gap-3 px-2 overflow-y-auto min-h-0">
         {NAV_SECTIONS.map((section, si) => (
           <div key={si} className="flex flex-col gap-0.5">
             {section.items.map((item) => {
@@ -116,7 +116,7 @@ export function Sidebar({ activeView, onNavigate }: SidebarProps) {
                   key={item.id}
                   onClick={() => onNavigate(item.id)}
                   className={clsx(
-                    'group flex items-center gap-2.5 w-full px-2.5 py-[7px] rounded text-left transition-all duration-100',
+                    'group flex items-center gap-2.5 w-full px-2.5 py-[5px] rounded text-left transition-all duration-100',
                     isActive
                       ? 'bg-card-hover text-text-primary'
                       : 'text-text-secondary hover:bg-card hover:text-text-primary',
