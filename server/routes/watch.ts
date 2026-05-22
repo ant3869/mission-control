@@ -50,3 +50,21 @@ watchRouter.get('/stream', (req, res) => {
 watchRouter.get('/debug', (_req, res) => {
   res.json({ rawEvents: ocRawEvents() })
 })
+
+watchRouter.get('/debug-poll', async (_req, res) => {
+  const { request: ocRequest, isConnected } = await import('../lib/openclawLive.js')
+  if (!isConnected()) return res.json({ error: 'not connected' })
+  try {
+    const sessionsList = await ocRequest('sessions.list', {}, 6000)
+    const sessArr: any[] = Array.isArray(sessionsList) ? sessionsList
+      : (sessionsList?.sessions ?? sessionsList?.data ?? sessionsList?.items ?? [])
+    const firstKey = sessArr[0]?.key ?? sessArr[0]?.id ?? null
+    let history: any = null
+    if (firstKey) {
+      history = await ocRequest('chat.history', { sessionKey: firstKey, limit: 5, maxChars: 10000 }, 8000)
+    }
+    res.json({ sessionsList: sessArr.slice(0, 5), firstKey, historySnippet: history })
+  } catch (e: any) {
+    res.json({ error: e?.message ?? 'rpc failed' })
+  }
+})
