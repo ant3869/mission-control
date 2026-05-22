@@ -11,6 +11,7 @@ import { Router } from 'express'
 import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'fs'
 import { homedir } from 'os'
 import { join, extname } from 'path'
+import { getMemory } from '../lib/agentSources.js'
 
 export const memoryRouter = Router()
 
@@ -74,45 +75,51 @@ function parseFrontmatter(raw: string): { meta: MemoryMeta; content: string } {
 
 memoryRouter.get('/entries', (_req, res) => {
   const dir = findMemoryDir()
-  if (!dir) {
+  const entries: any[] = []
+
+  // ── Source 1: .auto-memory files ──────────────────────────────────────────
+  if (dir) {
+    try {
+      const files = readdirSync(dir).filter(f =>
+        extname(f) === '.md' && f !== 'MEMORY.md'
+      )
+
+      for (const filename of files) {
+        const filepath = join(dir, filename)
+        try {
+          const raw  = readFileSync(filepath, 'utf8')
+          const stat = statSync(filepath)
+          const { meta, content } = parseFrontmatter(raw)
+
+          const wordCount = content.split(/\s+/).filter(Boolean).length
+
+          entries.push({
+            id:          filename.replace('.md', ''),
+            filename,
+            name:        meta.name || filename.replace('.md', '').replace(/_/g, ' '),
+            description: meta.description,
+            type:        meta.type,
+            content,
+            wordCount,
+            updatedAt:   stat.mtimeMs,
+            updatedAgo:  relativeTime(stat.mtimeMs),
+          })
+        } catch { /* skip unreadable */ }
+      }
+    } catch { /* ignore */ }
+  }
+
+  // ── Source 2: OpenClaw + Hermes conversation memory ───────────────────────
+  try {
+    entries.push(...getMemory('openclaw'), ...getMemory('hermes'))
+  } catch { /* ignore */ }
+
+  if (entries.length === 0) {
     return res.json({
       entries:   [],
       fetchedAt: new Date().toISOString(),
-      error:     'Memory directory not found. Expected ~/.auto-memory or .auto-memory in workspace.',
+      error:     'No memory sources found. Waiting for .auto-memory files or OpenClaw conversation data.',
     })
-  }
-
-  const entries: any[] = []
-
-  try {
-    const files = readdirSync(dir).filter(f =>
-      extname(f) === '.md' && f !== 'MEMORY.md'
-    )
-
-    for (const filename of files) {
-      const filepath = join(dir, filename)
-      try {
-        const raw  = readFileSync(filepath, 'utf8')
-        const stat = statSync(filepath)
-        const { meta, content } = parseFrontmatter(raw)
-
-        const wordCount = content.split(/\s+/).filter(Boolean).length
-
-        entries.push({
-          id:          filename.replace('.md', ''),
-          filename,
-          name:        meta.name || filename.replace('.md', '').replace(/_/g, ' '),
-          description: meta.description,
-          type:        meta.type,
-          content,
-          wordCount,
-          updatedAt:   stat.mtimeMs,
-          updatedAgo:  relativeTime(stat.mtimeMs),
-        })
-      } catch { /* skip unreadable */ }
-    }
-  } catch (err: any) {
-    return res.status(500).json({ error: err.message })
   }
 
   // Sort: most recently updated first

@@ -164,17 +164,24 @@ export function TopBar({ title }: TopBarProps) {
             </span>
           </button>
 
+          {/* Pause */}
+          <button
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded border border-border bg-card hover:bg-card-hover text-text-secondary hover:text-text-primary transition-colors text-xs"
+          >
+            <span>Pause</span>
+          </button>
+
           {/* Ping */}
           <button
             onClick={handlePing}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded border border-border bg-card hover:bg-card-hover text-text-secondary hover:text-text-primary transition-colors text-xs"
           >
             <Bell size={12} />
-            <span>Ping</span>
+            <span>Ping Ant</span>
           </button>
 
           {/* Avatar */}
-          <div className="w-7 h-7 rounded-full bg-gradient-to-br from-violet-500 to-indigo-600 shrink-0 cursor-pointer" />
+          <div className="w-7 h-7 rounded-full bg-gradient-to-br from-emerald-500 to-green-600 shrink-0 cursor-pointer" />
         </div>
       </header>
 

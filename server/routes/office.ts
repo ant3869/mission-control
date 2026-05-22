@@ -12,6 +12,8 @@ import { Router } from 'express'
 import { existsSync, readFileSync, readdirSync, statSync } from 'fs'
 import { homedir } from 'os'
 import { join, basename } from 'path'
+import { getHealth } from '../lib/agentSources.js'
+import type { AgentSource } from '../lib/agentEvents.js'
 
 export const officeRouter = Router()
 
@@ -104,7 +106,7 @@ function readJson(path: string): any {
 
 // ─── Build integrations list ──────────────────────────────────────────────────
 
-officeRouter.get('/integrations', (_req, res) => {
+officeRouter.get('/integrations', async (_req, res) => {
   const integrations: LiveIntegration[] = []
   const now = new Date().toISOString()
   const nowLabel = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
@@ -138,6 +140,39 @@ officeRouter.get('/integrations', (_req, res) => {
     source:      'auth',
     lastSync:    hasAnthropic ? nowLabel : undefined,
   })
+
+  // ── 1b. Agent platforms (OpenClaw + Hermes) ───────────────────────────────
+  const platformMeta: Array<[AgentSource, string, string, string]> = [
+    ['openclaw', 'OpenClaw', '🐾', 'AI agent orchestration & communication bridge'],
+    ['hermes',   'Hermes',   '☤',  'Self-improving agent platform (Nous Research)'],
+  ]
+  for (const [source, name, icon, description] of platformMeta) {
+    const h = await getHealth(source)
+    const status: IntegrationStatus =
+      h.status === 'healthy' ? 'connected' : h.status === 'warning' ? 'error' : 'disconnected'
+    const connectedAs =
+      h.live && h.reachable ? `Live · ${h.version ?? 'gateway'}${h.activeSessions != null ? ` · ${h.activeSessions} active` : ''}`
+      : h.eventCount > 0 ? `${h.eventCount} events tracked`
+      : undefined
+    integrations.push({
+      id:          source,
+      name,
+      description,
+      category:    'ai',
+      status,
+      icon,
+      connectedAs,
+      detail:      h.live
+                     ? (h.reachable ? `Gateway reachable · ${h.latencyMs}ms` : `Gateway unreachable${h.lastEventAt ? ' · using captured events' : ''}`)
+                     : h.lastEventAt
+                       ? `Last event ${new Date(h.lastEventAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} · ${h.latencyMs}ms`
+                       : 'Not connected — add a token in Settings',
+      source:      'system',
+      lastSync:    h.lastEventAt
+                     ? new Date(h.lastEventAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                     : undefined,
+    })
+  }
 
   // ── 2. Installed plugins ──────────────────────────────────────────────────
   const pluginsDir = findPluginsDir()

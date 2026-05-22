@@ -11,6 +11,7 @@ import { Router } from 'express'
 import { existsSync, readdirSync, readFileSync, statSync } from 'fs'
 import { homedir } from 'os'
 import { join, basename } from 'path'
+import { deriveEventStats } from '../lib/agentEvents.js'
 
 export const radarRouter = Router()
 
@@ -230,6 +231,8 @@ radarRouter.get('/usage', async (req, res) => {
     totalRuns,
     dailyUsage,
     modelBreakdown,
+    openclawStats:  deriveEventStats('openclaw', cutoffMs),
+    hermesStats:    deriveEventStats('hermes', cutoffMs),
     source:         apiRecords ? 'anthropic-api' : 'jsonl',
     fetchedAt:      new Date().toISOString(),
   })

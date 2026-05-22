@@ -29,7 +29,9 @@ export type View =
   | 'pipeline'
   | 'feedback'
   | 'notes'
-  | 'inventory'
+  | 'settings'
+  | 'openclaw'
+  | 'hermes'
 
 export type TaskColor =
   | 'red'

@@ -15,6 +15,24 @@ const TYPE_CONFIG: Record<MemoryEntryType, { label: string; icon: React.ReactNod
 
 const ALL_TYPES: MemoryEntryType[] = ['user', 'feedback', 'project', 'reference', 'other']
 
+// Where the memory came from — keeps local files distinct from agent-platform entries.
+const SOURCE_BADGE: Record<string, { label: string; cls: string }> = {
+  local:    { label: 'Local',    cls: 'text-text-muted bg-base border-border' },
+  openclaw: { label: 'OpenClaw', cls: 'text-amber-300 bg-amber-950/40 border-amber-900/40' },
+  hermes:   { label: 'Hermes',   cls: 'text-purple-300 bg-purple-950/40 border-purple-900/40' },
+}
+
+function sourceKeyOf(entry: LiveMemoryEntry): 'local' | 'openclaw' | 'hermes' {
+  return (entry.source as 'openclaw' | 'hermes' | undefined) ?? 'local'
+}
+
+function SourceBadge({ entry }: { entry: LiveMemoryEntry }) {
+  const cfg = SOURCE_BADGE[sourceKeyOf(entry)]
+  return (
+    <span className={clsx('px-1 py-0.5 rounded border text-xxs font-medium', cfg.cls)}>{cfg.label}</span>
+  )
+}
+
 // ─── Markdown-lite renderer ───────────────────────────────────────────────────
 
 function renderContent(content: string) {
@@ -89,6 +107,7 @@ function EntryItem({ entry, isActive, onClick }: {
         <span className={clsx('flex items-center gap-0.5 px-1 py-0.5 rounded border text-xxs font-medium', tc.color)}>
           {tc.icon}{tc.label}
         </span>
+        <SourceBadge entry={entry} />
         <span className="text-xxs text-text-muted ml-auto">{entry.updatedAgo}</span>
       </div>
     </button>
@@ -231,6 +250,7 @@ export function Memory() {
                     {TYPE_CONFIG[selected.type].icon}
                     {TYPE_CONFIG[selected.type].label}
                   </span>
+                  <SourceBadge entry={selected} />
                 </div>
                 {selected.description && (
                   <p className="text-xs text-text-muted">{selected.description}</p>

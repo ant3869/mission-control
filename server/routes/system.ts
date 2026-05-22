@@ -10,6 +10,7 @@ import { Router } from 'express'
 import { readFileSync, existsSync, readdirSync, statSync } from 'fs'
 import { homedir } from 'os'
 import { join } from 'path'
+import { deriveHealth, type AgentSource } from '../lib/agentEvents.js'
 
 export const systemRouter = Router()
 
@@ -156,6 +157,23 @@ systemRouter.get('/components', async (_req, res) => {
       description: svc.description,
       lastChecked: now,
     })
+  }
+
+  // ── Agent platforms (OpenClaw + Hermes) ───────────────────────────────────
+  for (const [source, label] of [['openclaw', 'OpenClaw'], ['hermes', 'Hermes']] as Array<[AgentSource, string]>) {
+    try {
+      const h = deriveHealth(source)
+      components.push({
+        id:          `ext-${source}`,
+        name:        label,
+        type:        'extension',
+        status:      h.status === 'healthy' ? 'healthy' : h.status === 'warning' ? 'warning' : 'offline',
+        latencyMs:   h.latencyMs,
+        error:       h.status === 'offline' ? 'No recent events' : undefined,
+        description: `${label} event bus · ${h.eventCount} events${h.lastEventAt ? ` · last: ${new Date(h.lastEventAt).toLocaleTimeString()}` : ''}`,
+        lastChecked: now,
+      })
+    } catch { /* skip if db not available */ }
   }
 
   res.json({

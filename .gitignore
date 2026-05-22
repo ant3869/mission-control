@@ -32,6 +32,12 @@ RUN.bat
 *.db-shm
 *.db-wal
 
+# ─── Connector secrets (gateway base URLs + tokens) ───────────────────────────
+data/connectors.json
+
+# ─── Runtime task storage (seeded automatically on first run) ─────────────────
+data/tasks.json
+
 # ─── Logs ─────────────────────────────────────────────────────────────────────
 *.log
 npm-debug.log*

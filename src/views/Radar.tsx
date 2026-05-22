@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { clsx } from 'clsx'
-import { TrendingUp, Activity, DollarSign, Zap, BarChart2, RefreshCw, AlertCircle } from 'lucide-react'
+import { TrendingUp, Activity, DollarSign, Zap, BarChart2, RefreshCw, AlertCircle, Bot } from 'lucide-react'
 import { radar, type DailyUsageLive, type RadarUsageResponse } from '../lib/api'
 
 type Period = '7d' | '14d' | '30d'
@@ -297,6 +297,47 @@ export function Radar() {
             {models.map(stat => <ModelRow key={stat.model} stat={stat} maxTokens={maxModel} />)}
           </div>
         )}
+
+        {/* OpenClaw activity */}
+        {data?.openclawStats && data.openclawStats.length > 0 && (() => {
+          const stats = data.openclawStats!
+          const totalEvents   = stats.reduce((s, d) => s + d.events, 0)
+          const totalMessages = stats.reduce((s, d) => s + d.messages, 0)
+          const maxEvents     = Math.max(...stats.map(d => d.events), 1)
+          return (
+            <div className="bg-card border border-border rounded-lg overflow-hidden">
+              <div className="flex items-center gap-2 px-4 py-3 border-b border-border">
+                <Bot size={12} className="text-amber-400" />
+                <span className="text-xxs font-semibold uppercase tracking-wider text-text-muted">OpenClaw Activity — {period}</span>
+                <span className="ml-auto flex items-center gap-3 text-xxs text-text-muted">
+                  <span>{totalEvents} events</span>
+                  <span>{totalMessages} messages</span>
+                </span>
+              </div>
+              <div className="px-4 py-4">
+                <div className="flex items-end gap-[2px] h-20">
+                  {stats.map(d => {
+                    const h = maxEvents > 0 ? (d.events / maxEvents) * 100 : 0
+                    return (
+                      <div key={d.date} className="flex-1 flex flex-col items-center gap-1 group relative">
+                        <div className="w-full rounded-sm bg-amber-500/80 transition-all group-hover:bg-amber-400"
+                             style={{ height: `${Math.max(h, 2)}%` }} />
+                        <div className="absolute -top-7 left-1/2 -translate-x-1/2 hidden group-hover:block
+                                        bg-card-hover border border-border rounded px-1.5 py-0.5 text-xxs text-text-primary whitespace-nowrap z-10">
+                          {d.events} events · {d.messages} msgs
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+                <div className="flex justify-between text-xxs text-text-muted pt-2 border-t border-border-subtle mt-3">
+                  <span>{stats[0]?.date}</span>
+                  <span>{stats[stats.length - 1]?.date}</span>
+                </div>
+              </div>
+            </div>
+          )
+        })()}
 
         {/* Empty state when API key not set */}
         {!loading && !data && !error && (

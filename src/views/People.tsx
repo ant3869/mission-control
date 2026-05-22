@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { clsx } from 'clsx'
-import { Search, Mail, Phone, Globe, Plus, Tag } from 'lucide-react'
+import { Search, Mail, Phone, Globe, Plus, Tag, Trash2 } from 'lucide-react'
 import { people } from '../data/mockData'
 import type { Person, PersonType } from '../types'
 
@@ -15,10 +15,10 @@ const TYPES: PersonType[] = ['collaborator', 'client', 'contact', 'vendor']
 
 type FilterType = PersonType | 'all'
 
-function PersonCard({ person }: { person: Person }) {
+function PersonCard({ person, onDelete }: { person: Person, onDelete: (id: string) => void }) {
   const tc = typeConfig[person.type]
   return (
-    <div className="flex flex-col gap-3 p-4 rounded-lg border border-border bg-card hover:border-border-strong transition-all">
+    <div className="flex flex-col gap-3 p-4 rounded-lg border border-border bg-card hover:border-border-strong transition-all relative">
       {/* Top */}
       <div className="flex items-start gap-3">
         <div className={clsx(
@@ -38,6 +38,15 @@ function PersonCard({ person }: { person: Person }) {
             {person.role}{person.company ? ` · ${person.company}` : ''}
           </p>
         </div>
+        {/* Delete button */}
+        <button
+          aria-label="Delete contact"
+          title="Delete contact"
+          onClick={() => onDelete(person.id)}
+          className="ml-2 p-1 rounded hover:bg-red-950/40 text-text-muted hover:text-red-400 transition-colors"
+        >
+          <Trash2 size={14} />
+        </button>
       </div>
 
       {/* Contact */}
@@ -95,8 +104,11 @@ function PersonCard({ person }: { person: Person }) {
 export function People() {
   const [query, setQuery] = useState('')
   const [typeFilter, setTypeFilter] = useState<FilterType>('all')
+  const [contactList, setContactList] = useState<Person[]>(people)
+  const [showAdd, setShowAdd] = useState(false)
+  const [newPerson, setNewPerson] = useState<Partial<Person>>({ type: 'collaborator' })
 
-  const filtered = people.filter(p => {
+  const filtered = contactList.filter(p => {
     const matchType = typeFilter === 'all' || p.type === typeFilter
     const q = query.toLowerCase()
     const matchQuery = !q
@@ -109,18 +121,95 @@ export function People() {
   })
 
   const counts = Object.fromEntries(
-    TYPES.map(t => [t, people.filter(p => p.type === t).length])
+    TYPES.map(t => [t, contactList.filter(p => p.type === t).length])
   ) as Record<PersonType, number>
+
+  const handleDelete = (id: string) => {
+    setContactList(list => list.filter(p => p.id !== id))
+  }
+
+  const handleAddPerson = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!newPerson.name || !newPerson.role || !newPerson.type) return
+    const initials = newPerson.name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0,2)
+    const avatarColor = 'from-teal-500 to-cyan-600'
+    setContactList(list => [
+      {
+        ...newPerson,
+        id: 'p-' + (Date.now()),
+        initials,
+        avatarColor,
+      } as Person,
+      ...list
+    ])
+    setShowAdd(false)
+    setNewPerson({ type: 'collaborator' })
+  }
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
+      {/* Add Person Modal */}
+      {showAdd && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={() => setShowAdd(false)}>
+          <form onSubmit={handleAddPerson} className="w-full max-w-sm rounded-xl border border-border bg-card shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+              <h2 className="text-sm font-semibold text-text-primary">Add Person</h2>
+            </div>
+            <div className="p-5 flex flex-col gap-3">
+              <input
+                className="w-full px-3 py-2 rounded-lg border border-border bg-base text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-blue-500/60 transition-colors"
+                placeholder="Name"
+                value={newPerson.name || ''}
+                onChange={e => setNewPerson(p => ({ ...p, name: e.target.value }))}
+                required
+                autoFocus
+              />
+              <input
+                className="w-full px-3 py-2 rounded-lg border border-border bg-base text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-blue-500/60 transition-colors"
+                placeholder="Role"
+                value={newPerson.role || ''}
+                onChange={e => setNewPerson(p => ({ ...p, role: e.target.value }))}
+                required
+              />
+              <input
+                className="w-full px-3 py-2 rounded-lg border border-border bg-base text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-blue-500/60 transition-colors"
+                placeholder="Company (optional)"
+                value={newPerson.company || ''}
+                onChange={e => setNewPerson(p => ({ ...p, company: e.target.value }))}
+              />
+              <input
+                className="w-full px-3 py-2 rounded-lg border border-border bg-base text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-blue-500/60 transition-colors"
+                placeholder="Email (optional)"
+                value={newPerson.email || ''}
+                onChange={e => setNewPerson(p => ({ ...p, email: e.target.value }))}
+                type="email"
+              />
+              <select
+                className="w-full px-3 py-2 rounded-lg border border-border bg-base text-sm text-text-primary focus:outline-none focus:border-blue-500/60 transition-colors"
+                value={newPerson.type || 'collaborator'}
+                onChange={e => setNewPerson(p => ({ ...p, type: e.target.value as PersonType }))}
+                required
+              >
+                {TYPES.map(t => <option key={t} value={t}>{typeConfig[t].label}</option>)}
+              </select>
+            </div>
+            <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-border">
+              <button type="button" className="px-4 py-2 rounded-lg border border-border text-xs text-text-muted hover:text-text-secondary transition-colors" onClick={() => setShowAdd(false)}>Cancel</button>
+              <button type="submit" className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-xs font-semibold text-white transition-colors">Add</button>
+            </div>
+          </form>
+        </div>
+      )}
       {/* Header */}
       <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-border shrink-0">
         <div>
           <h1 className="text-base font-semibold text-text-primary">People</h1>
-          <p className="text-xs text-text-muted mt-0.5">{people.length} contacts tracked</p>
+          <p className="text-xs text-text-muted mt-0.5">{contactList.length} contacts tracked</p>
         </div>
-        <button className="flex items-center gap-1.5 px-3 py-1.5 rounded border border-border bg-card hover:bg-card-hover text-text-secondary hover:text-text-primary transition-colors text-xs font-medium">
+        <button
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded border border-border bg-card hover:bg-card-hover text-text-secondary hover:text-text-primary transition-colors text-xs font-medium"
+          onClick={() => setShowAdd(true)}
+        >
           <Plus size={13} />Add Person
         </button>
       </div>
@@ -146,7 +235,7 @@ export function People() {
             className={clsx('px-2.5 py-1 rounded text-xs font-medium transition-all',
               typeFilter === 'all' ? 'bg-card-hover text-text-primary' : 'text-text-muted hover:text-text-secondary')}
           >
-            All <span className="ml-1 text-xxs opacity-60">{people.length}</span>
+            All <span className="ml-1 text-xxs opacity-60">{contactList.length}</span>
           </button>
           {TYPES.map(t => (
             <button
@@ -170,7 +259,7 @@ export function People() {
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
-            {filtered.map(p => <PersonCard key={p.id} person={p} />)}
+            {filtered.map(p => <PersonCard key={p.id} person={p} onDelete={handleDelete} />)}
           </div>
         )}
       </div>

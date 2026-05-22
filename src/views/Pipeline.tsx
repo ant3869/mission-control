@@ -3,9 +3,13 @@ import { clsx } from 'clsx'
 import {
   Play, Clock, CheckCircle2, XCircle, Loader, Circle,
   ToggleLeft, ToggleRight, Timer, RefreshCw, AlertCircle,
-  CalendarClock, ChevronRight, Cpu
+  CalendarClock, ChevronRight, Cpu, Bot, Send, Radio, Pause
 } from 'lucide-react'
-import { pipeline as pipelineApi, type PipelineRun, type PipelineStage, type ScheduledTask, type StageStatus, type RunStatus } from '../lib/api'
+import {
+  pipeline as pipelineApi, agentCron,
+  type PipelineRun, type PipelineStage, type ScheduledTask, type StageStatus, type RunStatus,
+  type AgentCronJob,
+} from '../lib/api'
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -182,6 +186,88 @@ function ScheduledRow({ task }: { task: ScheduledTask }) {
   )
 }
 
+// ─── Agent cron job row (OpenClaw / Hermes) ───────────────────────────────────
+
+const SOURCE_BADGE: Record<string, { label: string; cls: string; icon: string }> = {
+  openclaw: { label: 'OpenClaw', cls: 'bg-amber-950/40 border-amber-900/40 text-amber-300', icon: '🐾' },
+  hermes:   { label: 'Hermes',   cls: 'bg-violet-950/40 border-violet-900/40 text-violet-300', icon: '☤' },
+}
+
+function successColor(rate: number): string {
+  if (rate >= 90) return 'text-green-400'
+  if (rate >= 60) return 'text-amber-300'
+  return 'text-red-400'
+}
+
+function AgentCronRow({ job, onAction }: {
+  job: AgentCronJob
+  onAction: (job: AgentCronJob, action: 'pause' | 'resume' | 'trigger') => Promise<void>
+}) {
+  const badge = SOURCE_BADGE[job.source] ?? SOURCE_BADGE.openclaw
+  const [busy, setBusy] = useState<'' | 'pause' | 'resume' | 'trigger'>('')
+  const actionable = job.origin === 'live' && !!job.rawId
+
+  const run = async (action: 'pause' | 'resume' | 'trigger') => {
+    setBusy(action)
+    try { await onAction(job, action) } finally { setBusy('') }
+  }
+
+  return (
+    <div className="flex items-center gap-3 px-3 py-2.5 bg-card hover:bg-card-hover transition-colors">
+      <span className="shrink-0">
+        {job.enabled
+          ? <ToggleRight size={14} className="text-green-400" />
+          : <ToggleLeft  size={14} className="text-text-muted" />}
+      </span>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-1.5">
+          <p className={clsx('text-xs font-medium truncate', job.enabled ? 'text-text-primary' : 'text-text-muted')}>
+            {job.name}
+          </p>
+          <span className={clsx('shrink-0 px-1 py-0.5 rounded border text-xxs', badge.cls)}>{badge.icon} {badge.label}</span>
+          <span className={clsx('shrink-0 px-1 py-0.5 rounded border text-xxs',
+            job.origin === 'live'
+              ? 'bg-blue-950/40 border-blue-900/40 text-blue-300'
+              : 'bg-card border-border text-text-muted')}>
+            {job.origin === 'live' ? <span className="flex items-center gap-0.5"><Radio size={8} /> live</span> : 'derived'}
+          </span>
+        </div>
+        <div className="flex items-center gap-2 mt-0.5 text-xxs text-text-muted">
+          <span className="flex items-center gap-1"><Clock size={9} />{job.schedule || job.cronExpr || 'irregular'}</span>
+          {job.deliver && <span className="flex items-center gap-1 truncate max-w-[160px]"><Send size={9} />{job.deliver}</span>}
+          {job.runCount > 0 && <span>· {job.runCount} run{job.runCount !== 1 ? 's' : ''}</span>}
+        </div>
+      </div>
+      <div className="text-right shrink-0">
+        <p className={clsx('text-xxs font-medium', successColor(job.successRate))}>{job.successRate}% ok</p>
+        <p className="text-xxs text-text-muted">{job.nextRunLabel ? `next ${job.nextRunLabel}` : `last ${job.lastRunLabel}`}</p>
+      </div>
+      {actionable && (
+        <div className="flex items-center gap-1 shrink-0">
+          <button
+            onClick={() => run('trigger')}
+            disabled={!!busy}
+            title="Run now"
+            className="p-1 rounded hover:bg-base text-text-muted hover:text-green-400 transition-colors disabled:opacity-40"
+          >
+            {busy === 'trigger' ? <Loader size={12} className="animate-spin" /> : <Play size={12} />}
+          </button>
+          <button
+            onClick={() => run(job.enabled ? 'pause' : 'resume')}
+            disabled={!!busy}
+            title={job.enabled ? 'Pause' : 'Resume'}
+            className="p-1 rounded hover:bg-base text-text-muted hover:text-text-primary transition-colors disabled:opacity-40"
+          >
+            {busy === 'pause' || busy === 'resume'
+              ? <Loader size={12} className="animate-spin" />
+              : job.enabled ? <Pause size={12} /> : <Play size={12} />}
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── Empty scheduled tasks CTA ────────────────────────────────────────────────
 
 function ScheduledEmpty() {
@@ -202,6 +288,7 @@ export function Pipeline() {
   const [active,    setActive]    = useState<PipelineRun[]>([])
   const [history,   setHistory]   = useState<PipelineRun[]>([])
   const [scheduled, setScheduled] = useState<ScheduledTask[]>([])
+  const [agentJobs, setAgentJobs] = useState<AgentCronJob[]>([])
   const [loading,   setLoading]   = useState(true)
   const [error,     setError]     = useState<string | null>(null)
   const [fetchedAt, setFetchedAt] = useState('')
@@ -211,13 +298,16 @@ export function Pipeline() {
     setLoading(true)
     setError(null)
     try {
-      const [runs, sched] = await Promise.all([
+      const [runs, sched, ocCron, hmCron] = await Promise.all([
         pipelineApi.runs(),
         pipelineApi.scheduled(),
+        agentCron.openclaw().catch(() => ({ jobs: [] as AgentCronJob[] })),
+        agentCron.hermes().catch(() => ({ jobs: [] as AgentCronJob[] })),
       ])
       setActive(runs.active)
       setHistory(runs.history)
       setScheduled(sched.tasks)
+      setAgentJobs([...ocCron.jobs, ...hmCron.jobs])
       setFetchedAt(runs.fetchedAt)
       if (runs.error) setError(runs.error)
     } catch (err: any) {
@@ -228,6 +318,15 @@ export function Pipeline() {
   }, [])
 
   useEffect(() => { load() }, [load])
+
+  const handleCronAction = useCallback(async (job: AgentCronJob, action: 'pause' | 'resume' | 'trigger') => {
+    try {
+      await agentCron.action(job.source, job.rawId, action)
+      await load()
+    } catch (err: any) {
+      setError(err.message ?? `Failed to ${action} job`)
+    }
+  }, [load])
 
   const runningCount  = active.filter(r => r.status === 'running').length
   const totalRuns     = history.length
@@ -253,6 +352,7 @@ export function Pipeline() {
               <span className="text-blue-400">{runningCount} running</span>
               &nbsp;·&nbsp;<span className="text-text-secondary">{active.length} active</span>
               &nbsp;·&nbsp;<span className="text-text-secondary">{scheduled.length} scheduled</span>
+              &nbsp;·&nbsp;<span className="text-amber-300">{agentJobs.length} agent cron</span>
               &nbsp;·&nbsp;<span className="text-green-400">{successRate}% success</span>
             </p>
           )}
@@ -296,6 +396,32 @@ export function Pipeline() {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
               {active.map(run => <RunCard key={run.id} run={run} />)}
+            </div>
+          )}
+        </div>
+
+        {/* Agent cron jobs (OpenClaw / Hermes) */}
+        <div className="px-6 py-4 border-b border-border">
+          <p className="text-xxs font-semibold uppercase tracking-wider text-text-muted mb-3 flex items-center gap-1.5">
+            <Bot size={10} /> Agent Cron Jobs
+            <span className="ml-1 px-1.5 py-0.5 rounded bg-card border border-border text-text-muted font-normal normal-case tracking-normal">
+              {agentJobs.length}
+            </span>
+            <span className="font-normal normal-case tracking-normal opacity-50">· smart-detected from OpenClaw &amp; Hermes</span>
+          </p>
+          {loading ? (
+            <div className="h-24 rounded-lg bg-card border border-border animate-pulse" />
+          ) : agentJobs.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-8 gap-2 text-center">
+              <Bot size={16} className="text-text-muted" />
+              <p className="text-xs text-text-muted">No agent cron jobs detected</p>
+              <p className="text-xxs text-text-muted opacity-60 max-w-[260px]">
+                Add an OpenClaw or Hermes token in Settings to pull live schedules, or wait for cron runs to be captured.
+              </p>
+            </div>
+          ) : (
+            <div className="flex flex-col divide-y divide-border rounded-lg border border-border overflow-hidden">
+              {agentJobs.map(job => <AgentCronRow key={job.id} job={job} onAction={handleCronAction} />)}
             </div>
           )}
         </div>

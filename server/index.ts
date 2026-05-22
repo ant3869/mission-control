@@ -17,6 +17,8 @@ import { approvalsRouter } from './routes/approvals.js'
 import { notesRouter }     from './routes/notes.js'
 import { inventoryRouter } from './routes/inventory.js'
 import { openclawRouter } from './routes/openclaw.js'
+import { hermesRouter }   from './routes/hermes.js'
+import { settingsRouter } from './routes/settings.js'
 
 const app = express()
 const PORT = process.env.API_PORT ?? 3001
@@ -40,6 +42,8 @@ app.use('/api/approvals', approvalsRouter)
 app.use('/api/notes',    notesRouter)
 app.use('/api/inventory', inventoryRouter)
 app.use('/api/openclaw', openclawRouter)
+app.use('/api/hermes',   hermesRouter)
+app.use('/api/settings', settingsRouter)
 
 app.get('/api/health', (_req, res) => res.json({ ok: true, ts: new Date().toISOString() }))
 
