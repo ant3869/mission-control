@@ -143,8 +143,49 @@ export interface RadarUsageResponse {
   fetchedAt:      string
 }
 
+export interface HeatmapCell    { day: number; hour: number; count: number }
+
+export interface InsightsTopSession {
+  sessionId: string
+  date:      string
+  model:     string
+  tokens:    number
+  cost:      number
+}
+
+export interface InsightsToolAnomaly {
+  sessionId:      string
+  date:           string
+  tool:           string
+  maxConsecutive: number
+  totalCalls:     number
+  severity:       'high' | 'medium' | 'low'
+}
+
+export interface RadarInsightsResponse {
+  days: number
+  heatmap: {
+    cells:       HeatmapCell[]
+    maxCount:    number
+    peakDay:     number
+    peakHour:    number
+    totalEvents: number
+  }
+  runRate: {
+    avgDailyCost:         number
+    projectedMonthlyCost: number
+    projectedWeeklyCost:  number
+    daysWithData:         number
+    trendPct:             number
+    topSessions:          InsightsTopSession[]
+  }
+  toolAnomalies: InsightsToolAnomaly[]
+  fetchedAt:     string
+}
+
 export const radar = {
-  usage: (days = 7) => get<RadarUsageResponse>('/radar/usage', { days }),
+  usage:    (days = 7)  => get<RadarUsageResponse>('/radar/usage', { days }),
+  insights: (days = 30) => get<RadarInsightsResponse>('/radar/insights', { days }),
 }
 
 // ─── Chats ────────────────────────────────────────────────────────────────────
@@ -727,3 +768,30 @@ export const notes = {
                      patch<PageResponse>(`/notes/pages/${id}`, body),
   deletePage:      (id: string)                                   => del<{ ok: boolean }>(`/notes/pages/${id}`),
 }
+
+// ─── Watch / live activity stream ────────────────────────────────────────────
+
+export type WatchSource = 'openclaw' | 'hermes' | 'claude'
+
+export interface WatchEventMeta {
+  tool?:      string
+  toolInput?: string
+  channel?:   string
+  direction?: 'in' | 'out'
+}
+
+export interface WatchEvent {
+  seq:        number
+  ts:         string
+  event:      string
+  kind:       'message' | 'tool' | 'cron' | 'error' | 'health' | 'session' | 'system'
+  title:      string
+  sub:        string
+  sessionKey?: string
+  health?:    any
+  meta?:      WatchEventMeta
+  source:     WatchSource
+}
+
+// EventSource URL (not a fetch — opened with `new EventSource(...)`)
+export const WATCH_STREAM_URL = '/api/watch/stream'

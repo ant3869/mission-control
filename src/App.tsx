@@ -21,6 +21,7 @@ import { Feedback } from './views/Feedback'
 import { Notes } from './views/Notes'
 import { Settings } from './views/Settings'
 import { OpenClawMetrics, HermesMetrics } from './views/PlatformMetrics'
+import { Watch } from './views/Watch'
 import { ComingSoon } from './views/ComingSoon'
 import type { View } from './types'
 
@@ -45,7 +46,9 @@ const VIEW_TITLES: Record<View, string> = {
   notes:     'Notes',
   settings:  'Settings',
   openclaw:  'OpenClaw Metrics',
-  hermes:    'Hermes Metrics'
+  hermes:    'Hermes Metrics',
+  watch:     'Watch',
+  inventory: 'Inventory'
 }
 
 // Render each view once (on first visit) and keep it mounted — hidden via CSS.
@@ -100,6 +103,7 @@ export default function App() {
           <ViewPane view="settings"  active={activeView} mounted={mounted}><Settings /></ViewPane>
           <ViewPane view="openclaw"  active={activeView} mounted={mounted}><OpenClawMetrics onNavigate={navigate} /></ViewPane>
           <ViewPane view="hermes"    active={activeView} mounted={mounted}><HermesMetrics onNavigate={navigate} /></ViewPane>
+          <ViewPane view="watch"     active={activeView} mounted={mounted}><Watch /></ViewPane>
           <ViewPane view="team"      active={activeView} mounted={mounted}><ComingSoon view="team" /></ViewPane>
 
         </main>

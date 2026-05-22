@@ -237,3 +237,143 @@ radarRouter.get('/usage', async (req, res) => {
     fetchedAt:      new Date().toISOString(),
   })
 })
+
+// ─── Insights: heatmap + run-rate + tool-loop anomalies ──────────────────────
+
+radarRouter.get('/insights', async (req, res) => {
+  const days     = Math.min(Number(req.query.days ?? 30), 90)
+  const now      = new Date()
+  const cutoff   = new Date(now)
+  cutoff.setDate(cutoff.getDate() - days)
+  const cutoffMs = cutoff.getTime()
+
+  const projectsDir = findClaudeProjectsDir()
+
+  // heatmap[dayOfWeek 0=Sun][hour 0-23] = event count (all in UTC)
+  const heatmap: number[][] = Array.from({ length: 7 }, () => new Array(24).fill(0))
+  const costByDay: Record<string, number> = {}
+  const sessionCosts: Array<{ sessionId: string; date: string; model: string; tokens: number; cost: number }> = []
+  const rawAnomalies: Array<{ sessionId: string; date: string; tool: string; maxConsecutive: number; totalCalls: number }> = []
+
+  if (projectsDir) {
+    try {
+      for (const entry of readdirSync(projectsDir)) {
+        const projectDir = join(projectsDir, entry)
+        try {
+          if (!statSync(projectDir).isDirectory()) continue
+          for (const child of readdirSync(projectDir)) {
+            if (!child.endsWith('.jsonl')) continue
+            const fp = join(projectDir, child)
+            try {
+              if (statSync(fp).mtimeMs < cutoffMs - 86_400_000) continue
+
+              const raw   = readFileSync(fp, 'utf8')
+              const lines = raw.split('\n')
+
+              let sessionDate  = ''
+              let sessionModel = ''
+              let sessionCost  = 0
+              let sessionToks  = 0
+              let lastTool     = ''
+              let consecutive  = 0
+              const toolStats: Record<string, { max: number; total: number }> = {}
+
+              for (const line of lines) {
+                if (!line.trim() || !line.includes('"timestamp"')) continue
+                let e: any
+                try { e = JSON.parse(line) } catch { continue }
+
+                const ts: string = e.timestamp ?? ''
+                if (!ts) continue
+                const ms = new Date(ts).getTime()
+                if (!Number.isFinite(ms) || ms < cutoffMs) continue
+
+                const d = new Date(ts)
+                heatmap[d.getUTCDay()][d.getUTCHours()]++
+
+                if (!sessionDate) sessionDate = ts.slice(0, 10)
+
+                const m: string = e.message?.model ?? e.model ?? ''
+                if (m) sessionModel = m
+
+                const usage = e.usage ?? e.message?.usage
+                if (usage && (usage.input_tokens > 0 || usage.output_tokens > 0)) {
+                  const inp = (usage.input_tokens ?? 0) + (usage.cache_creation_input_tokens ?? 0) + (usage.cache_read_input_tokens ?? 0)
+                  const out = usage.output_tokens ?? 0
+                  const c   = calcCost(m || 'default', inp, out)
+                  sessionCost += c
+                  sessionToks += inp + out
+                  const dayKey = ts.slice(0, 10)
+                  costByDay[dayKey] = (costByDay[dayKey] ?? 0) + c
+                }
+
+                // Tool-use block scanning for loop detection
+                const content = e.message?.content ?? e.content
+                if (Array.isArray(content)) {
+                  for (const block of content) {
+                    if (block?.type === 'tool_use') {
+                      const name = String(block.name ?? 'unknown')
+                      consecutive = name === lastTool ? consecutive + 1 : 1
+                      lastTool    = name
+                      if (!toolStats[name]) toolStats[name] = { max: 0, total: 0 }
+                      toolStats[name].total++
+                      toolStats[name].max = Math.max(toolStats[name].max, consecutive)
+                    }
+                  }
+                }
+              }
+
+              const sid = basename(child, '.jsonl').slice(0, 8)
+              if (sessionCost > 0 && sessionDate) {
+                sessionCosts.push({ sessionId: sid, date: sessionDate, model: sessionModel, tokens: sessionToks, cost: Math.round(sessionCost * 10000) / 10000 })
+              }
+              for (const [tool, s] of Object.entries(toolStats)) {
+                if (s.max >= 5) rawAnomalies.push({ sessionId: sid, date: sessionDate || '—', tool, maxConsecutive: s.max, totalCalls: s.total })
+              }
+            } catch { /* skip unreadable */ }
+          }
+        } catch { /* skip */ }
+      }
+    } catch { /* ignore */ }
+  }
+
+  // Build flat heatmap cells array (all 168 entries)
+  const cells: Array<{ day: number; hour: number; count: number }> = []
+  let maxCount = 0, peakDay = 0, peakHour = 0
+  for (let day = 0; day < 7; day++) {
+    for (let hour = 0; hour < 24; hour++) {
+      const count = heatmap[day][hour]
+      cells.push({ day, hour, count })
+      if (count > maxCount) { maxCount = count; peakDay = day; peakHour = hour }
+    }
+  }
+  const totalEvents = cells.reduce((s, c) => s + c.count, 0)
+
+  // Run-rate from per-day cost sums
+  const dayEntries    = Object.entries(costByDay).sort(([a], [b]) => a.localeCompare(b))
+  const daysWithData  = dayEntries.length
+  const totalCostSum  = dayEntries.reduce((s, [, c]) => s + c, 0)
+  const avgDailyCost  = daysWithData > 0 ? totalCostSum / daysWithData : 0
+  const third         = Math.max(1, Math.floor(dayEntries.length / 3))
+  const firstAvg      = dayEntries.slice(0, third).reduce((s, [, c]) => s + c, 0) / third
+  const lastAvg       = dayEntries.slice(-third).reduce((s, [, c]) => s + c, 0) / third
+  const trendPct      = firstAvg > 0.00001 ? Math.round(((lastAvg - firstAvg) / firstAvg) * 100) : 0
+
+  res.json({
+    days,
+    heatmap:  { cells, maxCount, peakDay, peakHour, totalEvents },
+    runRate: {
+      avgDailyCost:         Math.round(avgDailyCost * 10000) / 10000,
+      projectedMonthlyCost: Math.round(avgDailyCost * 30 * 10000) / 10000,
+      projectedWeeklyCost:  Math.round(avgDailyCost * 7  * 10000) / 10000,
+      daysWithData,
+      trendPct,
+      topSessions: sessionCosts.sort((a, b) => b.cost - a.cost).slice(0, 10),
+    },
+    toolAnomalies: rawAnomalies
+      .sort((a, b) => b.maxConsecutive - a.maxConsecutive)
+      .slice(0, 20)
+      .map(a => ({ ...a, severity: a.maxConsecutive >= 10 ? 'high' : a.maxConsecutive >= 7 ? 'medium' : 'low' })),
+    fetchedAt: new Date().toISOString(),
+  })
+})

@@ -32,6 +32,8 @@ export type View =
   | 'settings'
   | 'openclaw'
   | 'hermes'
+  | 'watch'
+  | 'inventory'
 
 export type TaskColor =
   | 'red'

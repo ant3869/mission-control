@@ -3,7 +3,7 @@ import {
   CheckSquare, Bot, FileText, ThumbsUp, Calendar, FolderKanban,
   Brain, BookOpen, UserCircle, Building2, Network, Settings,
   Radar, Factory, GitBranch, MessageSquare, ChevronRight, NotebookPen, Cog,
-  Activity, Gauge,
+  Activity, Gauge, Radio, Package,
 } from 'lucide-react'
 import { clsx } from 'clsx'
 import type { View } from '../../types'
@@ -55,6 +55,7 @@ const NAV_SECTIONS: NavSection[] = [
     items: [
       { id: 'openclaw', label: 'OpenClaw', icon: <Activity size={iconSize} /> },
       { id: 'hermes',   label: 'Hermes',   icon: <Gauge size={iconSize} /> },
+      { id: 'watch',    label: 'Watch',    icon: <Radio size={iconSize} /> },
     ],
   },
 ]
@@ -92,7 +93,7 @@ export function Sidebar({ activeView, onNavigate }: SidebarProps) {
   }
 
   return (
-    <aside className="flex flex-col w-[220px] min-w-[220px] h-full border-r border-border bg-surface overflow-y-auto">
+    <aside className="flex flex-col w-[220px] min-w-[220px] h-full border-r border-border bg-surface overflow-hidden">
       {/* Logo */}
       <div className="flex items-center gap-2.5 px-4 h-12 border-b border-border shrink-0">
         <div className="flex items-center justify-center w-6 h-6 rounded bg-text-primary text-base font-mono font-semibold text-black text-xs leading-none select-none">
@@ -104,7 +105,7 @@ export function Sidebar({ activeView, onNavigate }: SidebarProps) {
       </div>
 
       {/* Nav */}
-      <nav className="flex flex-col flex-1 py-2 gap-4 px-2">
+      <nav className="flex flex-col flex-1 py-2 gap-3 px-2 overflow-y-auto min-h-0">
         {NAV_SECTIONS.map((section, si) => (
           <div key={si} className="flex flex-col gap-0.5">
             {section.items.map((item) => {
@@ -115,7 +116,7 @@ export function Sidebar({ activeView, onNavigate }: SidebarProps) {
                   key={item.id}
                   onClick={() => onNavigate(item.id)}
                   className={clsx(
-                    'group flex items-center gap-2.5 w-full px-2.5 py-[7px] rounded text-left transition-all duration-100',
+                    'group flex items-center gap-2.5 w-full px-2.5 py-[5px] rounded text-left transition-all duration-100',
                     isActive
                       ? 'bg-card-hover text-text-primary'
                       : 'text-text-secondary hover:bg-card hover:text-text-primary',
