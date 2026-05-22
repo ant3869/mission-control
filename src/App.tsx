@@ -47,7 +47,8 @@ const VIEW_TITLES: Record<View, string> = {
   settings:  'Settings',
   openclaw:  'OpenClaw Metrics',
   hermes:    'Hermes Metrics',
-  watch:     'Watch'
+  watch:     'Watch',
+  inventory: 'Inventory'
 }
 
 // Render each view once (on first visit) and keep it mounted — hidden via CSS.

@@ -33,6 +33,7 @@ export type View =
   | 'openclaw'
   | 'hermes'
   | 'watch'
+  | 'inventory'
 
 export type TaskColor =
   | 'red'
