@@ -82,7 +82,7 @@ async function pollTools() {
           if (toolSeen.size > 800) toolSeen.clear()
           const isResult = String(msg.role ?? '') === 'tool'
           push({
-            seq: ++seq, ts: msg.timestamp ? new Date(msg.timestamp).toISOString() : new Date().toISOString(),
+            seq: ++seq, ts: (() => { const d = new Date(msg.timestamp ?? ''); return isNaN(d.getTime()) ? new Date().toISOString() : d.toISOString() })(),
             event: 'tool', kind: 'tool', title: isResult ? 'tool result' : 'tool call',
             sub: `${name}`, sessionKey: sid,
           })
