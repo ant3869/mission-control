@@ -3,7 +3,7 @@ import {
   CheckSquare, Bot, FileText, ThumbsUp, Calendar, FolderKanban,
   Brain, BookOpen, UserCircle, Building2, Network, Settings,
   Radar, Factory, GitBranch, MessageSquare, ChevronRight, NotebookPen, Cog,
-  Activity, Gauge,
+  Activity, Gauge, Radio,
 } from 'lucide-react'
 import { clsx } from 'clsx'
 import type { View } from '../../types'
@@ -55,6 +55,7 @@ const NAV_SECTIONS: NavSection[] = [
     items: [
       { id: 'openclaw', label: 'OpenClaw', icon: <Activity size={iconSize} /> },
       { id: 'hermes',   label: 'Hermes',   icon: <Gauge size={iconSize} /> },
+      { id: 'watch',    label: 'Watch',    icon: <Radio size={iconSize} /> },
     ],
   },
 ]

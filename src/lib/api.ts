@@ -768,3 +768,30 @@ export const notes = {
                      patch<PageResponse>(`/notes/pages/${id}`, body),
   deletePage:      (id: string)                                   => del<{ ok: boolean }>(`/notes/pages/${id}`),
 }
+
+// ─── Watch / live activity stream ────────────────────────────────────────────
+
+export type WatchSource = 'openclaw' | 'hermes' | 'claude'
+
+export interface WatchEventMeta {
+  tool?:      string
+  toolInput?: string
+  channel?:   string
+  direction?: 'in' | 'out'
+}
+
+export interface WatchEvent {
+  seq:        number
+  ts:         string
+  event:      string
+  kind:       'message' | 'tool' | 'cron' | 'error' | 'health' | 'session' | 'system'
+  title:      string
+  sub:        string
+  sessionKey?: string
+  health?:    any
+  meta?:      WatchEventMeta
+  source:     WatchSource
+}
+
+// EventSource URL (not a fetch — opened with `new EventSource(...)`)
+export const WATCH_STREAM_URL = '/api/watch/stream'

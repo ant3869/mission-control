@@ -84,7 +84,8 @@ async function pollTools() {
           push({
             seq: ++seq, ts: (() => { const d = new Date(msg.timestamp ?? ''); return isNaN(d.getTime()) ? new Date().toISOString() : d.toISOString() })(),
             event: 'tool', kind: 'tool', title: isResult ? 'tool result' : 'tool call',
-            sub: `${name}`, sessionKey: sid,
+            sub: name, sessionKey: sid,
+            meta: { tool: name.toLowerCase(), toolInput: '' },
           })
         }
       }

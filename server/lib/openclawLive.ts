@@ -10,6 +10,13 @@ import { randomUUID } from 'crypto'
 import { getConnector } from './connectors.js'
 import { toWsUrl, toHttpOrigin } from './openclawWs.js'
 
+export interface LiveEventMeta {
+  tool?:      string        // normalized lowercase tool name: "bash", "read", "webfetch", …
+  toolInput?: string        // primary arg: command, file path, url, search query, …
+  channel?:   string        // platform/channel: "discord", "slack", "#general", …
+  direction?: 'in' | 'out' // for messages: received vs sent
+}
+
 export interface LiveEvent {
   seq: number
   ts: string
@@ -19,6 +26,7 @@ export interface LiveEvent {
   sub: string
   sessionKey?: string
   health?: any   // attached for kind==='health' so the UI can update live stats
+  meta?: LiveEventMeta
 }
 
 type Listener = (e: LiveEvent) => void
@@ -92,8 +100,28 @@ function normalize(raw: any): LiveEvent | null {
       health: { eventLoop: p.eventLoop, channels: p.channels, channelLabels: p.channelLabels, agents: p.agents, sessions: p.sessions, ok: p.ok } }
   }
   if (/error|fail|exception/i.test(event)) return { ...base, kind: 'error', sub: deepText(p, ['message', 'error', 'reason', 'content']).slice(0, 160) }
-  if (/message|chat/i.test(event)) return { ...base, kind: 'message', sub: deepText(p, ['content', 'body', 'bodyForAgent', 'text', 'message']).slice(0, 160) }
-  if (/tool/i.test(event)) return { ...base, kind: 'tool', sub: String(p.name ?? p.tool ?? deepText(p, ['name', 'command', 'input'])).slice(0, 160) }
+  if (/message|chat/i.test(event)) {
+    const channel   = String(p.channelId ?? p.channel ?? p.to ?? p.source ?? p.platform ?? '')
+    const direction: 'in' | 'out' = /sent|send|outbound|reply/i.test(event) ? 'out' : 'in'
+    return { ...base, kind: 'message',
+      sub: deepText(p, ['content', 'body', 'bodyForAgent', 'text', 'message']).slice(0, 160),
+      meta: { channel, direction } }
+  }
+  if (/tool/i.test(event)) {
+    const toolName  = String(p.name ?? p.tool ?? '').toLowerCase()
+    const rawInput  = p.input ?? p.arguments ?? p.params
+    const toolInput = rawInput
+      ? (typeof rawInput === 'string' ? rawInput
+         : String(rawInput.command ?? rawInput.file_path ?? rawInput.path ?? rawInput.url ??
+                  rawInput.query ?? rawInput.description ?? rawInput.content?.slice?.(0, 80) ??
+                  Object.values(rawInput as object)[0] ?? ''))
+      : deepText(p, ['command', 'file_path', 'url', 'query'])
+    const sub = toolName
+      ? `${toolName}${toolInput ? ': ' + String(toolInput).slice(0, 120) : ''}`
+      : deepText(p, ['name', 'command', 'input']).slice(0, 160)
+    return { ...base, kind: 'tool', sub,
+      meta: { tool: toolName || sub.split(':')[0].trim(), toolInput: String(toolInput).slice(0, 200) } }
+  }
   if (/cron|schedule|heartbeat/i.test(event)) return { ...base, kind: 'cron', sub: deepText(p, ['name', 'jobId', 'status', 'content']).slice(0, 160) }
   if (/session/i.test(event)) return { ...base, kind: 'session', sub: String(sessionKey ?? deepText(p, ['displayName', 'title'])).slice(0, 160) }
   return { ...base, sub: deepText(p, ['content', 'message', 'text', 'name', 'status']).slice(0, 160) }
