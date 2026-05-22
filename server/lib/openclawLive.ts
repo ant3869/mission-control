@@ -254,7 +254,7 @@ async function pollSessionActivity() {
           const sig = `${sid}:msg-in:${msgId}`
           if (!toolSeen.has(sig)) {
             toolSeen.add(sig)
-            const channel = String(msg.channelId ?? msg.channel ?? '') || sessionChannels[sid] ?? ''
+            const channel = String(msg.channelId ?? msg.channel ?? '') || (sessionChannels[sid] ?? '')
             push({ seq: ++seq, ts: msgTs, event: 'message', kind: 'message', title: 'incoming message',
               sub: String(typeof content === 'string' ? content : '').slice(0, 160),
               sessionKey: sid, meta: { channel, direction: 'in' } })
@@ -271,7 +271,7 @@ async function pollSessionActivity() {
           const sig = `${sid}:msg-out:${msgId}`
           if (!toolSeen.has(sig)) {
             toolSeen.add(sig)
-            const channel = String(msg.channelId ?? msg.channel ?? '') || sessionChannels[sid] ?? ''
+            const channel = String(msg.channelId ?? msg.channel ?? '') || (sessionChannels[sid] ?? '')
             const text = blocks.find((b: any) => b?.type === 'text')?.text
               ?? (typeof content === 'string' ? content : '')
             push({ seq: ++seq, ts: msgTs, event: 'message.sent', kind: 'message', title: 'outgoing message',
