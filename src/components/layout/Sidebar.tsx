@@ -93,7 +93,7 @@ export function Sidebar({ activeView, onNavigate }: SidebarProps) {
   }
 
   return (
-    <aside className="flex flex-col w-[220px] min-w-[220px] h-full border-r border-border bg-surface overflow-y-auto">
+    <aside className="flex flex-col w-[220px] min-w-[220px] h-full border-r border-border bg-surface overflow-hidden">
       {/* Logo */}
       <div className="flex items-center gap-2.5 px-4 h-12 border-b border-border shrink-0">
         <div className="flex items-center justify-center w-6 h-6 rounded bg-text-primary text-base font-mono font-semibold text-black text-xs leading-none select-none">
