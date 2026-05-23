@@ -3,6 +3,7 @@ node_modules/
 
 # ─── Build output ─────────────────────────────────────────────────────────────
 dist/
+*.tsbuildinfo
 
 # ─── Environment / Secrets ────────────────────────────────────────────────────
 .env
@@ -37,6 +38,10 @@ data/connectors.json
 
 # ─── Runtime task storage (seeded automatically on first run) ─────────────────
 data/tasks.json
+
+# ─── Local agent knowledge docs (non-sensitive but repo-local) ───────────────
+*_GAP_MAP_FOR_AGENT.md
+CLAWMETRY_GAP_MAP_FOR_AGENT.md
 
 # ─── Logs ─────────────────────────────────────────────────────────────────────
 *.log
