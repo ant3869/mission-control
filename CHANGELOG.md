@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [Unreleased]
+
+### Fixed
+
+- **Hermes data on Agents / Memory / Chats views** — the live-pull mappers in `agentSources.ts` used guessed field names that didn't match the Hermes REST schema, so these views showed wrong/stale data while the PlatformMetrics page (which uses the correct schema in `metrics.ts`) was fine. Session mapping now reads Hermes' real `last_active` (was falling back to start time) and `source` (channel) fields.
+- **Agents view now shows real Hermes activity** — Hermes has no agents endpoint, so it previously rendered as a single generic "gateway" card. Agents are now synthesized per channel from the live session list (aggregated tokens, session count, last task, last-active time).
+- **Memory view reflects live Hermes/OpenClaw conversations** — memory was synthesized only from pushed webhook events; it now also derives lightweight entries from the live gateway session list (deduped against pushed entries).
+- **Agents view no longer goes blank without local Claude sessions** — the route returned early before merging OpenClaw/Hermes agents when `~/.claude/projects` wasn't found; the platform merge now always runs.
+
+---
+
 ## [0.4.0] — 2026-07-13
 
 ### Added

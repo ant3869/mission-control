@@ -73,7 +73,7 @@ function parseFrontmatter(raw: string): { meta: MemoryMeta; content: string } {
 
 // ─── Routes ──────────────────────────────────────────────────────────────────
 
-memoryRouter.get('/entries', (_req, res) => {
+memoryRouter.get('/entries', async (_req, res) => {
   const dir = findMemoryDir()
   const entries: any[] = []
 
@@ -111,7 +111,8 @@ memoryRouter.get('/entries', (_req, res) => {
 
   // ── Source 2: OpenClaw + Hermes conversation memory ───────────────────────
   try {
-    entries.push(...getMemory('openclaw'), ...getMemory('hermes'))
+    const [oc, hm] = await Promise.all([getMemory('openclaw'), getMemory('hermes')])
+    entries.push(...oc, ...hm)
   } catch { /* ignore */ }
 
   if (entries.length === 0) {
