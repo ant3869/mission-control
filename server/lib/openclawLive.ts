@@ -49,6 +49,8 @@ let pollTimer: NodeJS.Timeout | null = null
 let sessRefreshAt = 0
 let activeSessionIds: string[] = []
 const sessionChannels: Record<string, string> = {}
+// Track per-session state to detect new runs without requiring real-time tool events
+const sessionStartedAt: Record<string, number> = {}  // last known startedAt per session
 const toolSeen = new Set<string>()
 const listeners = new Set<Listener>()
 const buffer: LiveEvent[] = []
@@ -184,117 +186,141 @@ function push(e: LiveEvent) {
 
 async function pollSessionActivity() {
   if (!connected) return
-  // Refresh active session list every 9s via WS RPC.
-  if (Date.now() - sessRefreshAt > 9_000) {
-    sessRefreshAt = Date.now()
-    try {
-      const list = await request('sessions.list', {}, 6000)
-      const arr: any[] = Array.isArray(list) ? list
-        : (list?.sessions ?? list?.data ?? list?.items ?? [])
-      // Prefer sessions with status "running", fall back to most recently updated.
-      const live = arr.filter((s: any) => /running/i.test(String(s.status ?? '')))
-        .map((s: any) => s.key ?? s.id ?? s.sessionKey).filter(Boolean)
-      const recent = [...arr]
-        .sort((a: any, b: any) =>
-          new Date(b.updatedAt ?? b.lastActiveAt ?? 0).getTime() -
-          new Date(a.updatedAt ?? a.lastActiveAt ?? 0).getTime())
-        .map((s: any) => s.key ?? s.id ?? s.sessionKey).filter(Boolean)
-      activeSessionIds = (live.length ? live : recent).slice(0, 2)
-      console.log(`[Watch] sessions polled — active: [${activeSessionIds.join(', ')}]`)
-      // Cache channel info per session for labelling message events.
-      for (const s of arr) {
-        const k = s.key ?? s.id; if (!k) continue
-        const raw = (s.origin?.provider ?? s.lastChannel ?? s.channel ?? '').toLowerCase()
-        sessionChannels[k] = raw.includes('discord') ? 'Discord'
-          : raw.includes('slack') ? 'Slack'
-          : raw.includes('telegram') ? 'Telegram'
-          : raw.includes('webchat') ? 'webchat'
-          : raw
+
+  // ── 1. Poll sessions.list every tick (3s) ─────────────────────────────────
+  // This is our primary real-time signal — chat.history only commits after a
+  // full tool turn, so we can't rely on it for in-progress activity.
+  try {
+    const list = await request('sessions.list', {}, 6000)
+    const arr: any[] = Array.isArray(list) ? list
+      : (list?.sessions ?? list?.data ?? list?.items ?? [])
+
+    const live = arr.filter((s: any) => /running/i.test(String(s.status ?? '')))
+      .map((s: any) => s.key ?? s.id ?? s.sessionKey).filter(Boolean)
+    const byRecency = [...arr]
+      .sort((a: any, b: any) =>
+        new Date(b.updatedAt ?? b.startedAt ?? 0).getTime() -
+        new Date(a.updatedAt ?? a.startedAt ?? 0).getTime())
+      .map((s: any) => s.key ?? s.id ?? s.sessionKey).filter(Boolean)
+    activeSessionIds = (live.length ? live : byRecency).slice(0, 3)
+
+    for (const s of arr) {
+      const k: string = s.key ?? s.id
+      if (!k) continue
+
+      // Cache channel label for this session.
+      const raw = (s.origin?.provider ?? s.lastChannel ?? s.channel ?? '').toLowerCase()
+      sessionChannels[k] = raw.includes('discord') ? 'Discord'
+        : raw.includes('slack') ? 'Slack'
+        : raw.includes('telegram') ? 'Telegram'
+        : raw.includes('webchat') ? 'webchat'
+        : raw || ''
+
+      const startedAt = Number(s.startedAt ?? 0)
+      const prevStartedAt = sessionStartedAt[k] ?? 0
+      const channel = sessionChannels[k] || 'Discord'
+
+      // ── New run detected: startedAt changed and is within last 5 min ──────
+      if (startedAt && startedAt !== prevStartedAt) {
+        sessionStartedAt[k] = startedAt
+        const runAgeMs = Date.now() - startedAt
+        if (runAgeMs < 300_000 && prevStartedAt > 0) {
+          // A brand-new run just started on a session we've seen before.
+          console.log(`[Watch] new run on ${k} — channel: ${channel}`)
+          push({ seq: ++seq, ts: new Date().toISOString(), event: 'message', kind: 'message',
+            title: 'incoming message', sub: 'message received',
+            sessionKey: k, meta: { channel, direction: 'in' } })
+        }
+        if (prevStartedAt === 0) sessionStartedAt[k] = startedAt // just bootstrapping
       }
-    } catch { /* not connected yet or rpc unavailable */ }
-  }
 
-  for (const sid of activeSessionIds) {
-    try {
-      const hist = await request('chat.history', { sessionKey: sid, limit: 30, maxChars: 50_000 }, 8000)
-      const messages: any[] = Array.isArray(hist) ? hist
-        : (hist?.messages ?? hist?.history ?? hist?.entries ?? [])
-      console.log(`[Watch] chat.history ${sid} → ${messages.length} msgs`)
-
-      for (const msg of messages) {
-        const msgTs = (() => {
-          const d = new Date(msg.ts ?? msg.timestamp ?? msg.created_at ?? '')
-          return isNaN(d.getTime()) ? new Date().toISOString() : d.toISOString()
-        })()
-        // Prefer the stable __openclaw id or idempotencyKey over unstable timestamps.
-        const msgId = msg.__openclaw?.id ?? msg.idempotencyKey ?? msg.id ?? msgTs
-        const content = msg.content ?? msg.body ?? ''
-        const blocks: any[] = Array.isArray(content) ? content : []
-
-        // Only surface events that are recent. Older messages get marked seen
-        // to prevent re-emitting after a server restart, but are not pushed.
-        const msgAgeMs = Date.now() - new Date(msgTs).getTime()
-        const isRecent = msgAgeMs < 120_000 // 2 minutes
-
-        // Extract tool call blocks — OpenClaw uses type:"toolCall"
-        for (let bi = 0; bi < blocks.length; bi++) {
-          const b = blocks[bi]
-          if (b?.type !== 'toolCall' && b?.type !== 'tool_use' && b?.type !== 'toolUse') continue
-          const name = String(b.name ?? b.tool ?? 'tool').toLowerCase()
-          // b.id is stable per call (e.g. "call_pdR0eRAE…"), use it for dedup.
-          const sig = `${sid}:tool:${b.id ?? `${msgId}:${bi}`}`
-          if (toolSeen.has(sig)) continue
-          toolSeen.add(sig)
-          if (toolSeen.size > 800) toolSeen.clear()
-          if (!isRecent) continue
-          const inp = b.input ?? b.arguments ?? {}
-          const toolInput = String(
-            inp?.command ?? inp?.file_path ?? inp?.path ?? inp?.url ??
-            inp?.query ?? inp?.description ?? inp?.content?.slice?.(0, 80) ??
-            (typeof inp === 'string' ? inp : '') ?? ''
-          ).slice(0, 200)
-          console.log(`[Watch] tool → ${name}: ${toolInput.slice(0, 60)}`)
-          push({ seq: ++seq, ts: new Date().toISOString(), event: 'tool', kind: 'tool', title: 'tool call',
-            sub: name, sessionKey: sid, meta: { tool: name, toolInput } })
-        }
-
-        // Surface inbound user messages.
-        if (/^(user|human)$/i.test(String(msg.role ?? ''))) {
-          const sig = `${sid}:msg-in:${msgId}`
-          if (!toolSeen.has(sig)) {
-            toolSeen.add(sig)
-            if (isRecent) {
-              const channel = String(msg.channelId ?? msg.channel ?? '') || (sessionChannels[sid] ?? '')
-              push({ seq: ++seq, ts: new Date().toISOString(), event: 'message', kind: 'message', title: 'incoming message',
-                sub: String(typeof content === 'string' ? content : '').slice(0, 160),
-                sessionKey: sid, meta: { channel, direction: 'in' } })
-            }
-          }
-        }
-
-        // Surface assistant text replies — only when there are no tool calls in the same message.
-        const isAssistant = /^(assistant|agent|bot)$/i.test(String(msg.role ?? ''))
-        const hasText = blocks.some((b: any) => b?.type === 'text' && b?.text?.trim())
-          || (blocks.length === 0 && typeof content === 'string' && content.trim())
-        const hasToolCall = blocks.some((b: any) =>
-          b?.type === 'toolCall' || b?.type === 'tool_use' || b?.type === 'toolUse')
-        if (isAssistant && hasText && !hasToolCall) {
-          const sig = `${sid}:msg-out:${msgId}`
-          if (!toolSeen.has(sig)) {
-            toolSeen.add(sig)
-            if (isRecent) {
-              const channel = String(msg.channelId ?? msg.channel ?? '') || (sessionChannels[sid] ?? '')
-              const text = blocks.find((b: any) => b?.type === 'text')?.text
-                ?? (typeof content === 'string' ? content : '')
-              console.log(`[Watch] reply → ${String(text).slice(0, 60)}`)
-              push({ seq: ++seq, ts: new Date().toISOString(), event: 'message.sent', kind: 'message', title: 'outgoing message',
-                sub: String(text).slice(0, 160), sessionKey: sid, meta: { channel, direction: 'out' } })
-            }
+      // ── Session was active within last 60s: show it as working ───────────
+      const updatedAt = Number(s.updatedAt ?? 0)
+      const updatedAgeMs = updatedAt ? Date.now() - updatedAt : Infinity
+      if (updatedAgeMs < 60_000 && startedAt) {
+        const runAgeMs = Date.now() - startedAt
+        if (runAgeMs < 60_000) {
+          const activeSig = `${k}:active:${startedAt}`
+          if (!toolSeen.has(activeSig)) {
+            toolSeen.add(activeSig)
+            console.log(`[Watch] active run on ${k} (${Math.round(runAgeMs / 1000)}s ago)`)
+            push({ seq: ++seq, ts: new Date(startedAt).toISOString(), event: 'session.active',
+              kind: 'session', title: 'active run', sub: 'running',
+              sessionKey: k, meta: { channel, direction: 'in' } })
           }
         }
       }
-    } catch { /* session unavailable */ }
-  }
+    }
+
+    // ── 2. After-run history scan ─────────────────────────────────────────────
+    // Call chat.history for recently-updated sessions to capture the last tool
+    // used AFTER a run completes. Throttled to once per session per 6s.
+    if (Date.now() - sessRefreshAt > 6_000) {
+      sessRefreshAt = Date.now()
+      for (const sid of activeSessionIds.slice(0, 2)) {
+        try {
+          const hist = await request('chat.history', { sessionKey: sid, limit: 50, maxChars: 80_000 }, 8000)
+          const messages: any[] = Array.isArray(hist) ? hist
+            : (hist?.messages ?? hist?.history ?? hist?.entries ?? [])
+
+          for (const msg of messages) {
+            const msgTs = (() => {
+              const d = new Date(msg.ts ?? msg.timestamp ?? msg.created_at ?? '')
+              return isNaN(d.getTime()) ? new Date().toISOString() : d.toISOString()
+            })()
+            const msgId = msg.__openclaw?.id ?? msg.idempotencyKey ?? msg.id ?? msgTs
+            const content = msg.content ?? msg.body ?? ''
+            const blocks: any[] = Array.isArray(content) ? content : []
+            const msgAgeMs = Date.now() - new Date(msgTs).getTime()
+            const isRecent = msgAgeMs < 300_000 // within 5 minutes
+
+            // Tool call blocks
+            for (let bi = 0; bi < blocks.length; bi++) {
+              const b = blocks[bi]
+              if (b?.type !== 'toolCall' && b?.type !== 'tool_use' && b?.type !== 'toolUse') continue
+              const name = String(b.name ?? b.tool ?? 'tool').toLowerCase()
+              const sig = `${sid}:tool:${b.id ?? `${msgId}:${bi}`}`
+              if (toolSeen.has(sig)) continue
+              toolSeen.add(sig)
+              if (toolSeen.size > 800) toolSeen.clear()
+              if (!isRecent) continue
+              const inp = b.input ?? b.arguments ?? {}
+              const toolInput = String(
+                inp?.command ?? inp?.file_path ?? inp?.path ?? inp?.url ??
+                inp?.query ?? inp?.description ?? inp?.content?.slice?.(0, 80) ??
+                (typeof inp === 'string' ? inp : '') ?? ''
+              ).slice(0, 200)
+              console.log(`[Watch] tool → ${name}: ${toolInput.slice(0, 60)}`)
+              push({ seq: ++seq, ts: new Date(msgTs).toISOString(), event: 'tool', kind: 'tool',
+                title: 'tool call', sub: name, sessionKey: sid, meta: { tool: name, toolInput } })
+            }
+
+            // Assistant text reply (completed turn)
+            const isAssistant = /^(assistant|agent|bot)$/i.test(String(msg.role ?? ''))
+            const hasText = blocks.some((b: any) => b?.type === 'text' && b?.text?.trim())
+              || (blocks.length === 0 && typeof content === 'string' && content.trim())
+            const hasToolCall = blocks.some((b: any) =>
+              b?.type === 'toolCall' || b?.type === 'tool_use' || b?.type === 'toolUse')
+            if (isAssistant && hasText && !hasToolCall) {
+              const sig = `${sid}:msg-out:${msgId}`
+              if (!toolSeen.has(sig)) {
+                toolSeen.add(sig)
+                if (isRecent) {
+                  const ch = String(msg.channelId ?? msg.channel ?? '') || (sessionChannels[sid] ?? '')
+                  const text = blocks.find((b: any) => b?.type === 'text')?.text
+                    ?? (typeof content === 'string' ? content : '')
+                  console.log(`[Watch] reply → ${String(text).slice(0, 60)}`)
+                  push({ seq: ++seq, ts: new Date(msgTs).toISOString(), event: 'message.sent',
+                    kind: 'message', title: 'outgoing message',
+                    sub: String(text).slice(0, 160), sessionKey: sid, meta: { ch, direction: 'out' } as any })
+                }
+              }
+            }
+          }
+        } catch { /* session unavailable */ }
+      }
+    }
+  } catch { /* sessions.list rpc failed */ }
 }
 
 function startPolling() {

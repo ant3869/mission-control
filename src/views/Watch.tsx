@@ -76,7 +76,8 @@ function classify(e: WatchEvent): Status {
   if (e.kind === 'session') {
     if (/start/i.test(e.event)) return { verb: 'starting a session', detail: e.sub.slice(0, 60), icon: <Activity size={sz} />, color: 'text-green-400', active: true }
     if (/end|close/i.test(e.event)) return { verb: 'ending the session', detail: '', icon: <Activity size={sz} />, color: 'text-slate-400', active: false }
-    return { verb: 'active in a session', detail: e.sub.slice(0, 60), icon: <Cpu size={sz} />, color: 'text-text-muted', active: true }
+    if (/active/i.test(e.event)) return { verb: 'working', detail: (e.meta?.channel ?? '').trim(), icon: <Cpu size={sz} />, color: 'text-amber-400', active: true }
+    return { verb: 'working', detail: e.sub.slice(0, 60), icon: <Cpu size={sz} />, color: 'text-amber-400', active: true }
   }
 
   if (e.kind === 'error')
