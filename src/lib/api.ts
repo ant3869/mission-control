@@ -393,6 +393,7 @@ export interface InventoryItem {
   imageUrl:       string
   enriched:       boolean
   addedBy:        string
+  status:         string   // available | in-use | reserved
   researchStatus: string
   researchError:  string
   researchRequestedAt: string
@@ -403,13 +404,14 @@ export interface InventoryItem {
 }
 
 export interface InventoryStats {
-  totalItems:    number
-  totalQuantity: number
-  totalValue:    number
-  enrichedCount: number
-  byCategory:    Array<{ category: string; count: number; quantity: number; value: number }>
-  byCondition:   Record<string, number>
-  locations:     string[]
+  totalItems:       number
+  totalQuantity:    number
+  totalValue:       number
+  enrichedCount:    number
+  operationalCount: number
+  byCategory:       Array<{ category: string; count: number; quantity: number; value: number }>
+  byCondition:      Record<string, number>
+  locations:        string[]
 }
 
 export interface InventoryResponse {
@@ -417,18 +419,20 @@ export interface InventoryResponse {
   stats:      InventoryStats
   categories: string[]
   conditions: string[]
+  statuses:   string[]
   fetchedAt:  string
 }
 
 export type InventoryBody = Partial<Omit<InventoryItem, 'id' | 'totalValue' | 'updatedAgo' | 'createdAt' | 'updatedAt'>> & { name: string }
 
 export const inventory = {
-  list:   ()                              => get<InventoryResponse>('/inventory'),
-  get:    (id: string)                    => get<{ item: InventoryItem }>(`/inventory/${id}`),
-  create: (body: InventoryBody)           => post<{ item: InventoryItem }>('/inventory', body),
-  update: (id: string, body: Partial<InventoryBody>) => patch<{ item: InventoryItem }>(`/inventory/${id}`, body),
-  remove: (id: string)                    => del<{ ok: boolean }>(`/inventory/${id}`),
-  research: (id: string, source?: 'openclaw' | 'hermes') => post<{ ok: boolean; status: string; source: string }>(`/inventory/${id}/research`, source ? { source } : {}),
+  list:      ()                              => get<InventoryResponse>('/inventory'),
+  get:       (id: string)                    => get<{ item: InventoryItem }>(`/inventory/${id}`),
+  create:    (body: InventoryBody)           => post<{ item: InventoryItem }>('/inventory', body),
+  update:    (id: string, body: Partial<InventoryBody>) => patch<{ item: InventoryItem }>(`/inventory/${id}`, body),
+  remove:    (id: string)                    => del<{ ok: boolean }>(`/inventory/${id}`),
+  setStatus: (id: string, status: 'available' | 'in-use' | 'reserved') => patch<{ item: InventoryItem }>(`/inventory/${id}/status`, { status }),
+  research:  (id: string, source?: 'openclaw' | 'hermes') => post<{ ok: boolean; status: string; source: string }>(`/inventory/${id}/research`, source ? { source } : {}),
 }
 
 // ─── Memory ───────────────────────────────────────────────────────────────────

@@ -7,7 +7,7 @@
 
 import { randomUUID } from 'crypto'
 import type { AgentSource } from './agentEvents.js'
-import { isConnected, request as ocRequest } from './openclawLive.js'
+import { ensureConnected, request as ocRequest } from './openclawLive.js'
 
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
 
@@ -41,22 +41,51 @@ export interface ResearchResult {
   sources?: Array<{ title: string; url: string }>
 }
 
-function buildPrompt(item: { name: string; manufacturer?: string; model?: string; category?: string }): string {
-  const id = [item.name, item.manufacturer, item.model].filter(Boolean).join(' ')
+function buildPrompt(item: { name: string; manufacturer?: string; model?: string; category?: string; notes?: string; tags?: string[] }): string {
+  const hasModel = Boolean(item.model?.trim())
+  const hasMfr   = Boolean(item.manufacturer?.trim())
+
+  // Build the most specific identifier possible. Avoid double-repeating tokens
+  // that already appear in the name (e.g. name="Dell Precision 5570", model="5570").
+  const nameLower  = item.name.toLowerCase()
+  const modelPart  = hasModel && !nameLower.includes(item.model!.toLowerCase()) ? item.model! : ''
+  const mfrPart    = hasMfr  && !nameLower.includes(item.manufacturer!.toLowerCase()) ? item.manufacturer! : ''
+  const searchId   = [item.name, mfrPart, modelPart].filter(Boolean).join(' ')
+
+  const specificityBlock = hasModel
+    ? [
+        `IMPORTANT: A specific model identifier is present ("${item.model}").`,
+        'Research ONLY this exact model/SKU — do NOT summarise the product line or product family.',
+        'All spec values must be for this specific model.',
+        'If you cannot find information specific to this exact model, say so in the summary field.',
+      ].join(' ')
+    : [
+        'No specific model is recorded for this item.',
+        'A general overview of the product line or component type is acceptable.',
+      ].join(' ')
+
   return [
     'You are enriching a hardware inventory catalog. Research the item below using web search.',
+    specificityBlock,
     'Reply with ONLY a single JSON object (no prose, no markdown fences). Keys:',
-    'summary (1-2 sentence overview), specs (object of short key:value spec pairs),',
-    'manufacturer, model, estimatedValue (typical used/market price in USD for ONE unit, number),',
+    'summary (2-3 sentence overview specific to this exact item/model),',
+    'specs (object of short key:value pairs — only specs that apply to this exact unit),',
+    'manufacturer, model (exact model string, e.g. "Precision 5570"),',
+    'estimatedValue (typical used/market price in USD for ONE unit, number),',
     'category (one of: computer, laptop, sbc, microcontroller, storage, battery, power, console, peripheral, cable, component, sensor, network, tool, other),',
-    'datasheetUrl (official datasheet/product URL if any), sources (array of {title,url} you used).',
-    `Item: "${id}".`,
-  ].join(' ')
+    'datasheetUrl (official datasheet or product page URL for this specific model, if any),',
+    'sources (array of {title,url} you used — prefer sources that mention the exact model).',
+    `Item: "${searchId}".`,
+    item.tags?.length ? `Known tags: ${item.tags.join(', ')}.` : '',
+    item.notes?.trim() ? `User notes: ${item.notes.trim()}` : '',
+  ].filter(Boolean).join(' ')
 }
 
 /** Research via OpenClaw: send into an isolated session, poll its history for the JSON reply. */
-async function researchOpenClaw(item: { id: string; name: string; manufacturer?: string; model?: string; category?: string }): Promise<ResearchResult> {
-  if (!isConnected()) throw new Error('OpenClaw not connected — ensure the live connection is active in Settings')
+async function researchOpenClaw(item: { id: string; name: string; manufacturer?: string; model?: string; category?: string; notes?: string; tags?: string[] }): Promise<ResearchResult> {
+  // Wait up to 12s for the persistent WebSocket to be ready.  This means
+  // research works even when the Watch tab is closed; the WS spins up on demand.
+  await ensureConnected(12_000)
   const sessionKey = `agent:main:dashboard-research:${item.id.slice(0, 8)}`
   await ocRequest('chat.send', { sessionKey, message: buildPrompt(item), deliver: false, idempotencyKey: randomUUID() }, 12_000)
   // Poll the isolated session for the agent's structured reply (agent runs take ~1-3 min).
@@ -71,7 +100,7 @@ async function researchOpenClaw(item: { id: string; name: string; manufacturer?:
   throw new Error('agent did not return structured data within ~3 minutes')
 }
 
-export async function researchItem(item: { id: string; name: string; manufacturer?: string; model?: string; category?: string }, source: AgentSource): Promise<ResearchResult> {
+export async function researchItem(item: { id: string; name: string; manufacturer?: string; model?: string; category?: string; notes?: string; tags?: string[] }, source: AgentSource): Promise<ResearchResult> {
   if (source === 'openclaw') return researchOpenClaw(item)
   throw new Error('Auto-research currently supports OpenClaw only (Hermes has no synchronous chat over the dashboard connector).')
 }

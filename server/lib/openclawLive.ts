@@ -354,7 +354,7 @@ function stopPolling() {
 }
 
 function scheduleReconnect() {
-  if (stopped || listeners.size === 0) return
+  if (stopped) return
   if (reconnectTimer) return
   reconnectTimer = setTimeout(() => { reconnectTimer = null; open() }, backoff)
   backoff = Math.min(backoff * 2, 30_000)
@@ -412,7 +412,7 @@ function open() {
     if (ws === sock) ws = null
     connected = false
     rejectAllPending('connection closed')
-    if (!stopped && listeners.size > 0) {
+    if (!stopped) {
       push({ seq: ++seq, ts: new Date().toISOString(), event: 'disconnected', kind: 'system', title: 'live stream dropped', sub: 'reconnecting…' })
       scheduleReconnect()
     }
@@ -429,20 +429,40 @@ export function addListener(fn: Listener): () => void {
   return () => {
     listeners.delete(fn)
     if (listeners.size === 0) {
-      stopped = true
+      // Stop the live-event polling feed but keep the WebSocket alive so
+      // research and other background RPCs can still use it without needing
+      // the Watch tab to be open.
       stopPolling()
-      if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null }
-      try { ws?.close() } catch { /* ignore */ }
-      ws = null
-      connected = false
     }
   }
 }
 
 export function restartLive() {
-  if (listeners.size === 0) return
+  stopped = false
   try { ws?.close() } catch { /* ignore */ }
   ws = null; connected = false; backoff = 1000
   if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null }
   open()
+}
+
+/**
+ * Ensure the persistent WebSocket is connected before making an RPC call.
+ * Starts the connection if not already running and waits up to `timeoutMs`.
+ * Used by research so it doesn't require the Watch tab to be open.
+ */
+export function ensureConnected(timeoutMs = 12_000): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (connected && ws) return resolve()
+    // Start or resume the connection.
+    stopped = false
+    if (!ws) open()
+    const deadline = Date.now() + timeoutMs
+    const poll = setInterval(() => {
+      if (connected && ws) { clearInterval(poll); resolve() }
+      else if (Date.now() >= deadline) {
+        clearInterval(poll)
+        reject(new Error('OpenClaw not connected — open Settings and verify the gateway URL and token'))
+      }
+    }, 300)
+  })
 }

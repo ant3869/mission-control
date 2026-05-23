@@ -1,8 +1,9 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { clsx } from 'clsx'
 import {
-  Boxes, Plus, Minus, Search, RefreshCw, X, Trash2, Pencil, ExternalLink,
+  Boxes, Clock, Plus, Minus, Search, RefreshCw, X, Trash2, Pencil, ExternalLink,
   MapPin, DollarSign, Hash, Bot, FileText, AlertCircle, Layers, Sparkles, Save,
+  CheckCircle2, Zap, LockKeyhole,
 } from 'lucide-react'
 import { inventory as invApi, type InventoryItem, type InventoryStats, type InventoryBody } from '../lib/api'
 
@@ -36,6 +37,54 @@ const COND_META: Record<string, { label: string; cls: string }> = {
 }
 const condMeta = (c: string) => COND_META[c] ?? COND_META.unknown
 
+const STATUS_META: Record<string, { label: string; cls: string; icon: React.ReactNode }> = {
+  available: { label: 'Available', cls: 'text-green-400 bg-green-950/40 border-green-900/40', icon: <CheckCircle2 size={10} /> },
+  'in-use':  { label: 'In Use',    cls: 'text-amber-300 bg-amber-950/40 border-amber-900/40', icon: <Zap size={10} /> },
+  reserved:  { label: 'Reserved',  cls: 'text-blue-300 bg-blue-950/40 border-blue-900/40',   icon: <LockKeyhole size={10} /> },
+}
+const statusMeta = (s: string) => STATUS_META[s] ?? STATUS_META.available
+
+// ─── Toast hook + component ────────────────────────────────────────────────────
+
+type ToastState = { type: 'saving' | 'saved' | 'error'; msg: string } | null
+
+function useToast() {
+  const [toast, setToast] = useState<ToastState>(null)
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const show = useCallback((type: NonNullable<ToastState>['type'], msg: string) => {
+    if (timerRef.current) clearTimeout(timerRef.current)
+    setToast({ type, msg })
+    if (type !== 'saving') timerRef.current = setTimeout(() => setToast(null), type === 'error' ? 6000 : 4500)
+  }, [])
+  return { toast, show }
+}
+
+function MutationToast({ toast }: { toast: ToastState }) {
+  if (!toast) return null
+  return (
+    <div className={clsx(
+      'fixed bottom-5 right-5 z-50 flex items-center gap-2 px-3.5 py-2 rounded-lg border text-xs shadow-xl transition-all animate-in fade-in slide-in-from-bottom-2',
+      toast.type === 'saving' ? 'border-border bg-surface text-text-secondary' :
+      toast.type === 'saved'  ? 'border-green-900/50 bg-green-950/50 text-green-300' :
+                                'border-red-900/50 bg-red-950/50 text-red-300',
+    )}>
+      {toast.type === 'saving' && <RefreshCw size={12} className="animate-spin shrink-0" />}
+      {toast.type === 'saved'  && <CheckCircle2 size={12} className="shrink-0" />}
+      {toast.type === 'error'  && <AlertCircle size={12} className="shrink-0" />}
+      {toast.msg}
+    </div>
+  )
+}
+
+function syncedAgo(d: Date): string {
+  const s = Math.floor((Date.now() - d.getTime()) / 1000)
+  if (s < 10) return 'just now'
+  if (s < 60) return `${s}s ago`
+  const m = Math.floor(s / 60)
+  if (m < 60) return `${m}m ago`
+  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+}
+
 function money(n: number): string {
   if (!n) return '$0'
   return `$${n.toLocaleString(undefined, { maximumFractionDigits: n < 1 ? 2 : 0 })}`
@@ -57,18 +106,26 @@ function Stat({ label, value, icon, tone }: { label: string; value: string; icon
 function ItemRow({ item, active, onClick }: { item: InventoryItem; active: boolean; onClick: () => void }) {
   const cm = catMeta(item.category)
   const cond = condMeta(item.condition)
+  const inUse = item.status === 'in-use'
+  const sm = statusMeta(item.status)
   return (
-    <button onClick={onClick} className={clsx('flex items-center gap-3 px-3 py-2.5 text-left transition-colors w-full', active ? 'bg-card-hover' : 'bg-card hover:bg-card-hover')}>
+    <button onClick={onClick} className={clsx('flex items-center gap-3 px-3 py-2.5 text-left transition-colors w-full', active ? 'bg-card-hover' : 'bg-card hover:bg-card-hover', inUse && 'border-l-2 border-l-amber-500/50')}>
       <span className="text-lg shrink-0 w-7 text-center">{cm.icon}</span>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1.5">
-          <p className="text-xs font-medium text-text-primary truncate">{item.name}</p>
+          <p className={clsx('text-xs font-medium truncate', inUse ? 'text-text-secondary' : 'text-text-primary')}>{item.name}</p>
           {item.enriched && <Sparkles size={10} className="text-violet-400 shrink-0" />}
+          {item.researchStatus === 'pending' && <RefreshCw size={9} className="text-violet-400 animate-spin shrink-0" />}
         </div>
         <p className="text-xxs text-text-muted truncate">
           {[cm.label, item.manufacturer && `${item.manufacturer}${item.model ? ` ${item.model}` : ''}`, item.location].filter(Boolean).join(' · ')}
         </p>
       </div>
+      {item.status !== 'available' && (
+        <span className={clsx('shrink-0 flex items-center gap-1 px-1.5 py-0.5 rounded border text-xxs', sm.cls)}>
+          {sm.icon}{sm.label}
+        </span>
+      )}
       <span className={clsx('shrink-0 px-1.5 py-0.5 rounded border text-xxs', cond.cls)}>{cond.label}</span>
       <span className="shrink-0 text-xs font-semibold tabular-nums text-text-secondary w-10 text-right">×{item.quantity}</span>
       <span className="shrink-0 text-xs tabular-nums text-text-muted w-16 text-right">{money(item.totalValue)}</span>
@@ -78,8 +135,8 @@ function ItemRow({ item, active, onClick }: { item: InventoryItem; active: boole
 
 // ─── Detail drawer ─────────────────────────────────────────────────────────────
 
-function DetailDrawer({ item, onClose, onEdit, onDelete, onQty, onResearch }: {
-  item: InventoryItem; onClose: () => void; onEdit: () => void; onDelete: () => void; onQty: (delta: number) => void; onResearch: () => void
+function DetailDrawer({ item, onClose, onEdit, onDelete, onQty, onResearch, onStatus }: {
+  item: InventoryItem; onClose: () => void; onEdit: () => void; onDelete: () => void; onQty: (delta: number) => void; onResearch: () => void; onStatus: (s: string) => void
 }) {
   const cm = catMeta(item.category)
   const cond = condMeta(item.condition)
@@ -164,6 +221,25 @@ function DetailDrawer({ item, onClose, onEdit, onDelete, onQty, onResearch }: {
           <Bot size={11} /> added by {item.addedBy || 'manual'} · updated {item.updatedAgo}
         </div>
 
+        {/* Deployment status */}
+        <div className="rounded-lg border border-border bg-base p-3">
+          <p className="text-xxs font-semibold uppercase tracking-wide text-text-muted mb-2">Deployment Status</p>
+          <div className="flex gap-1.5">
+            {(['available', 'in-use', 'reserved'] as const).map(s => {
+              const m = statusMeta(s)
+              const active = item.status === s
+              return (
+                <button key={s} onClick={() => { if (!active) onStatus(s) }}
+                  className={clsx('flex items-center gap-1.5 px-2.5 py-1.5 rounded border text-xxs flex-1 justify-center transition-colors', active ? m.cls : 'border-border bg-card text-text-muted hover:bg-card-hover')}
+                >
+                  {m.icon}{m.label}
+                </button>
+              )
+            })}
+          </div>
+          {item.status === 'in-use' && <p className="text-xxs text-amber-400/70 mt-1.5">⚡ Agents will consider this item last for new projects.</p>}
+        </div>
+
         {/* Agent research */}
         <div className="rounded-lg border border-violet-900/30 bg-violet-950/15 p-3">
           {researching ? (
@@ -200,7 +276,7 @@ function ItemForm({ initial, categories, conditions, onSave, onClose }: {
     name: initial?.name ?? '', category: initial?.category ?? 'other', quantity: String(initial?.quantity ?? 1),
     condition: initial?.condition ?? 'unknown', location: initial?.location ?? '', estimatedValue: String(initial?.estimatedValue ?? 0),
     manufacturer: initial?.manufacturer ?? '', model: initial?.model ?? '', tags: (initial?.tags ?? []).join(', '),
-    summary: initial?.summary ?? '', notes: initial?.notes ?? '',
+    summary: initial?.summary ?? '', notes: initial?.notes ?? '', status: initial?.status ?? 'available',
   })
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState<string | null>(null)
@@ -215,6 +291,7 @@ function ItemForm({ initial, categories, conditions, onSave, onClose }: {
         location: f.location.trim(), estimatedValue: Number(f.estimatedValue) || 0,
         manufacturer: f.manufacturer.trim(), model: f.model.trim(),
         tags: f.tags.split(',').map(t => t.trim()).filter(Boolean), summary: f.summary.trim(), notes: f.notes.trim(),
+        status: f.status,
       })
     } catch (e: any) { setErr(e.message ?? 'Save failed'); setSaving(false) }
   }
@@ -233,6 +310,12 @@ function ItemForm({ initial, categories, conditions, onSave, onClose }: {
             <select className={input} value={f.category} onChange={set('category')}>{categories.map(c => <option key={c} value={c}>{catMeta(c).icon} {catMeta(c).label}</option>)}</select></label>
           <label className="flex flex-col gap-1"><span className="text-xxs text-text-muted">Condition</span>
             <select className={input} value={f.condition} onChange={set('condition')}>{conditions.map(c => <option key={c} value={c}>{condMeta(c).label}</option>)}</select></label>
+          <label className="flex flex-col gap-1"><span className="text-xxs text-text-muted">Status</span>
+            <select className={input} value={f.status} onChange={set('status')}>
+              <option value="available">Available</option>
+              <option value="in-use">In Use</option>
+              <option value="reserved">Reserved</option>
+            </select></label>
           <label className="flex flex-col gap-1"><span className="text-xxs text-text-muted">Quantity</span><input type="number" min={0} className={input} value={f.quantity} onChange={set('quantity')} /></label>
           <label className="flex flex-col gap-1"><span className="text-xxs text-text-muted">Est. value (each, USD)</span><input type="number" min={0} step="0.01" className={input} value={f.estimatedValue} onChange={set('estimatedValue')} /></label>
           <label className="flex flex-col gap-1"><span className="text-xxs text-text-muted">Manufacturer</span><input className={input} value={f.manufacturer} onChange={set('manufacturer')} /></label>
@@ -281,25 +364,39 @@ function AgentHint() {
 export function Inventory() {
   const [items, setItems]     = useState<InventoryItem[]>([])
   const [stats, setStats]     = useState<InventoryStats | null>(null)
-  const [categories, setCategories] = useState<string[]>([])
-  const [conditions, setConditions] = useState<string[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError]     = useState<string | null>(null)
-  const [search, setSearch]   = useState('')
-  const [catFilter, setCatFilter] = useState<string>('all')
+  const [categories, setCategories] = useState<string[]>([
+    'computer','laptop','sbc','microcontroller','storage','battery','power',
+    'console','peripheral','cable','component','sensor','network','tool','other',
+  ])
+  const [conditions, setConditions] = useState<string[]>(['working','untested','partial','broken','unknown'])
+  const [loading, setLoading]         = useState(true)
+  const [error, setError]             = useState<string | null>(null)
+  const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null)
+  const [, setSyncTick]               = useState(0)
+  const [search, setSearch]           = useState('')
+  const [catFilter, setCatFilter]   = useState<string>('all')
   const [condFilter, setCondFilter] = useState<string>('all')
   const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [editing, setEditing] = useState<InventoryItem | null | 'new'>(null)
+  const [editing, setEditing]       = useState<InventoryItem | null | 'new'>(null)
+  const { toast, show: showToast }  = useToast()
 
   const load = useCallback(async () => {
     setLoading(true); setError(null)
     try {
       const d = await invApi.list()
-      setItems(d.items); setStats(d.stats); setCategories(d.categories); setConditions(d.conditions)
+      setItems(d.items); setStats(d.stats); setCategories(d.categories)
+      setConditions(d.conditions)
+      setLastSyncedAt(new Date())
     } catch (e: any) { setError(e.message ?? 'Failed to load inventory') }
     finally { setLoading(false) }
   }, [])
   useEffect(() => { load() }, [load])
+
+  // Tick every 30s so the "Synced X ago" label stays current
+  useEffect(() => {
+    const id = setInterval(() => setSyncTick(t => t + 1), 30_000)
+    return () => clearInterval(id)
+  }, [])
 
   const filtered = items.filter(it => {
     if (catFilter !== 'all' && it.category !== catFilter) return false
@@ -310,39 +407,59 @@ export function Inventory() {
     }
     return true
   })
+  const available   = filtered.filter(i => i.status !== 'in-use')
+  const operational = filtered.filter(i => i.status === 'in-use')
   const selected = items.find(i => i.id === selectedId) ?? null
 
   const saveItem = async (body: InventoryBody) => {
-    if (editing && editing !== 'new') { const { item } = await invApi.update(editing.id, body); setSelectedId(item.id) }
-    else { const { item } = await invApi.create(body); setSelectedId(item.id) }
-    setEditing(null)
-    await load()
+    showToast('saving', editing && editing !== 'new' ? 'Saving changes…' : 'Adding item…')
+    try {
+      if (editing && editing !== 'new') { const { item } = await invApi.update(editing.id, body); setSelectedId(item.id) }
+      else { const { item } = await invApi.create(body); setSelectedId(item.id) }
+      setEditing(null); await load()
+      showToast('saved', 'Item saved')
+    } catch (e: any) { showToast('error', e.message ?? 'Save failed') }
   }
   const adjustQty = async (it: InventoryItem, delta: number) => {
     const q = Math.max(0, it.quantity + delta)
-    await invApi.update(it.id, { name: it.name, quantity: q } as InventoryBody)
-    await load()
+    showToast('saving', 'Updating quantity…')
+    try {
+      await invApi.update(it.id, { name: it.name, quantity: q } as InventoryBody)
+      await load(); showToast('saved', `Quantity updated to ${q}`)
+    } catch (e: any) { showToast('error', e.message ?? 'Update failed') }
   }
   const removeItem = async (it: InventoryItem) => {
     if (!confirm(`Delete "${it.name}"?`)) return
-    await invApi.remove(it.id); setSelectedId(null); await load()
+    showToast('saving', 'Deleting…')
+    try {
+      await invApi.remove(it.id); setSelectedId(null); await load(); showToast('saved', 'Item deleted')
+    } catch (e: any) { showToast('error', e.message ?? 'Delete failed') }
+  }
+  const setItemStatus = async (it: InventoryItem, status: string) => {
+    showToast('saving', `Setting status to "${statusMeta(status).label}"…`)
+    try {
+      await invApi.setStatus(it.id, status as 'available' | 'in-use' | 'reserved')
+      await load(); showToast('saved', `Status → ${statusMeta(status).label}`)
+    } catch (e: any) { showToast('error', e.message ?? 'Status update failed') }
   }
   const research = async (it: InventoryItem) => {
-    setError(null)
+    showToast('saving', 'Starting agent research…')
     try {
-      await invApi.research(it.id)
-      await load()
-      // poll until the agent finishes (or ~4 min)
+      await invApi.research(it.id); await load(); showToast('saved', 'Research started — polling for updates')
       let n = 0
       const timer = setInterval(async () => {
         n++
         try {
           const { item } = await invApi.get(it.id)
           setItems(prev => prev.map(x => (x.id === it.id ? item : x)))
-          if (item.researchStatus !== 'pending' || n > 60) { clearInterval(timer); load() }
+          if (item.researchStatus !== 'pending' || n > 60) {
+            clearInterval(timer); load()
+            if (item.researchStatus === 'done') showToast('saved', `Research complete for "${item.name}"`)
+            else if (item.researchStatus === 'failed') showToast('error', item.researchError || 'Research failed')
+          }
         } catch { if (n > 60) clearInterval(timer) }
       }, 4000)
-    } catch (e: any) { setError(e.message ?? 'Could not start research') }
+    } catch (e: any) { showToast('error', e.message ?? 'Could not start research') }
   }
 
   const catCounts = stats?.byCategory ?? []
@@ -357,7 +474,16 @@ export function Inventory() {
             {stats && <p className="text-xs text-text-muted mt-0.5">{stats.totalItems} items · {stats.totalQuantity.toLocaleString()} units · ~{money(stats.totalValue)} est. value</p>}
           </div>
           <div className="flex items-center gap-2">
-            <button onClick={load} disabled={loading} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded border border-border bg-card hover:bg-card-hover text-text-secondary hover:text-text-primary text-xs"><RefreshCw size={11} className={loading ? 'animate-spin' : ''} /></button>
+            {lastSyncedAt && (
+              <span className="flex items-center gap-1 text-xxs text-text-muted select-none" title={`Last synced: ${lastSyncedAt.toLocaleTimeString()}`}>
+                <Clock size={10} className="shrink-0" />
+                Synced {syncedAgo(lastSyncedAt)}
+              </span>
+            )}
+            <button onClick={load} disabled={loading} title="Sync inventory" className="flex items-center gap-1.5 px-2.5 py-1.5 rounded border border-border bg-card hover:bg-card-hover text-text-secondary hover:text-text-primary text-xs">
+              <RefreshCw size={11} className={loading ? 'animate-spin' : ''} />
+              {loading ? 'Syncing…' : 'Sync'}
+            </button>
             <button onClick={() => setEditing('new')} className="flex items-center gap-1.5 px-3 py-1.5 rounded border border-accent-blue/40 bg-accent-blue/15 text-accent-blue hover:bg-accent-blue/25 text-xs font-medium"><Plus size={13} /> Add item</button>
           </div>
         </div>
@@ -371,7 +497,7 @@ export function Inventory() {
               <Stat label="Est. value" value={money(stats.totalValue)} icon={<DollarSign size={12} />} tone="text-green-400" />
               <Stat label="Categories" value={String(stats.byCategory.length)} icon={<Boxes size={12} />} />
               <Stat label="Working" value={String(stats.byCondition.working ?? 0)} icon={<Sparkles size={12} />} tone="text-green-400" />
-              <Stat label="Needs detail" value={String(stats.totalItems - stats.enrichedCount)} icon={<Bot size={12} />} tone={(stats.totalItems - stats.enrichedCount) > 0 ? 'text-amber-300' : undefined} />
+              <Stat label="In Operation" value={String(stats.operationalCount ?? 0)} icon={<Zap size={12} />} tone={(stats.operationalCount ?? 0) > 0 ? 'text-amber-300' : undefined} />
             </div>
           )}
 
@@ -401,7 +527,7 @@ export function Inventory() {
 
           {error && <div className="flex items-start gap-2 px-4 py-3 rounded-lg border border-amber-900/40 bg-amber-950/20 text-amber-300"><AlertCircle size={13} className="shrink-0 mt-0.5" /><p className="text-xs">{error}</p></div>}
 
-          {/* List */}
+          {/* Item list */}
           {loading ? (
             <div className="space-y-1">{Array.from({ length: 6 }).map((_, i) => <div key={i} className="h-12 rounded-lg bg-card border border-border animate-pulse" />)}</div>
           ) : filtered.length === 0 ? (
@@ -411,20 +537,42 @@ export function Inventory() {
               {items.length === 0 && <button onClick={() => setEditing('new')} className="text-xs text-accent-blue hover:underline">Add your first item</button>}
             </div>
           ) : (
-            <div className="flex flex-col divide-y divide-border rounded-lg border border-border overflow-hidden">
-              {filtered.map(it => <ItemRow key={it.id} item={it} active={it.id === selectedId} onClick={() => setSelectedId(it.id)} />)}
-            </div>
+            <>
+              {/* Available / not in-use */}
+              {available.length > 0 && (
+                <div className="flex flex-col divide-y divide-border rounded-lg border border-border overflow-hidden">
+                  {available.map(it => <ItemRow key={it.id} item={it} active={it.id === selectedId} onClick={() => setSelectedId(it.id)} />)}
+                </div>
+              )}
+
+              {/* In-operation section — always shown last */}
+              {operational.length > 0 && (
+                <div className="flex flex-col gap-1.5">
+                  <div className="flex items-center gap-2 px-1">
+                    <Zap size={11} className="text-amber-400 shrink-0" />
+                    <span className="text-xxs font-semibold uppercase tracking-wide text-amber-400">In Operation — Deployed ({operational.length})</span>
+                    <span className="flex-1 border-t border-amber-900/30" />
+                    <span className="text-xxs text-amber-400/60">Agents consider these last</span>
+                  </div>
+                  <div className="flex flex-col divide-y divide-border rounded-lg border border-amber-900/30 bg-amber-950/5 overflow-hidden">
+                    {operational.map(it => <ItemRow key={it.id} item={it} active={it.id === selectedId} onClick={() => setSelectedId(it.id)} />)}
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>
 
       {selected && (
-        <DetailDrawer item={selected} onClose={() => setSelectedId(null)} onEdit={() => setEditing(selected)} onDelete={() => removeItem(selected)} onQty={d => adjustQty(selected, d)} onResearch={() => research(selected)} />
+        <DetailDrawer item={selected} onClose={() => setSelectedId(null)} onEdit={() => setEditing(selected)} onDelete={() => removeItem(selected)} onQty={d => adjustQty(selected, d)} onResearch={() => research(selected)} onStatus={s => setItemStatus(selected, s)} />
       )}
 
       {editing && (
         <ItemForm initial={editing === 'new' ? null : editing} categories={categories} conditions={conditions} onSave={saveItem} onClose={() => setEditing(null)} />
       )}
+
+      <MutationToast toast={toast} />
     </div>
   )
 }

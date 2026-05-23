@@ -1,24 +1,26 @@
 // title: Inventory backend route
 // path: server/routes/inventory.ts
-// purpose: Catalog of tech devices/components. JSON-backed CRUD plus stats and
-//          agent-friendly endpoints (schema, context, bulk) so a connected
-//          agent can read "what's on hand" and fill in spec sheets it researched.
+// purpose: SQLite-backed hardware catalog. Works independently of any Obsidian
+//          vault. Items carry a deployment status so agents know what is
+//          available vs actively in use. Provides plain-text /context for agents,
+//          schema for structured writes, and async agent-driven research.
 
 import { Router } from 'express'
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs'
+import { existsSync, mkdirSync, readFileSync } from 'fs'
 import { join } from 'path'
 import { randomUUID } from 'crypto'
+import { DatabaseSync } from 'node:sqlite'
 import { isLive } from '../lib/connectors.js'
 import { researchItem } from '../lib/research.js'
 
 export const inventoryRouter = Router()
 
-// Canonical categories (the UI knows icons/labels; the API just stores strings).
 export const CATEGORIES = [
   'computer', 'laptop', 'sbc', 'microcontroller', 'storage', 'battery', 'power',
   'console', 'peripheral', 'cable', 'component', 'sensor', 'network', 'tool', 'other',
 ] as const
 export const CONDITIONS = ['working', 'untested', 'partial', 'broken', 'unknown'] as const
+export const STATUSES   = ['available', 'in-use', 'reserved'] as const
 
 export interface StoredItem {
   id:             string
@@ -27,72 +29,158 @@ export interface StoredItem {
   quantity:       number
   location:       string
   condition:      string
-  estimatedValue: number   // per-unit, USD
+  estimatedValue: number
   manufacturer:   string
   model:          string
   tags:           string[]
   notes:          string
-  // agent-enriched spec sheet
   summary:        string
   specs:          Record<string, string>
   sources:        Array<{ title: string; url: string }>
   datasheetUrl:   string
   imageUrl:       string
   enriched:       boolean
-  addedBy:        string    // 'manual' or an agent name
-  researchStatus: string    // idle | pending | done | failed
+  addedBy:        string
+  status:         string   // available | in-use | reserved
+  researchStatus: string   // idle | pending | done | failed
   researchError:  string
   researchRequestedAt: string
   createdAt:      string
   updatedAt:      string
 }
 
-// ─── Persistence ──────────────────────────────────────────────────────────────
+// ─── SQLite setup ─────────────────────────────────────────────────────────────
 
-function itemsPath(): string {
-  const dataDir = join(process.cwd(), 'data')
-  if (!existsSync(dataDir)) mkdirSync(dataDir, { recursive: true })
-  return join(dataDir, 'inventory.json')
+const dataDir = join(process.cwd(), 'data')
+if (!existsSync(dataDir)) mkdirSync(dataDir, { recursive: true })
+
+const db = new DatabaseSync(join(dataDir, 'inventory.db'))
+db.exec('PRAGMA journal_mode = WAL;')
+db.exec(`
+  CREATE TABLE IF NOT EXISTS items (
+    id                  TEXT PRIMARY KEY,
+    name                TEXT NOT NULL,
+    category            TEXT NOT NULL DEFAULT 'other',
+    quantity            INTEGER NOT NULL DEFAULT 1,
+    location            TEXT NOT NULL DEFAULT '',
+    condition           TEXT NOT NULL DEFAULT 'unknown',
+    estimatedValue      REAL NOT NULL DEFAULT 0,
+    manufacturer        TEXT NOT NULL DEFAULT '',
+    model               TEXT NOT NULL DEFAULT '',
+    tags                TEXT NOT NULL DEFAULT '[]',
+    notes               TEXT NOT NULL DEFAULT '',
+    summary             TEXT NOT NULL DEFAULT '',
+    specs               TEXT NOT NULL DEFAULT '{}',
+    sources             TEXT NOT NULL DEFAULT '[]',
+    datasheetUrl        TEXT NOT NULL DEFAULT '',
+    imageUrl            TEXT NOT NULL DEFAULT '',
+    enriched            INTEGER NOT NULL DEFAULT 0,
+    addedBy             TEXT NOT NULL DEFAULT 'manual',
+    status              TEXT NOT NULL DEFAULT 'available',
+    researchStatus      TEXT NOT NULL DEFAULT 'idle',
+    researchError       TEXT NOT NULL DEFAULT '',
+    researchRequestedAt TEXT NOT NULL DEFAULT '',
+    createdAt           TEXT NOT NULL,
+    updatedAt           TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_items_status   ON items(status);
+  CREATE INDEX IF NOT EXISTS idx_items_category ON items(category);
+  CREATE INDEX IF NOT EXISTS idx_items_updated  ON items(updatedAt DESC);
+`)
+
+const COLS = [
+  'id','name','category','quantity','location','condition','estimatedValue',
+  'manufacturer','model','tags','notes','summary','specs','sources',
+  'datasheetUrl','imageUrl','enriched','addedBy','status',
+  'researchStatus','researchError','researchRequestedAt','createdAt','updatedAt',
+]
+// Statements are prepared inline in helpers to survive tsx watch hot-reloads.
+
+function pj<T>(s: string, fb: T): T { try { return JSON.parse(s) as T } catch { return fb } }
+
+function fromRow(r: any): StoredItem {
+  return {
+    id: String(r.id), name: String(r.name), category: String(r.category ?? 'other'),
+    quantity: Number(r.quantity ?? 0), location: String(r.location ?? ''),
+    condition: String(r.condition ?? 'unknown'), estimatedValue: Number(r.estimatedValue ?? 0),
+    manufacturer: String(r.manufacturer ?? ''), model: String(r.model ?? ''),
+    tags: pj(String(r.tags ?? '[]'), []), notes: String(r.notes ?? ''),
+    summary: String(r.summary ?? ''), specs: pj(String(r.specs ?? '{}'), {}),
+    sources: pj(String(r.sources ?? '[]'), []),
+    datasheetUrl: String(r.datasheetUrl ?? ''), imageUrl: String(r.imageUrl ?? ''),
+    enriched: Boolean(r.enriched), addedBy: String(r.addedBy ?? 'manual'),
+    status: String(r.status ?? 'available'),
+    researchStatus: String(r.researchStatus ?? 'idle'), researchError: String(r.researchError ?? ''),
+    researchRequestedAt: String(r.researchRequestedAt ?? ''),
+    createdAt: String(r.createdAt), updatedAt: String(r.updatedAt),
+  }
 }
+
+function toRow(it: StoredItem): Record<string, any> {
+  return {
+    id: it.id, name: it.name, category: it.category, quantity: it.quantity,
+    location: it.location, condition: it.condition, estimatedValue: it.estimatedValue,
+    manufacturer: it.manufacturer, model: it.model,
+    tags: JSON.stringify(it.tags ?? []), notes: it.notes, summary: it.summary,
+    specs: JSON.stringify(it.specs ?? {}), sources: JSON.stringify(it.sources ?? []),
+    datasheetUrl: it.datasheetUrl, imageUrl: it.imageUrl,
+    enriched: it.enriched ? 1 : 0, addedBy: it.addedBy, status: it.status,
+    researchStatus: it.researchStatus, researchError: it.researchError,
+    researchRequestedAt: it.researchRequestedAt, createdAt: it.createdAt, updatedAt: it.updatedAt,
+  }
+}
+
+function loadItems(): StoredItem[] { return (db.prepare('SELECT * FROM items ORDER BY createdAt DESC').all() as any[]).map(fromRow) }
+function loadItem(id: string): StoredItem | null { const r = db.prepare('SELECT * FROM items WHERE id = ?').get(id) as any; return r ? fromRow(r) : null }
+function dbSave(it: StoredItem): void { db.prepare(`INSERT OR REPLACE INTO items (${COLS.join(',')}) VALUES (${COLS.map(k => `@${k}`).join(',')})`).run(toRow(it)) }
+function dbDelete(id: string): void { db.prepare('DELETE FROM items WHERE id = ?').run(id) }
+
+// ─── Blank / seed ─────────────────────────────────────────────────────────────
 
 function blank(): Omit<StoredItem, 'id' | 'name' | 'createdAt' | 'updatedAt'> {
   return {
     category: 'other', quantity: 1, location: '', condition: 'unknown', estimatedValue: 0,
     manufacturer: '', model: '', tags: [], notes: '',
     summary: '', specs: {}, sources: [], datasheetUrl: '', imageUrl: '',
-    enriched: false, addedBy: 'manual',
+    enriched: false, addedBy: 'manual', status: 'available',
     researchStatus: 'idle', researchError: '', researchRequestedAt: '',
   }
 }
 
 function seed(): StoredItem[] {
   const now = new Date().toISOString()
-  const mk = (p: Partial<StoredItem> & { name: string }): StoredItem => ({
-    id: randomUUID(), createdAt: now, updatedAt: now, ...blank(), ...p,
-  })
+  const mk = (p: Partial<StoredItem> & { name: string }): StoredItem =>
+    ({ id: randomUUID(), createdAt: now, updatedAt: now, ...blank(), ...p })
   return [
     mk({ name: 'Raspberry Pi 4 Model B (4GB)', category: 'sbc', quantity: 2, location: 'Shelf A · bin 1', condition: 'working', estimatedValue: 55, manufacturer: 'Raspberry Pi', model: 'Pi 4B 4GB', tags: ['arm', 'linux'], enriched: true, addedBy: 'agent', summary: 'Quad-core Cortex-A72 single-board computer with 4GB RAM, dual micro-HDMI, USB3, Gigabit Ethernet.', specs: { SoC: 'Broadcom BCM2711', CPU: '4× Cortex-A72 @ 1.5GHz', RAM: '4GB LPDDR4', GPIO: '40-pin', Power: 'USB-C 5V/3A' }, sources: [{ title: 'Raspberry Pi 4 product page', url: 'https://www.raspberrypi.com/products/raspberry-pi-4-model-b/' }] }),
-    mk({ name: 'Arduino Uno R3', category: 'microcontroller', quantity: 3, location: 'Shelf A · bin 2', condition: 'working', estimatedValue: 24, manufacturer: 'Arduino', model: 'Uno R3', tags: ['avr', '5v'], enriched: true, addedBy: 'agent', summary: 'ATmega328P 8-bit microcontroller board, 14 digital I/O, 6 analog inputs, 16MHz.', specs: { MCU: 'ATmega328P', 'Flash': '32KB', 'Digital I/O': '14', 'Analog In': '6', Voltage: '5V' }, sources: [{ title: 'Arduino Uno Rev3', url: 'https://store.arduino.cc/products/arduino-uno-rev3' }] }),
+    mk({ name: 'Arduino Uno R3', category: 'microcontroller', quantity: 3, location: 'Shelf A · bin 2', condition: 'working', estimatedValue: 24, manufacturer: 'Arduino', model: 'Uno R3', tags: ['avr', '5v'], enriched: true, addedBy: 'agent', summary: 'ATmega328P 8-bit microcontroller board, 14 digital I/O, 6 analog inputs, 16MHz.', specs: { MCU: 'ATmega328P', Flash: '32KB', 'Digital I/O': '14', 'Analog In': '6', Voltage: '5V' }, sources: [{ title: 'Arduino Uno Rev3', url: 'https://store.arduino.cc/products/arduino-uno-rev3' }] }),
     mk({ name: 'WD Blue 1TB 2.5" HDD', category: 'storage', quantity: 4, location: 'Drawer B', condition: 'untested', estimatedValue: 30, manufacturer: 'Western Digital', model: 'WD10SPZX', tags: ['sata', '2.5in'] }),
-    mk({ name: 'Assorted 1/4W resistors (carbon film)', category: 'component', quantity: 600, location: 'Component box · row 3', condition: 'working', estimatedValue: 0.02, manufacturer: '', model: '', tags: ['resistor', 'through-hole'] }),
+    mk({ name: 'Assorted 1/4W resistors (carbon film)', category: 'component', quantity: 600, location: 'Component box · row 3', condition: 'working', estimatedValue: 0.02, tags: ['resistor', 'through-hole'] }),
     mk({ name: 'USB-C to USB-A 3.0 cable (1m)', category: 'cable', quantity: 8, location: 'Cable bag', condition: 'working', estimatedValue: 4 }),
     mk({ name: 'Dell Latitude 7490', category: 'laptop', quantity: 1, location: 'Office desk', condition: 'working', estimatedValue: 280, manufacturer: 'Dell', model: 'Latitude 7490', tags: ['i7', '16gb'] }),
     mk({ name: '18650 Li-ion cells', category: 'battery', quantity: 12, location: 'Battery case', condition: 'partial', estimatedValue: 5, tags: ['3.7v', 'rechargeable'], notes: 'Mixed health — test before use.' }),
   ]
 }
 
-function loadItems(): StoredItem[] {
-  const path = itemsPath()
-  if (!existsSync(path)) {
-    const seeded = seed()
-    writeFileSync(path, JSON.stringify(seeded, null, 2), 'utf8')
-    return seeded
+// Migrate from JSON on first run; seed if empty.
+{
+  const { n } = db.prepare('SELECT COUNT(*) as n FROM items').get() as { n: number }
+  if (n === 0) {
+    const jsonPath = join(dataDir, 'inventory.json')
+    if (existsSync(jsonPath)) {
+      try {
+        const rows: any[] = JSON.parse(readFileSync(jsonPath, 'utf8'))
+        const now = new Date().toISOString()
+        for (const r of rows) {
+          dbSave({ ...blank(), id: r.id ?? randomUUID(), name: r.name ?? '', createdAt: r.createdAt ?? now, updatedAt: r.updatedAt ?? now, ...r, status: r.status ?? 'available' })
+        }
+        console.log(`[Inventory] migrated ${rows.length} items from JSON → SQLite`)
+      } catch (e) { console.error('[Inventory] JSON migration failed:', e) }
+    } else {
+      for (const it of seed()) dbSave(it)
+      console.log('[Inventory] seeded with example items')
+    }
   }
-  try { return JSON.parse(readFileSync(path, 'utf8')) as StoredItem[] } catch { return [] }
-}
-
-function saveItems(items: StoredItem[]): void {
-  writeFileSync(itemsPath(), JSON.stringify(items, null, 2), 'utf8')
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -134,13 +222,14 @@ function sanitize(body: any, base: StoredItem): StoredItem {
   if (body.imageUrl !== undefined) s.imageUrl = str(body.imageUrl)
   if (body.addedBy !== undefined) s.addedBy = str(body.addedBy, 'manual')
   // Mark enriched if the agent supplied a spec sheet (or explicitly set it).
+  if (body.status !== undefined && STATUSES.includes(body.status as any)) s.status = body.status
   if (body.enriched !== undefined) s.enriched = !!body.enriched
   else if (s.summary || Object.keys(s.specs).length || s.sources.length) s.enriched = true
   return s
 }
 
 function computeStats(items: StoredItem[]) {
-  let totalQuantity = 0, totalValue = 0, enrichedCount = 0
+  let totalQuantity = 0, totalValue = 0, enrichedCount = 0, operationalCount = 0
   const byCategory = new Map<string, { category: string; count: number; quantity: number; value: number }>()
   const byCondition: Record<string, number> = {}
   const locations = new Set<string>()
@@ -148,6 +237,7 @@ function computeStats(items: StoredItem[]) {
     totalQuantity += it.quantity
     totalValue += it.quantity * it.estimatedValue
     if (it.enriched) enrichedCount++
+    if (it.status === 'in-use') operationalCount++
     if (it.location) locations.add(it.location)
     byCondition[it.condition] = (byCondition[it.condition] ?? 0) + 1
     const c = byCategory.get(it.category) ?? { category: it.category, count: 0, quantity: 0, value: 0 }
@@ -158,7 +248,7 @@ function computeStats(items: StoredItem[]) {
     totalItems: items.length,
     totalQuantity,
     totalValue: Math.round(totalValue * 100) / 100,
-    enrichedCount,
+    enrichedCount, operationalCount,
     byCategory: [...byCategory.values()].sort((a, b) => b.value - a.value).map(c => ({ ...c, value: Math.round(c.value * 100) / 100 })),
     byCondition,
     locations: [...locations].sort(),
@@ -170,44 +260,57 @@ function computeStats(items: StoredItem[]) {
 inventoryRouter.get('/', (_req, res) => {
   try {
     const items = loadItems()
-    res.json({ items: items.map(toResponse), stats: computeStats(items), categories: CATEGORIES, conditions: CONDITIONS, fetchedAt: new Date().toISOString() })
+    res.json({ items: items.map(toResponse), stats: computeStats(items), categories: CATEGORIES, conditions: CONDITIONS, statuses: STATUSES, fetchedAt: new Date().toISOString() })
   } catch (err: any) { res.status(500).json({ error: err.message }) }
 })
 
-// Machine-readable schema so an agent knows exactly how to fill an item.
 inventoryRouter.get('/schema', (_req, res) => {
   res.json({
-    categories: CATEGORIES, conditions: CONDITIONS,
+    categories: CATEGORIES, conditions: CONDITIONS, statuses: STATUSES,
     fields: {
       name: 'string (required)', category: `one of ${CATEGORIES.join('|')}`, quantity: 'number',
       location: 'string', condition: `one of ${CONDITIONS.join('|')}`, estimatedValue: 'number (per-unit USD)',
       manufacturer: 'string', model: 'string', tags: 'string[]', notes: 'string',
       summary: 'string (1-2 sentence overview)', specs: 'object of key:value spec pairs',
-      sources: 'array of {title,url} you researched online', datasheetUrl: 'string', imageUrl: 'string', addedBy: 'your agent name',
+      sources: 'array of {title,url} you researched online', datasheetUrl: 'string', imageUrl: 'string',
+      addedBy: 'your agent name', status: 'available | in-use | reserved',
     },
-    usage: 'POST /api/inventory to add, PATCH /api/inventory/:id to enrich, GET /api/inventory/context for a plain-text summary of everything on hand.',
+    usage: 'POST /api/inventory to add, PATCH /api/inventory/:id to enrich, GET /api/inventory/context for a plain-text summary.',
   })
 })
 
-// Plain-text "what's on hand" for an agent to read into context.
+// Agent-readable context: available items first, in-operation items clearly last.
 inventoryRouter.get('/context', (_req, res) => {
   const items = loadItems()
   const stats = computeStats(items)
-  const byCat = new Map<string, StoredItem[]>()
-  for (const it of items) { const a = byCat.get(it.category) ?? []; a.push(it); byCat.set(it.category, a) }
-  let out = `# Inventory (${stats.totalItems} entries · ${stats.totalQuantity} units · ~$${stats.totalValue})\n\n`
-  for (const [cat, list] of [...byCat.entries()].sort()) {
-    out += `## ${cat}\n`
-    for (const it of list) {
-      out += `- ${it.name} ×${it.quantity}${it.location ? ` @ ${it.location}` : ''} [${it.condition}]${it.model ? ` (${it.manufacturer} ${it.model})` : ''}${it.summary ? ` — ${it.summary}` : ''}\n`
+  const available   = items.filter(i => i.status !== 'in-use')
+  const operational = items.filter(i => i.status === 'in-use')
+
+  function renderGroup(list: StoredItem[]): string {
+    const byCat = new Map<string, StoredItem[]>()
+    for (const it of list) { const a = byCat.get(it.category) ?? []; a.push(it); byCat.set(it.category, a) }
+    let s = ''
+    for (const [cat, its] of [...byCat.entries()].sort()) {
+      s += `### ${cat}\n`
+      for (const it of its)
+        s += `- ${it.name} ×${it.quantity}${it.location ? ` @ ${it.location}` : ''} [${it.condition}]${it.model ? ` (${it.manufacturer} ${it.model})` : ''}${it.summary ? ` — ${it.summary}` : ''}\n`
     }
-    out += '\n'
+    return s
+  }
+
+  let out = `# Hardware Inventory (${stats.totalItems} items · ${stats.totalQuantity} units · ~$${stats.totalValue})\n\n`
+  out += `## Available for Use (${available.length} items)\n`
+  out += renderGroup(available)
+  if (operational.length > 0) {
+    out += `\n## IN OPERATION — Actively Deployed (${operational.length} items)\n`
+    out += `> These items are actively in use. Consider them last when selecting hardware for new projects.\n\n`
+    out += renderGroup(operational)
   }
   res.type('text/plain').send(out)
 })
 
 inventoryRouter.get('/:id', (req, res) => {
-  const item = loadItems().find(i => i.id === req.params.id)
+  const item = loadItem(req.params.id)
   if (!item) return res.status(404).json({ error: 'Item not found' })
   res.json({ item: toResponse(item) })
 })
@@ -217,9 +320,7 @@ inventoryRouter.post('/', (req, res) => {
     if (!String(req.body?.name ?? '').trim()) return res.status(400).json({ error: 'name is required' })
     const now = new Date().toISOString()
     const item = sanitize(req.body, { id: randomUUID(), name: '', createdAt: now, updatedAt: now, ...blank() } as StoredItem)
-    const items = loadItems()
-    items.unshift(item)
-    saveItems(items)
+    dbSave(item)
     res.status(201).json({ item: toResponse(item) })
   } catch (err: any) { res.status(500).json({ error: err.message }) }
 })
@@ -229,69 +330,67 @@ inventoryRouter.post('/bulk', (req, res) => {
   try {
     const incoming = Array.isArray(req.body?.items) ? req.body.items : []
     const now = new Date().toISOString()
-    const items = loadItems()
     const created = []
     for (const b of incoming) {
       if (!String(b?.name ?? '').trim()) continue
       const item = sanitize(b, { id: randomUUID(), name: '', createdAt: now, updatedAt: now, ...blank() } as StoredItem)
-      items.unshift(item); created.push(toResponse(item))
+      dbSave(item); created.push(toResponse(item))
     }
-    saveItems(items)
     res.status(201).json({ created, count: created.length })
   } catch (err: any) { res.status(500).json({ error: err.message }) }
 })
 
 inventoryRouter.patch('/:id', (req, res) => {
   try {
-    const items = loadItems()
-    const idx = items.findIndex(i => i.id === req.params.id)
-    if (idx === -1) return res.status(404).json({ error: 'Item not found' })
-    items[idx] = { ...sanitize(req.body, items[idx]), id: items[idx].id, createdAt: items[idx].createdAt, updatedAt: new Date().toISOString() }
-    saveItems(items)
-    res.json({ item: toResponse(items[idx]) })
+    const item = loadItem(req.params.id)
+    if (!item) return res.status(404).json({ error: 'Item not found' })
+    const updated = { ...sanitize(req.body, item), id: item.id, createdAt: item.createdAt, updatedAt: new Date().toISOString() }
+    dbSave(updated)
+    res.json({ item: toResponse(updated) })
+  } catch (err: any) { res.status(500).json({ error: err.message }) }
+})
+
+// Quick deployment-status flip without touching other fields.
+inventoryRouter.patch('/:id/status', (req, res) => {
+  try {
+    const item = loadItem(req.params.id)
+    if (!item) return res.status(404).json({ error: 'Item not found' })
+    const status = String(req.body?.status ?? '')
+    if (!STATUSES.includes(status as any)) return res.status(400).json({ error: `status must be one of: ${STATUSES.join(', ')}` })
+    const updated = { ...item, status, updatedAt: new Date().toISOString() }
+    dbSave(updated)
+    res.json({ item: toResponse(updated) })
   } catch (err: any) { res.status(500).json({ error: err.message }) }
 })
 
 // Ask a connected agent to research + fill the item's spec sheet (async).
 inventoryRouter.post('/:id/research', (req, res) => {
   try {
-    const items = loadItems()
-    const idx = items.findIndex(i => i.id === req.params.id)
-    if (idx === -1) return res.status(404).json({ error: 'Item not found' })
+    const item = loadItem(req.params.id)
+    if (!item) return res.status(404).json({ error: 'Item not found' })
 
     const requested = req.body?.source === 'hermes' ? 'hermes' : req.body?.source === 'openclaw' ? 'openclaw' : null
     const source = requested ?? (isLive('openclaw') ? 'openclaw' : isLive('hermes') ? 'hermes' : null)
     if (!source) return res.status(409).json({ error: 'No connected agent — enable OpenClaw or Hermes in Settings.' })
     if (!isLive(source)) return res.status(409).json({ error: `${source} is not connected.` })
-    if (source !== 'openclaw') return res.status(400).json({ error: 'Auto-research currently supports OpenClaw only. Ask your Hermes agent directly (it can read GET /api/inventory/context).' })
+    if (source !== 'openclaw') return res.status(400).json({ error: 'Auto-research currently supports OpenClaw only.' })
 
-    items[idx].researchStatus = 'pending'
-    items[idx].researchRequestedAt = new Date().toISOString()
-    items[idx].researchError = ''
-    saveItems(items)
-    const snap = items[idx]
+    const snap = { ...item, researchStatus: 'pending', researchRequestedAt: new Date().toISOString(), researchError: '' }
+    dbSave(snap)
 
-    // Fire-and-forget: research, then merge the result back when it returns.
     researchItem(snap, source).then(r => {
-      const cur = loadItems()
-      const j = cur.findIndex(i => i.id === snap.id)
-      if (j === -1) return
+      const cur = loadItem(snap.id)
+      if (!cur) return
       const merged = sanitize({
         summary: r.summary, specs: r.specs, manufacturer: r.manufacturer, model: r.model,
         estimatedValue: r.estimatedValue, category: r.category, condition: r.condition,
         datasheetUrl: r.datasheetUrl, sources: r.sources, enriched: true, addedBy: source,
-      }, cur[j])
-      cur[j] = { ...merged, id: cur[j].id, createdAt: cur[j].createdAt, updatedAt: new Date().toISOString() }
-      cur[j].researchStatus = 'done'
-      cur[j].researchError = ''
-      saveItems(cur)
+      }, cur)
+      dbSave({ ...merged, id: cur.id, createdAt: cur.createdAt, updatedAt: new Date().toISOString(), researchStatus: 'done', researchError: '' })
     }).catch(err => {
-      const cur = loadItems()
-      const j = cur.findIndex(i => i.id === snap.id)
-      if (j === -1) return
-      cur[j].researchStatus = 'failed'
-      cur[j].researchError = String(err?.message ?? err).slice(0, 200)
-      saveItems(cur)
+      const cur = loadItem(snap.id)
+      if (!cur) return
+      dbSave({ ...cur, researchStatus: 'failed', researchError: String(err?.message ?? err).slice(0, 200), updatedAt: new Date().toISOString() })
     })
 
     res.json({ ok: true, status: 'pending', source })
@@ -300,11 +399,8 @@ inventoryRouter.post('/:id/research', (req, res) => {
 
 inventoryRouter.delete('/:id', (req, res) => {
   try {
-    const items = loadItems()
-    const idx = items.findIndex(i => i.id === req.params.id)
-    if (idx === -1) return res.status(404).json({ error: 'Item not found' })
-    items.splice(idx, 1)
-    saveItems(items)
+    if (!loadItem(req.params.id)) return res.status(404).json({ error: 'Item not found' })
+    dbDelete(req.params.id)
     res.json({ ok: true })
   } catch (err: any) { res.status(500).json({ error: err.message }) }
 })

@@ -171,26 +171,48 @@
   {
     "id": "1853fbf2-80e1-4c27-be88-607d4d768ee9",
     "createdAt": "2026-05-23T16:08:26.896Z",
-    "updatedAt": "2026-05-23T16:08:26.896Z",
+    "updatedAt": "2026-05-23T16:34:13.212Z",
     "category": "battery",
     "quantity": 12,
     "location": "Battery case",
     "condition": "partial",
     "estimatedValue": 5,
-    "manufacturer": "",
-    "model": "",
+    "manufacturer": "Various (Panasonic, Samsung SDI, LG Energy Solution, Sony/Murata, Molicel, etc.)",
+    "model": "18650",
     "tags": [
       "3.7v",
       "rechargeable"
     ],
     "notes": "Mixed health — test before use.",
-    "summary": "",
-    "specs": {},
-    "sources": [],
-    "datasheetUrl": "",
+    "summary": "The 18650 is a cylindrical rechargeable lithium-ion cell measuring 18mm × 65mm, widely regarded as the most produced Li-ion cell format in the world. Used in laptops, power tools, electric vehicles, flashlights, and DIY battery packs, it offers high energy density and a long cycle life across multiple chemistry variants.",
+    "specs": {
+      "dimensions": "18mm diameter × 65mm length",
+      "nominalVoltage": "3.6–3.7 V",
+      "fullyChargedVoltage": "4.2 V",
+      "cutoffVoltage": "2.5–3.0 V",
+      "typicalCapacity": "1200–3500 mAh",
+      "continuousDischargeRate": "10–30 A (high-drain cells)",
+      "cycleLife": "300–1000+ cycles (LFP: 2000+)",
+      "chemistries": "LCO, LMO, NMC, LFP",
+      "form": "Button top or flat top; protected or unprotected"
+    },
+    "sources": [
+      {
+        "title": "18650 battery — Wikipedia",
+        "url": "https://en.wikipedia.org/wiki/18650_battery"
+      },
+      {
+        "title": "18650 Batteries: High Capacity Li-ion Cells — 18650BatteryStore.com",
+        "url": "https://www.18650batterystore.com/collections/18650-batteries"
+      }
+    ],
+    "datasheetUrl": "https://en.wikipedia.org/wiki/18650_battery",
     "imageUrl": "",
-    "enriched": false,
-    "addedBy": "manual",
-    "name": "18650 Li-ion cells"
+    "enriched": true,
+    "addedBy": "openclaw",
+    "name": "18650 Li-ion cells",
+    "researchStatus": "done",
+    "researchRequestedAt": "2026-05-23T16:33:53.011Z",
+    "researchError": ""
   }
 ]

@@ -6,6 +6,37 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.4.0] — 2026-07-13
+
+### Added
+
+- **Inventory view** — full hardware catalog UI: card grid, detail drawer, inline edit, per-item agent research trigger, bulk actions, search/filter, stats strip, and category/condition/status facets.
+- **SQLite persistence** (`data/inventory.db`, WAL mode) replacing the previous JSON file for inventory items. Inline statement preparation pattern used throughout to survive `tsx watch` hot-reloads.
+- **`status` field** on inventory items (`available` / `in-use` / `reserved`) so agents can determine what hardware is free vs actively deployed. Operational count reported in stats.
+- **`ensureConnected(timeoutMs)`** export on `openclawLive` — waits up to N ms for the persistent WS to authenticate before resolving, so research works without the Watch tab open.
+- **`/api/inventory/context`** agent-readable plain-text endpoint summarising catalog for agent consumption.
+- **`/api/inventory/:id/set-status`** endpoint for programmatic status transitions.
+- **Persistent "Synced X ago" indicator** in the inventory header with 30-second auto-tick refresh.
+- Labelled **Sync button** in inventory header with spinner and loading state.
+
+### Changed
+
+- OpenClaw WebSocket lifecycle decoupled from SSE listener presence: the persistent WS now stays connected even when no Watch tab is open, enabling background research and RPC calls.
+- `restartLive()` no longer no-ops when there are no active listeners.
+- `scheduleReconnect()` reconnects regardless of listener count.
+- `addListener` teardown only stops the polling feed; it no longer closes the WebSocket.
+- Research (`researchOpenClaw`) now awaits `ensureConnected(12 s)` instead of doing an instant `isConnected()` guard, eliminating false "not connected" errors on first use.
+- `buildPrompt()` is model-specificity-aware: injects a hard directive to research only the exact model/SKU when `item.model` is set, avoiding generic product-line summaries.
+- Inventory route migrated from `fs`/JSON to `node:sqlite` (`DatabaseSync`) with 24-field schema.
+- Toast display durations extended: saved confirmations 2.5 s → 4.5 s, errors 5 s → 6 s.
+
+### Fixed
+
+- SQLite hot-reload bug: prepared statements are now created inline inside each helper function rather than at module scope, preventing "statement belongs to a closed database" errors on `tsx watch` reloads.
+- Category and condition dropdowns no longer appear blank on first load — defaults are seeded if the DB has no items yet.
+
+---
+
 ## [0.3.0] — 2026-03-30
 
 ### Added
