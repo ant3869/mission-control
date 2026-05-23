@@ -300,9 +300,19 @@ async function hermesMetrics(): Promise<PlatformMetrics> {
   const assistantCalls = sessions.reduce((n, s) => n + num(s.api_call_count), 0)
   const userMsgs = Math.max(0, totalMessages - assistantCalls)
 
+  // /api/status is public, so a stale/invalid token still reports "reachable"
+  // while every authenticated endpoint 401s — which used to render as silently
+  // empty metrics. Surface the auth failure so the UI can tell the user to
+  // re-enter the token instead of showing a blank dashboard.
+  const authFailed = !usageR.ok && !sessionsR.ok && !cronR.ok &&
+    [usageR, sessionsR, cronR, skillsR, toolsetsR].some(r => /\b40[13]\b|unauth/i.test(String(r.error ?? '')))
+  const authError = authFailed
+    ? 'Hermes rejected the token (HTTP 401). The token likely rotated on the 0.13.0 upgrade — re-enter a current token in Settings → Hermes.'
+    : null
+
   return {
     source: 'hermes', reachable: statusR.reachable || usageR.ok,
-    version: statusR.version, error: null, latencyMs: statusR.latencyMs, fetchedAt: new Date().toISOString(),
+    version: statusR.version, error: authError, latencyMs: statusR.latencyMs, fetchedAt: new Date().toISOString(),
     tokens: { input: num(t.total_input), output: num(t.total_output), cacheRead: num(t.total_cache_read), cacheWrite: 0, total: num(t.total_input) + num(t.total_output) + num(t.total_cache_read) },
     cost: { total: num(t.total_estimated_cost ?? t.total_actual_cost), input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     daily,

@@ -3,7 +3,7 @@ import {
   CheckSquare, Bot, FileText, ThumbsUp, Calendar, FolderKanban,
   Brain, BookOpen, UserCircle, Building2, Network, Settings,
   Radar, Factory, GitBranch, MessageSquare, ChevronRight, NotebookPen, Cog,
-  Activity, Gauge, Radio, Package,
+  Activity, Gauge, Boxes, Radio, Package,
 } from 'lucide-react'
 import { clsx } from 'clsx'
 import type { View } from '../../types'

@@ -38,13 +38,17 @@ function classify(e: WatchEvent): Status {
     const tool  = (e.meta?.tool ?? e.sub ?? '').toLowerCase().replace(/[^a-z_]/g, '')
     const input = (e.meta?.toolInput ?? '').trim()
 
-    if (tool === 'bash' || tool === 'terminal' || tool === 'shell' || tool === 'execute' || tool === 'computer')
-      return { verb: 'running a terminal command', detail: input.slice(0, 120), icon: <Terminal size={sz} />, color: 'text-amber-400', active: true }
+    if (tool === 'bash' || tool === 'terminal' || tool === 'shell' || tool === 'execute' || tool === 'exec' || tool === 'computer') {
+      // exec commands often lead with a "# comment" line — show the first real
+      // command line instead so the detail is the actual command being run.
+      const cmd = input.split('\n').map(l => l.trim()).find(l => l && !l.startsWith('#')) ?? input
+      return { verb: 'running a terminal command', detail: cmd.slice(0, 120), icon: <Terminal size={sz} />, color: 'text-amber-400', active: true }
+    }
     if (tool === 'read' || tool === 'readfile' || tool === 'read_file' || tool === 'viewfile')
       return { verb: 'reading the file', detail: input.slice(0, 120), icon: <FileText size={sz} />, color: 'text-blue-400', active: true }
     if (tool === 'write' || tool === 'writefile' || tool === 'write_file' || tool === 'create')
       return { verb: 'writing to file', detail: input.slice(0, 120), icon: <FilePen size={sz} />, color: 'text-green-400', active: true }
-    if (tool === 'edit' || tool === 'multiedit' || tool === 'patch' || tool === 'str_replace_editor')
+    if (tool === 'edit' || tool === 'multiedit' || tool === 'patch' || tool === 'apply_patch' || tool === 'str_replace_editor')
       return { verb: 'editing the file', detail: input.slice(0, 120), icon: <FilePen size={sz} />, color: 'text-emerald-400', active: true }
     if (tool === 'webfetch' || tool === 'fetch' || tool === 'browse' || tool === 'curl' || tool === 'http') {
       const host = input.replace(/^https?:\/\//, '').split('/')[0]
@@ -74,6 +78,7 @@ function classify(e: WatchEvent): Status {
     return { verb: 'running a scheduled task', detail: e.sub.slice(0, 80), icon: <Clock size={sz} />, color: 'text-amber-400', active: true }
 
   if (e.kind === 'session') {
+    if (/think/i.test(e.event)) return { verb: 'thinking', detail: (e.meta?.channel ?? '').trim(), icon: <Brain size={sz} />, color: 'text-violet-400', active: true }
     if (/start/i.test(e.event)) return { verb: 'starting a session', detail: e.sub.slice(0, 60), icon: <Activity size={sz} />, color: 'text-green-400', active: true }
     if (/end|close/i.test(e.event)) return { verb: 'ending the session', detail: '', icon: <Activity size={sz} />, color: 'text-slate-400', active: false }
     if (/active/i.test(e.event)) return { verb: 'working', detail: (e.meta?.channel ?? '').trim(), icon: <Cpu size={sz} />, color: 'text-amber-400', active: true }

@@ -22,6 +22,7 @@ import { Notes } from './views/Notes'
 import { Settings } from './views/Settings'
 import { OpenClawMetrics, HermesMetrics } from './views/PlatformMetrics'
 import { Watch } from './views/Watch'
+import { Inventory } from './views/Inventory'
 import { ComingSoon } from './views/ComingSoon'
 import type { View } from './types'
 
@@ -104,6 +105,7 @@ export default function App() {
           <ViewPane view="openclaw"  active={activeView} mounted={mounted}><OpenClawMetrics onNavigate={navigate} /></ViewPane>
           <ViewPane view="hermes"    active={activeView} mounted={mounted}><HermesMetrics onNavigate={navigate} /></ViewPane>
           <ViewPane view="watch"     active={activeView} mounted={mounted}><Watch /></ViewPane>
+          <ViewPane view="inventory" active={activeView} mounted={mounted}><Inventory /></ViewPane>
           <ViewPane view="team"      active={activeView} mounted={mounted}><ComingSoon view="team" /></ViewPane>
 
         </main>

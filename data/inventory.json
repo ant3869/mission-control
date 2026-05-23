@@ -1,0 +1,196 @@
+[
+  {
+    "id": "4c2f398c-02eb-475d-81f7-ecc73af21b28",
+    "createdAt": "2026-05-23T16:08:26.896Z",
+    "updatedAt": "2026-05-23T16:08:26.896Z",
+    "category": "sbc",
+    "quantity": 2,
+    "location": "Shelf A · bin 1",
+    "condition": "working",
+    "estimatedValue": 55,
+    "manufacturer": "Raspberry Pi",
+    "model": "Pi 4B 4GB",
+    "tags": [
+      "arm",
+      "linux"
+    ],
+    "notes": "",
+    "summary": "Quad-core Cortex-A72 single-board computer with 4GB RAM, dual micro-HDMI, USB3, Gigabit Ethernet.",
+    "specs": {
+      "SoC": "Broadcom BCM2711",
+      "CPU": "4× Cortex-A72 @ 1.5GHz",
+      "RAM": "4GB LPDDR4",
+      "GPIO": "40-pin",
+      "Power": "USB-C 5V/3A"
+    },
+    "sources": [
+      {
+        "title": "Raspberry Pi 4 product page",
+        "url": "https://www.raspberrypi.com/products/raspberry-pi-4-model-b/"
+      }
+    ],
+    "datasheetUrl": "",
+    "imageUrl": "",
+    "enriched": true,
+    "addedBy": "agent",
+    "name": "Raspberry Pi 4 Model B (4GB)"
+  },
+  {
+    "id": "a46a5650-519d-4d3b-ad7f-9658f1906ef8",
+    "createdAt": "2026-05-23T16:08:26.896Z",
+    "updatedAt": "2026-05-23T16:08:26.896Z",
+    "category": "microcontroller",
+    "quantity": 3,
+    "location": "Shelf A · bin 2",
+    "condition": "working",
+    "estimatedValue": 24,
+    "manufacturer": "Arduino",
+    "model": "Uno R3",
+    "tags": [
+      "avr",
+      "5v"
+    ],
+    "notes": "",
+    "summary": "ATmega328P 8-bit microcontroller board, 14 digital I/O, 6 analog inputs, 16MHz.",
+    "specs": {
+      "MCU": "ATmega328P",
+      "Flash": "32KB",
+      "Digital I/O": "14",
+      "Analog In": "6",
+      "Voltage": "5V"
+    },
+    "sources": [
+      {
+        "title": "Arduino Uno Rev3",
+        "url": "https://store.arduino.cc/products/arduino-uno-rev3"
+      }
+    ],
+    "datasheetUrl": "",
+    "imageUrl": "",
+    "enriched": true,
+    "addedBy": "agent",
+    "name": "Arduino Uno R3"
+  },
+  {
+    "id": "05f4426a-caa0-4481-95f9-09341d559a96",
+    "createdAt": "2026-05-23T16:08:26.896Z",
+    "updatedAt": "2026-05-23T16:08:26.896Z",
+    "category": "storage",
+    "quantity": 4,
+    "location": "Drawer B",
+    "condition": "untested",
+    "estimatedValue": 30,
+    "manufacturer": "Western Digital",
+    "model": "WD10SPZX",
+    "tags": [
+      "sata",
+      "2.5in"
+    ],
+    "notes": "",
+    "summary": "",
+    "specs": {},
+    "sources": [],
+    "datasheetUrl": "",
+    "imageUrl": "",
+    "enriched": false,
+    "addedBy": "manual",
+    "name": "WD Blue 1TB 2.5\" HDD"
+  },
+  {
+    "id": "878804f4-fe27-4958-b743-ac69df322756",
+    "createdAt": "2026-05-23T16:08:26.896Z",
+    "updatedAt": "2026-05-23T16:08:26.896Z",
+    "category": "component",
+    "quantity": 600,
+    "location": "Component box · row 3",
+    "condition": "working",
+    "estimatedValue": 0.02,
+    "manufacturer": "",
+    "model": "",
+    "tags": [
+      "resistor",
+      "through-hole"
+    ],
+    "notes": "",
+    "summary": "",
+    "specs": {},
+    "sources": [],
+    "datasheetUrl": "",
+    "imageUrl": "",
+    "enriched": false,
+    "addedBy": "manual",
+    "name": "Assorted 1/4W resistors (carbon film)"
+  },
+  {
+    "id": "bc15ca4b-c250-4c21-88a0-e3434878aee1",
+    "createdAt": "2026-05-23T16:08:26.896Z",
+    "updatedAt": "2026-05-23T16:08:26.896Z",
+    "category": "cable",
+    "quantity": 8,
+    "location": "Cable bag",
+    "condition": "working",
+    "estimatedValue": 4,
+    "manufacturer": "",
+    "model": "",
+    "tags": [],
+    "notes": "",
+    "summary": "",
+    "specs": {},
+    "sources": [],
+    "datasheetUrl": "",
+    "imageUrl": "",
+    "enriched": false,
+    "addedBy": "manual",
+    "name": "USB-C to USB-A 3.0 cable (1m)"
+  },
+  {
+    "id": "1d037f02-2d96-45b2-829b-b172593f97a0",
+    "createdAt": "2026-05-23T16:08:26.896Z",
+    "updatedAt": "2026-05-23T16:08:26.896Z",
+    "category": "laptop",
+    "quantity": 1,
+    "location": "Office desk",
+    "condition": "working",
+    "estimatedValue": 280,
+    "manufacturer": "Dell",
+    "model": "Latitude 7490",
+    "tags": [
+      "i7",
+      "16gb"
+    ],
+    "notes": "",
+    "summary": "",
+    "specs": {},
+    "sources": [],
+    "datasheetUrl": "",
+    "imageUrl": "",
+    "enriched": false,
+    "addedBy": "manual",
+    "name": "Dell Latitude 7490"
+  },
+  {
+    "id": "1853fbf2-80e1-4c27-be88-607d4d768ee9",
+    "createdAt": "2026-05-23T16:08:26.896Z",
+    "updatedAt": "2026-05-23T16:08:26.896Z",
+    "category": "battery",
+    "quantity": 12,
+    "location": "Battery case",
+    "condition": "partial",
+    "estimatedValue": 5,
+    "manufacturer": "",
+    "model": "",
+    "tags": [
+      "3.7v",
+      "rechargeable"
+    ],
+    "notes": "Mixed health — test before use.",
+    "summary": "",
+    "specs": {},
+    "sources": [],
+    "datasheetUrl": "",
+    "imageUrl": "",
+    "enriched": false,
+    "addedBy": "manual",
+    "name": "18650 Li-ion cells"
+  }
+]

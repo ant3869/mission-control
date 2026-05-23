@@ -52,6 +52,10 @@ const sessionChannels: Record<string, string> = {}
 // Track per-session state to detect new runs without requiring real-time tool events
 const sessionStartedAt: Record<string, number> = {}  // last known startedAt per session
 const toolSeen = new Set<string>()
+// Timestamp of the last real tool/message/thinking activity pushed. The poll's
+// generic "working" filler is suppressed for a few seconds after real activity
+// so live tool events (from session.message) aren't immediately overwritten.
+let lastActivityTs = 0
 const listeners = new Set<Listener>()
 const buffer: LiveEvent[] = []
 const pending = new Map<string, { resolve: (v: any) => void; reject: (e: any) => void; timer: NodeJS.Timeout }>()
@@ -135,21 +139,88 @@ function normalize(raw: any): LiveEvent | null {
       health: { eventLoop: p.eventLoop, channels: p.channels, channelLabels: p.channelLabels, agents: p.agents, sessions: p.sessions, ok: p.ok } }
   }
   if (/error|fail|exception/i.test(event)) return { ...base, kind: 'error', sub: deepText(p, ['message', 'error', 'reason', 'content']).slice(0, 160) }
-  // sessions.changed fires when a session completes — extract provider/surface for Watch status.
+  // sessions.changed fires on run start ("start") and finish ("end"). The
+  // provider/channel lives in NESTED fields (origin, deliveryContext,
+  // lastChannel), never at the top level — the old top-level lookup always
+  // came back empty, so the channel showed as a generic "session" instead of
+  // "from Discord".
   if (event === 'sessions.changed') {
-    const provider = String(p.provider ?? p.surface ?? p.channel ?? '').toLowerCase()
+    const provider = String(
+      p.origin?.provider ?? p.origin?.surface ??
+      p.deliveryContext?.channel ?? p.lastChannel ??
+      p.session?.origin?.provider ?? p.session?.lastChannel ??
+      p.provider ?? p.surface ?? p.channel ??
+      deepText(p, ['provider', 'surface', 'lastChannel', 'channel'])
+    ).toLowerCase()
     const phase    = String(p.phase ?? '')
     const direction: 'in' | 'out' = phase === 'end' ? 'out' : 'in'
     const channel  = provider.includes('discord') ? 'Discord'
       : provider.includes('slack') ? 'Slack'
       : provider.includes('telegram') ? 'Telegram'
+      : provider.includes('webchat') ? 'webchat'
       : provider
     if (channel) {
       return { ...base, kind: 'message',
         sub: phase === 'end' ? 'response sent' : 'message received',
         meta: { channel, direction } }
     }
-    return { ...base, kind: 'session', sub: String(p.phase ?? '').slice(0, 60) }
+    return { ...base, kind: 'session', sub: phase.slice(0, 60) }
+  }
+  // session.message is the gateway's REAL-TIME per-message stream. Its
+  // message.content carries the live block list — including toolCall blocks
+  // mid-run — which is the only real-time source of tool activity (there are
+  // no separate "tool" events). Parse the blocks so the card shows the actual
+  // tool live, instead of a stale label from the after-run history scan.
+  if (event === 'session.message') {
+    const msg = p.message ?? {}
+    const role = String(msg.role ?? '').toLowerCase()
+    const blocks: any[] = Array.isArray(msg.content) ? msg.content : []
+    const provider = String(
+      p.origin?.provider ?? p.deliveryContext?.channel ?? p.lastChannel ??
+      p.session?.origin?.provider ?? ''
+    ).toLowerCase()
+    const channel = provider.includes('discord') ? 'Discord'
+      : provider.includes('slack') ? 'Slack'
+      : provider.includes('telegram') ? 'Telegram'
+      : provider.includes('webchat') ? 'webchat'
+      : provider
+    const msgTs = Number(msg.timestamp ?? p.updatedAt ?? 0)
+    const ts2 = msgTs > 0 ? new Date(msgTs).toISOString() : base.ts
+
+    // Tool call mid-run — the signal we actually want surfaced live.
+    const toolBlock = blocks.find((b: any) => b?.type === 'toolCall' || b?.type === 'tool_use' || b?.type === 'toolUse')
+    if (toolBlock) {
+      const toolName = String(toolBlock.name ?? toolBlock.tool ?? 'tool').toLowerCase()
+      const inp = toolBlock.arguments ?? toolBlock.input ?? {}
+      const toolInput = (typeof inp === 'string' ? inp
+        : String(inp.command ?? inp.file_path ?? inp.path ?? inp.url ?? inp.query ??
+                 inp.pattern ?? inp.description ?? inp.content?.slice?.(0, 80) ??
+                 Object.values(inp as object)[0] ?? '')).slice(0, 200)
+      return { ...base, ts: ts2, kind: 'tool', title: 'tool call', sub: toolName,
+        meta: { tool: toolName, toolInput } }
+    }
+
+    // Assistant final text reply → outgoing message.
+    const textBlock = blocks.find((b: any) => b?.type === 'text' && typeof b?.text === 'string' && b.text.trim())
+    if (role === 'assistant' && textBlock) {
+      return { ...base, ts: ts2, kind: 'message', title: 'outgoing message',
+        sub: textBlock.text.trim().slice(0, 160), meta: { channel, direction: 'out' } }
+    }
+
+    // Incoming user message.
+    if (role === 'user') {
+      const text = typeof msg.content === 'string' ? msg.content : (textBlock?.text ?? '')
+      return { ...base, ts: ts2, kind: 'message', title: 'incoming message',
+        sub: String(text).slice(0, 160), meta: { channel, direction: 'in' } }
+    }
+
+    // Assistant reasoning only — soft "thinking" status keeps the card alive
+    // and informative during long model turns that haven't emitted a tool yet.
+    if (blocks.some((b: any) => b?.type === 'thinking')) {
+      return { ...base, ts: ts2, kind: 'session', event: 'session.thinking',
+        sub: 'thinking', meta: { channel, direction: 'in' } }
+    }
+    return null
   }
   if (/message|chat/i.test(event)) {
     const channel   = String(p.channelId ?? p.channel ?? p.to ?? p.source ?? p.platform ?? '')
@@ -179,6 +250,9 @@ function normalize(raw: any): LiveEvent | null {
 }
 
 function push(e: LiveEvent) {
+  if (e.kind === 'tool' || e.kind === 'message' || e.kind === 'cron' || e.event === 'session.thinking') {
+    lastActivityTs = Date.now()
+  }
   buffer.push(e)
   if (buffer.length > BUFFER_MAX) buffer.shift()
   for (const fn of listeners) { try { fn(e) } catch { /* ignore */ } }
@@ -234,92 +308,36 @@ async function pollSessionActivity() {
         if (prevStartedAt === 0) sessionStartedAt[k] = startedAt // just bootstrapping
       }
 
-      // ── Session was active within last 60s: show it as working ───────────
-      const updatedAt = Number(s.updatedAt ?? 0)
-      const updatedAgeMs = updatedAt ? Date.now() - updatedAt : Infinity
-      if (updatedAgeMs < 60_000 && startedAt) {
-        const runAgeMs = Date.now() - startedAt
-        if (runAgeMs < 60_000) {
-          const activeSig = `${k}:active:${startedAt}`
-          if (!toolSeen.has(activeSig)) {
-            toolSeen.add(activeSig)
-            console.log(`[Watch] active run on ${k} (${Math.round(runAgeMs / 1000)}s ago)`)
-            push({ seq: ++seq, ts: new Date(startedAt).toISOString(), event: 'session.active',
-              kind: 'session', title: 'active run', sub: 'running',
-              sessionKey: k, meta: { channel, direction: 'in' } })
-          }
+      // ── Run is in progress right now: keep the card "live" ───────────────
+      // The gateway tells us directly via status:"running" / hasActiveRun —
+      // far more reliable than reverse-engineering activity from timestamp
+      // deltas. Runs routinely last minutes, so the old "started <60s ago"
+      // window silently missed almost every active run.
+      const isRunning = /running/i.test(String(s.status ?? '')) || s.hasActiveRun === true
+      if (isRunning) {
+        const activeSig = `${k}:active:${startedAt}`
+        if (!toolSeen.has(activeSig)) {
+          toolSeen.add(activeSig)
+          if (toolSeen.size > 800) toolSeen.clear()
+          console.log(`[Watch] active run on ${k} — channel: ${channel}`)
+        }
+        // Generic "working" filler — only when no real tool/message/thinking
+        // activity has streamed in the last 5s. Live session.message events are
+        // richer (the actual tool), so we let them win and only fill the gaps
+        // (e.g. a long model call before the first tool). Fresh ts each tick
+        // (3s < the UI's 8s "live" window) keeps the card live through the run.
+        if (Date.now() - lastActivityTs > 5_000) {
+          push({ seq: ++seq, ts: new Date().toISOString(), event: 'session.active',
+            kind: 'session', title: 'active run', sub: 'running',
+            sessionKey: k, meta: { channel, direction: 'in' } })
         }
       }
     }
-
-    // ── 2. After-run history scan ─────────────────────────────────────────────
-    // Call chat.history for recently-updated sessions to capture the last tool
-    // used AFTER a run completes. Throttled to once per session per 6s.
-    if (Date.now() - sessRefreshAt > 6_000) {
-      sessRefreshAt = Date.now()
-      for (const sid of activeSessionIds.slice(0, 2)) {
-        try {
-          const hist = await request('chat.history', { sessionKey: sid, limit: 50, maxChars: 80_000 }, 8000)
-          const messages: any[] = Array.isArray(hist) ? hist
-            : (hist?.messages ?? hist?.history ?? hist?.entries ?? [])
-
-          for (const msg of messages) {
-            const msgTs = (() => {
-              const d = new Date(msg.ts ?? msg.timestamp ?? msg.created_at ?? '')
-              return isNaN(d.getTime()) ? new Date().toISOString() : d.toISOString()
-            })()
-            const msgId = msg.__openclaw?.id ?? msg.idempotencyKey ?? msg.id ?? msgTs
-            const content = msg.content ?? msg.body ?? ''
-            const blocks: any[] = Array.isArray(content) ? content : []
-            const msgAgeMs = Date.now() - new Date(msgTs).getTime()
-            const isRecent = msgAgeMs < 300_000 // within 5 minutes
-
-            // Tool call blocks
-            for (let bi = 0; bi < blocks.length; bi++) {
-              const b = blocks[bi]
-              if (b?.type !== 'toolCall' && b?.type !== 'tool_use' && b?.type !== 'toolUse') continue
-              const name = String(b.name ?? b.tool ?? 'tool').toLowerCase()
-              const sig = `${sid}:tool:${b.id ?? `${msgId}:${bi}`}`
-              if (toolSeen.has(sig)) continue
-              toolSeen.add(sig)
-              if (toolSeen.size > 800) toolSeen.clear()
-              if (!isRecent) continue
-              const inp = b.input ?? b.arguments ?? {}
-              const toolInput = String(
-                inp?.command ?? inp?.file_path ?? inp?.path ?? inp?.url ??
-                inp?.query ?? inp?.description ?? inp?.content?.slice?.(0, 80) ??
-                (typeof inp === 'string' ? inp : '') ?? ''
-              ).slice(0, 200)
-              console.log(`[Watch] tool → ${name}: ${toolInput.slice(0, 60)}`)
-              push({ seq: ++seq, ts: new Date(msgTs).toISOString(), event: 'tool', kind: 'tool',
-                title: 'tool call', sub: name, sessionKey: sid, meta: { tool: name, toolInput } })
-            }
-
-            // Assistant text reply (completed turn)
-            const isAssistant = /^(assistant|agent|bot)$/i.test(String(msg.role ?? ''))
-            const hasText = blocks.some((b: any) => b?.type === 'text' && b?.text?.trim())
-              || (blocks.length === 0 && typeof content === 'string' && content.trim())
-            const hasToolCall = blocks.some((b: any) =>
-              b?.type === 'toolCall' || b?.type === 'tool_use' || b?.type === 'toolUse')
-            if (isAssistant && hasText && !hasToolCall) {
-              const sig = `${sid}:msg-out:${msgId}`
-              if (!toolSeen.has(sig)) {
-                toolSeen.add(sig)
-                if (isRecent) {
-                  const ch = String(msg.channelId ?? msg.channel ?? '') || (sessionChannels[sid] ?? '')
-                  const text = blocks.find((b: any) => b?.type === 'text')?.text
-                    ?? (typeof content === 'string' ? content : '')
-                  console.log(`[Watch] reply → ${String(text).slice(0, 60)}`)
-                  push({ seq: ++seq, ts: new Date(msgTs).toISOString(), event: 'message.sent',
-                    kind: 'message', title: 'outgoing message',
-                    sub: String(text).slice(0, 160), sessionKey: sid, meta: { ch, direction: 'out' } as any })
-                }
-              }
-            }
-          }
-        } catch { /* session unavailable */ }
-      }
-    }
+    // NOTE: the old chat.history "after-run scan" was removed. It only committed
+    // AFTER a turn finished, so its tool labels arrived stale (rendered as
+    // "Claw WAS using …", dimmed) and duplicated what the live session.message
+    // stream now surfaces in real time. session.message is the source of truth
+    // for tools + replies; sessions.list here is only for run/channel detection.
   } catch { /* sessions.list rpc failed */ }
 }
 

@@ -1,218 +1,430 @@
-import { useState, useEffect } from 'react'
-import { AlertCircle, Plus, TrendingDown, Package } from 'lucide-react'
-import type { InventoryItem, InventoryStat } from '../types'
+import { useState, useEffect, useCallback } from 'react'
+import { clsx } from 'clsx'
+import {
+  Boxes, Plus, Minus, Search, RefreshCw, X, Trash2, Pencil, ExternalLink,
+  MapPin, DollarSign, Hash, Bot, FileText, AlertCircle, Layers, Sparkles, Save,
+} from 'lucide-react'
+import { inventory as invApi, type InventoryItem, type InventoryStats, type InventoryBody } from '../lib/api'
+
+// ─── Category & condition metadata ────────────────────────────────────────────
+
+const CATEGORY_META: Record<string, { label: string; icon: string }> = {
+  computer:        { label: 'Computer',        icon: '🖥️' },
+  laptop:          { label: 'Laptop',          icon: '💻' },
+  sbc:             { label: 'SBC',             icon: '🍓' },
+  microcontroller: { label: 'Microcontroller', icon: '🔌' },
+  storage:         { label: 'Storage',         icon: '💾' },
+  battery:         { label: 'Battery',         icon: '🔋' },
+  power:           { label: 'Power',           icon: '⚡' },
+  console:         { label: 'Console',         icon: '🎮' },
+  peripheral:      { label: 'Peripheral',      icon: '⌨️' },
+  cable:           { label: 'Cable',           icon: '🔗' },
+  component:       { label: 'Component',       icon: '🧩' },
+  sensor:          { label: 'Sensor',          icon: '📡' },
+  network:         { label: 'Network',         icon: '🌐' },
+  tool:            { label: 'Tool',            icon: '🛠️' },
+  other:           { label: 'Other',           icon: '📦' },
+}
+const catMeta = (c: string) => CATEGORY_META[c] ?? { label: c || 'Other', icon: '📦' }
+
+const COND_META: Record<string, { label: string; cls: string }> = {
+  working: { label: 'Working',  cls: 'text-green-400 bg-green-950/40 border-green-900/40' },
+  untested:{ label: 'Untested', cls: 'text-amber-300 bg-amber-950/40 border-amber-900/40' },
+  partial: { label: 'Partial',  cls: 'text-orange-300 bg-orange-950/40 border-orange-900/40' },
+  broken:  { label: 'Broken',   cls: 'text-red-400 bg-red-950/40 border-red-900/40' },
+  unknown: { label: 'Unknown',  cls: 'text-text-muted bg-base border-border' },
+}
+const condMeta = (c: string) => COND_META[c] ?? COND_META.unknown
+
+function money(n: number): string {
+  if (!n) return '$0'
+  return `$${n.toLocaleString(undefined, { maximumFractionDigits: n < 1 ? 2 : 0 })}`
+}
+
+// ─── Stat card ─────────────────────────────────────────────────────────────────
+
+function Stat({ label, value, icon, tone }: { label: string; value: string; icon: React.ReactNode; tone?: string }) {
+  return (
+    <div className="flex flex-col gap-1.5 rounded-xl border border-border bg-card p-4">
+      <div className="flex items-center gap-1.5 text-text-muted"><span className={tone}>{icon}</span><span className="text-xxs uppercase tracking-wide">{label}</span></div>
+      <span className={clsx('text-xl font-semibold tabular-nums', tone ?? 'text-text-primary')}>{value}</span>
+    </div>
+  )
+}
+
+// ─── Item row ──────────────────────────────────────────────────────────────────
+
+function ItemRow({ item, active, onClick }: { item: InventoryItem; active: boolean; onClick: () => void }) {
+  const cm = catMeta(item.category)
+  const cond = condMeta(item.condition)
+  return (
+    <button onClick={onClick} className={clsx('flex items-center gap-3 px-3 py-2.5 text-left transition-colors w-full', active ? 'bg-card-hover' : 'bg-card hover:bg-card-hover')}>
+      <span className="text-lg shrink-0 w-7 text-center">{cm.icon}</span>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-1.5">
+          <p className="text-xs font-medium text-text-primary truncate">{item.name}</p>
+          {item.enriched && <Sparkles size={10} className="text-violet-400 shrink-0" />}
+        </div>
+        <p className="text-xxs text-text-muted truncate">
+          {[cm.label, item.manufacturer && `${item.manufacturer}${item.model ? ` ${item.model}` : ''}`, item.location].filter(Boolean).join(' · ')}
+        </p>
+      </div>
+      <span className={clsx('shrink-0 px-1.5 py-0.5 rounded border text-xxs', cond.cls)}>{cond.label}</span>
+      <span className="shrink-0 text-xs font-semibold tabular-nums text-text-secondary w-10 text-right">×{item.quantity}</span>
+      <span className="shrink-0 text-xs tabular-nums text-text-muted w-16 text-right">{money(item.totalValue)}</span>
+    </button>
+  )
+}
+
+// ─── Detail drawer ─────────────────────────────────────────────────────────────
+
+function DetailDrawer({ item, onClose, onEdit, onDelete, onQty, onResearch }: {
+  item: InventoryItem; onClose: () => void; onEdit: () => void; onDelete: () => void; onQty: (delta: number) => void; onResearch: () => void
+}) {
+  const cm = catMeta(item.category)
+  const cond = condMeta(item.condition)
+  const specEntries = Object.entries(item.specs ?? {})
+  const researching = item.researchStatus === 'pending'
+  return (
+    <div className="flex flex-col h-full w-[400px] min-w-[400px] border-l border-border bg-surface overflow-y-auto">
+      <div className="flex items-start justify-between px-5 py-4 border-b border-border shrink-0">
+        <div className="flex items-start gap-2.5 min-w-0">
+          <span className="text-2xl leading-none">{cm.icon}</span>
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-text-primary">{item.name}</p>
+            <p className="text-xxs text-text-muted mt-0.5">{cm.label}{item.manufacturer ? ` · ${item.manufacturer}${item.model ? ` ${item.model}` : ''}` : ''}</p>
+          </div>
+        </div>
+        <button onClick={onClose} className="p-1 rounded hover:bg-card text-text-muted hover:text-text-primary shrink-0"><X size={15} /></button>
+      </div>
+
+      <div className="flex flex-col gap-4 p-5">
+        {item.imageUrl && <img src={item.imageUrl} alt={item.name} className="w-full max-h-40 object-contain rounded-lg border border-border bg-base" />}
+
+        {/* quantity + key stats */}
+        <div className="grid grid-cols-2 gap-2">
+          <div className="flex flex-col gap-1 rounded-lg bg-base border border-border px-3 py-2">
+            <span className="text-xxs text-text-muted">Quantity</span>
+            <div className="flex items-center gap-2">
+              <button onClick={() => onQty(-1)} disabled={item.quantity <= 0} className="p-0.5 rounded border border-border hover:bg-card text-text-muted hover:text-text-primary disabled:opacity-30"><Minus size={12} /></button>
+              <span className="text-sm font-semibold tabular-nums text-text-primary w-8 text-center">{item.quantity}</span>
+              <button onClick={() => onQty(1)} className="p-0.5 rounded border border-border hover:bg-card text-text-muted hover:text-text-primary"><Plus size={12} /></button>
+            </div>
+          </div>
+          <div className="flex flex-col gap-1 rounded-lg bg-base border border-border px-3 py-2">
+            <span className="text-xxs text-text-muted">Est. value</span>
+            <span className="text-sm font-semibold tabular-nums text-text-primary">{money(item.totalValue)}</span>
+            <span className="text-xxs text-text-muted">{money(item.estimatedValue)} each</span>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap gap-2 text-xxs">
+          <span className={clsx('px-1.5 py-0.5 rounded border', cond.cls)}>{cond.label}</span>
+          {item.location && <span className="flex items-center gap-1 px-1.5 py-0.5 rounded border border-border bg-base text-text-secondary"><MapPin size={10} />{item.location}</span>}
+          {item.tags.map(t => <span key={t} className="px-1.5 py-0.5 rounded border border-border bg-base text-text-muted">#{t}</span>)}
+        </div>
+
+        {/* agent spec sheet */}
+        {item.summary && (
+          <div>
+            <p className="text-xxs font-semibold uppercase tracking-wide text-text-muted mb-1.5 flex items-center gap-1"><Sparkles size={11} className="text-violet-400" /> Summary</p>
+            <p className="text-xs text-text-secondary leading-relaxed">{item.summary}</p>
+          </div>
+        )}
+        {specEntries.length > 0 && (
+          <div>
+            <p className="text-xxs font-semibold uppercase tracking-wide text-text-muted mb-1.5">Specifications</p>
+            <div className="flex flex-col rounded-lg border border-border overflow-hidden">
+              {specEntries.map(([k, v], i) => (
+                <div key={k} className={clsx('flex gap-2 px-3 py-1.5 text-xxs', i % 2 ? 'bg-base' : 'bg-card')}>
+                  <span className="text-text-muted w-28 shrink-0">{k}</span>
+                  <span className="text-text-secondary break-words">{v}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        {item.notes && (
+          <div>
+            <p className="text-xxs font-semibold uppercase tracking-wide text-text-muted mb-1.5">Notes</p>
+            <p className="text-xs text-text-secondary leading-relaxed whitespace-pre-wrap">{item.notes}</p>
+          </div>
+        )}
+        {(item.sources.length > 0 || item.datasheetUrl) && (
+          <div>
+            <p className="text-xxs font-semibold uppercase tracking-wide text-text-muted mb-1.5">Sources</p>
+            <div className="flex flex-col gap-1">
+              {item.datasheetUrl && <a href={item.datasheetUrl} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 text-xxs text-accent-blue hover:underline"><FileText size={11} /> Datasheet</a>}
+              {item.sources.map((s, i) => <a key={i} href={s.url} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 text-xxs text-accent-blue hover:underline truncate"><ExternalLink size={11} className="shrink-0" /> {s.title || s.url}</a>)}
+            </div>
+          </div>
+        )}
+
+        <div className="flex items-center gap-2 pt-1 text-xxs text-text-muted">
+          <Bot size={11} /> added by {item.addedBy || 'manual'} · updated {item.updatedAgo}
+        </div>
+
+        {/* Agent research */}
+        <div className="rounded-lg border border-violet-900/30 bg-violet-950/15 p-3">
+          {researching ? (
+            <div className="flex items-center gap-2 text-xs text-violet-200">
+              <RefreshCw size={13} className="animate-spin text-violet-400" /> Agent is researching… (~1–2 min, keep this open)
+            </div>
+          ) : (
+            <button onClick={onResearch} className="flex items-center gap-2 text-xs text-violet-200 hover:text-violet-100 w-full">
+              <Sparkles size={13} className="text-violet-400" />
+              {item.enriched ? 'Re-research with agent' : 'Ask agent to research & fill details'}
+            </button>
+          )}
+          {item.researchStatus === 'failed' && item.researchError && (
+            <p className="text-xxs text-red-400 mt-1.5">Research failed: {item.researchError}</p>
+          )}
+        </div>
+
+        <div className="flex items-center gap-2 pt-2 border-t border-border">
+          <button onClick={onEdit} className="flex items-center gap-1.5 px-3 py-1.5 rounded border border-border bg-card hover:bg-card-hover text-text-secondary hover:text-text-primary text-xs"><Pencil size={12} /> Edit</button>
+          <button onClick={onDelete} className="flex items-center gap-1.5 px-3 py-1.5 rounded border border-red-900/40 bg-red-950/20 text-red-400 hover:bg-red-950/40 text-xs"><Trash2 size={12} /> Delete</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Add/Edit form modal ───────────────────────────────────────────────────────
+
+function ItemForm({ initial, categories, conditions, onSave, onClose }: {
+  initial: InventoryItem | null; categories: string[]; conditions: string[]
+  onSave: (body: InventoryBody) => Promise<void>; onClose: () => void
+}) {
+  const [f, setF] = useState({
+    name: initial?.name ?? '', category: initial?.category ?? 'other', quantity: String(initial?.quantity ?? 1),
+    condition: initial?.condition ?? 'unknown', location: initial?.location ?? '', estimatedValue: String(initial?.estimatedValue ?? 0),
+    manufacturer: initial?.manufacturer ?? '', model: initial?.model ?? '', tags: (initial?.tags ?? []).join(', '),
+    summary: initial?.summary ?? '', notes: initial?.notes ?? '',
+  })
+  const [saving, setSaving] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+  const set = (k: keyof typeof f) => (e: React.ChangeEvent<any>) => setF(p => ({ ...p, [k]: e.target.value }))
+
+  const submit = async () => {
+    if (!f.name.trim()) { setErr('Name is required'); return }
+    setSaving(true); setErr(null)
+    try {
+      await onSave({
+        name: f.name.trim(), category: f.category, quantity: Number(f.quantity) || 0, condition: f.condition,
+        location: f.location.trim(), estimatedValue: Number(f.estimatedValue) || 0,
+        manufacturer: f.manufacturer.trim(), model: f.model.trim(),
+        tags: f.tags.split(',').map(t => t.trim()).filter(Boolean), summary: f.summary.trim(), notes: f.notes.trim(),
+      })
+    } catch (e: any) { setErr(e.message ?? 'Save failed'); setSaving(false) }
+  }
+
+  const input = 'w-full px-2.5 py-1.5 rounded-lg bg-base border border-border text-xs text-text-primary placeholder:text-text-muted outline-none focus:border-accent-blue/50'
+  return (
+    <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
+      <div className="w-full max-w-lg max-h-full overflow-y-auto rounded-xl border border-border bg-surface p-5" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-sm font-semibold text-text-primary">{initial ? 'Edit item' : 'Add item'}</h2>
+          <button onClick={onClose} className="p-1 rounded hover:bg-card text-text-muted hover:text-text-primary"><X size={15} /></button>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <label className="col-span-2 flex flex-col gap-1"><span className="text-xxs text-text-muted">Name *</span><input className={input} value={f.name} onChange={set('name')} placeholder="e.g. Raspberry Pi 4 Model B" autoFocus /></label>
+          <label className="flex flex-col gap-1"><span className="text-xxs text-text-muted">Category</span>
+            <select className={input} value={f.category} onChange={set('category')}>{categories.map(c => <option key={c} value={c}>{catMeta(c).icon} {catMeta(c).label}</option>)}</select></label>
+          <label className="flex flex-col gap-1"><span className="text-xxs text-text-muted">Condition</span>
+            <select className={input} value={f.condition} onChange={set('condition')}>{conditions.map(c => <option key={c} value={c}>{condMeta(c).label}</option>)}</select></label>
+          <label className="flex flex-col gap-1"><span className="text-xxs text-text-muted">Quantity</span><input type="number" min={0} className={input} value={f.quantity} onChange={set('quantity')} /></label>
+          <label className="flex flex-col gap-1"><span className="text-xxs text-text-muted">Est. value (each, USD)</span><input type="number" min={0} step="0.01" className={input} value={f.estimatedValue} onChange={set('estimatedValue')} /></label>
+          <label className="flex flex-col gap-1"><span className="text-xxs text-text-muted">Manufacturer</span><input className={input} value={f.manufacturer} onChange={set('manufacturer')} /></label>
+          <label className="flex flex-col gap-1"><span className="text-xxs text-text-muted">Model</span><input className={input} value={f.model} onChange={set('model')} /></label>
+          <label className="col-span-2 flex flex-col gap-1"><span className="text-xxs text-text-muted">Location</span><input className={input} value={f.location} onChange={set('location')} placeholder="e.g. Shelf A · bin 1" /></label>
+          <label className="col-span-2 flex flex-col gap-1"><span className="text-xxs text-text-muted">Tags (comma separated)</span><input className={input} value={f.tags} onChange={set('tags')} placeholder="arm, linux, 5v" /></label>
+          <label className="col-span-2 flex flex-col gap-1"><span className="text-xxs text-text-muted">Summary</span><textarea className={clsx(input, 'resize-none h-14')} value={f.summary} onChange={set('summary')} placeholder="Short overview (agents usually fill this)" /></label>
+          <label className="col-span-2 flex flex-col gap-1"><span className="text-xxs text-text-muted">Notes</span><textarea className={clsx(input, 'resize-none h-14')} value={f.notes} onChange={set('notes')} /></label>
+        </div>
+        {err && <p className="text-xxs text-red-400 mt-2">{err}</p>}
+        <div className="flex items-center gap-2 mt-4">
+          <button onClick={submit} disabled={saving} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-accent-blue/40 bg-accent-blue/15 text-accent-blue hover:bg-accent-blue/25 text-xs font-medium"><Save size={12} /> {initial ? 'Save changes' : 'Add item'}</button>
+          <button onClick={onClose} className="px-3 py-1.5 rounded-lg border border-border bg-card hover:bg-card-hover text-text-secondary text-xs">Cancel</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Agent hint ────────────────────────────────────────────────────────────────
+
+function AgentHint() {
+  const [open, setOpen] = useState(false)
+  return (
+    <div className="rounded-lg border border-violet-900/30 bg-violet-950/15 overflow-hidden">
+      <button onClick={() => setOpen(o => !o)} className="flex items-center gap-2 w-full px-3 py-2 text-left">
+        <Bot size={13} className="text-violet-400 shrink-0" />
+        <span className="text-xs text-violet-200">Let an agent fill this in</span>
+        <span className="ml-auto text-xxs text-text-muted">{open ? 'hide' : 'how'}</span>
+      </button>
+      {open && (
+        <div className="px-3 pb-3 text-xxs text-text-secondary leading-relaxed space-y-1.5">
+          <p>Tell your OpenClaw/Hermes agent what you counted — it can research each item online and write it here via the API:</p>
+          <pre className="bg-base border border-border rounded p-2 overflow-x-auto text-text-muted">POST /api/inventory   {`{ name, category, quantity, location,
+  manufacturer, model, condition, estimatedValue,
+  summary, specs:{...}, sources:[{title,url}], datasheetUrl }`}</pre>
+          <p>Agents can read everything on hand at <code className="text-accent-blue">GET /api/inventory/context</code> (plain text) and see the field schema at <code className="text-accent-blue">GET /api/inventory/schema</code> — so they know exactly what you have for project ideas, recipes, and troubleshooting.</p>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Main view ─────────────────────────────────────────────────────────────────
 
 export function Inventory() {
-  const [items, setItems] = useState<InventoryItem[]>([])
-  const [stats, setStats] = useState<InventoryStat | null>(null)
+  const [items, setItems]     = useState<InventoryItem[]>([])
+  const [stats, setStats]     = useState<InventoryStats | null>(null)
+  const [categories, setCategories] = useState<string[]>([])
+  const [conditions, setConditions] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
-  const [filter, setFilter] = useState<'all' | 'low' | 'out-of-stock'>('all')
-  const [search, setSearch] = useState('')
+  const [error, setError]     = useState<string | null>(null)
+  const [search, setSearch]   = useState('')
+  const [catFilter, setCatFilter] = useState<string>('all')
+  const [condFilter, setCondFilter] = useState<string>('all')
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [editing, setEditing] = useState<InventoryItem | null | 'new'>(null)
 
-  useEffect(() => {
-    fetchInventory()
-  }, [])
-
-  const fetchInventory = async () => {
+  const load = useCallback(async () => {
+    setLoading(true); setError(null)
     try {
-      const [itemsRes, statsRes] = await Promise.all([
-        fetch('/api/inventory/items'),
-        fetch('/api/inventory/stats'),
-      ])
-      
-      const itemsData = await itemsRes.json()
-      const statsData = await statsRes.json()
-      
-      setItems(itemsData)
-      setStats(statsData)
-    } catch (err) {
-      console.error('Failed to fetch inventory:', err)
-    } finally {
-      setLoading(false)
-    }
-  }
+      const d = await invApi.list()
+      setItems(d.items); setStats(d.stats); setCategories(d.categories); setConditions(d.conditions)
+    } catch (e: any) { setError(e.message ?? 'Failed to load inventory') }
+    finally { setLoading(false) }
+  }, [])
+  useEffect(() => { load() }, [load])
 
-  const filteredItems = items.filter(item => {
-    const matchesFilter = 
-      filter === 'all' ||
-      (filter === 'low' && item.status === 'low') ||
-      (filter === 'out-of-stock' && item.status === 'out-of-stock')
-    
-    const matchesSearch = 
-      item.name.toLowerCase().includes(search.toLowerCase()) ||
-      item.sku.toLowerCase().includes(search.toLowerCase())
-    
-    return matchesFilter && matchesSearch
+  const filtered = items.filter(it => {
+    if (catFilter !== 'all' && it.category !== catFilter) return false
+    if (condFilter !== 'all' && it.condition !== condFilter) return false
+    if (search.trim()) {
+      const q = search.toLowerCase()
+      if (![it.name, it.manufacturer, it.model, it.location, it.summary, it.tags.join(' '), catMeta(it.category).label].join(' ').toLowerCase().includes(q)) return false
+    }
+    return true
   })
+  const selected = items.find(i => i.id === selectedId) ?? null
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'in-stock':
-        return 'text-green-400'
-      case 'low':
-        return 'text-amber-400'
-      case 'out-of-stock':
-        return 'text-red-400'
-      default:
-        return 'text-slate-400'
-    }
+  const saveItem = async (body: InventoryBody) => {
+    if (editing && editing !== 'new') { const { item } = await invApi.update(editing.id, body); setSelectedId(item.id) }
+    else { const { item } = await invApi.create(body); setSelectedId(item.id) }
+    setEditing(null)
+    await load()
+  }
+  const adjustQty = async (it: InventoryItem, delta: number) => {
+    const q = Math.max(0, it.quantity + delta)
+    await invApi.update(it.id, { name: it.name, quantity: q } as InventoryBody)
+    await load()
+  }
+  const removeItem = async (it: InventoryItem) => {
+    if (!confirm(`Delete "${it.name}"?`)) return
+    await invApi.remove(it.id); setSelectedId(null); await load()
+  }
+  const research = async (it: InventoryItem) => {
+    setError(null)
+    try {
+      await invApi.research(it.id)
+      await load()
+      // poll until the agent finishes (or ~4 min)
+      let n = 0
+      const timer = setInterval(async () => {
+        n++
+        try {
+          const { item } = await invApi.get(it.id)
+          setItems(prev => prev.map(x => (x.id === it.id ? item : x)))
+          if (item.researchStatus !== 'pending' || n > 60) { clearInterval(timer); load() }
+        } catch { if (n > 60) clearInterval(timer) }
+      }, 4000)
+    } catch (e: any) { setError(e.message ?? 'Could not start research') }
   }
 
-  const getConditionBg = (condition?: string) => {
-    switch (condition) {
-      case 'new':
-        return 'bg-green-900/30 text-green-300'
-      case 'good':
-        return 'bg-blue-900/30 text-blue-300'
-      case 'fair':
-        return 'bg-amber-900/30 text-amber-300'
-      case 'poor':
-        return 'bg-red-900/30 text-red-300'
-      case 'broken':
-        return 'bg-slate-900/30 text-slate-300'
-      default:
-        return 'bg-slate-800/30 text-slate-400'
-    }
-  }
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-full">
-        <div className="animate-spin rounded-full h-12 w-12 border border-violet-500 border-t-transparent" />
-      </div>
-    )
-  }
+  const catCounts = stats?.byCategory ?? []
 
   return (
-    <div className="flex flex-col h-full overflow-hidden bg-gradient-to-b from-slate-950 to-slate-900">
-      {/* Header */}
-      <div className="p-4 border-b border-slate-800">
-        <div className="flex items-center justify-between mb-4">
+    <div className="flex h-full overflow-hidden relative">
+      <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-border shrink-0">
+          <div>
+            <h1 className="text-base font-semibold text-text-primary flex items-center gap-2"><Boxes size={16} className="text-text-muted" /> Inventory</h1>
+            {stats && <p className="text-xs text-text-muted mt-0.5">{stats.totalItems} items · {stats.totalQuantity.toLocaleString()} units · ~{money(stats.totalValue)} est. value</p>}
+          </div>
           <div className="flex items-center gap-2">
-            <Package className="w-5 h-5 text-violet-400" />
-            <h2 className="text-lg font-semibold text-slate-100">Inventory</h2>
+            <button onClick={load} disabled={loading} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded border border-border bg-card hover:bg-card-hover text-text-secondary hover:text-text-primary text-xs"><RefreshCw size={11} className={loading ? 'animate-spin' : ''} /></button>
+            <button onClick={() => setEditing('new')} className="flex items-center gap-1.5 px-3 py-1.5 rounded border border-accent-blue/40 bg-accent-blue/15 text-accent-blue hover:bg-accent-blue/25 text-xs font-medium"><Plus size={13} /> Add item</button>
           </div>
-          <button className="px-3 py-1 bg-violet-600 hover:bg-violet-700 rounded text-sm text-white flex items-center gap-2 transition">
-            <Plus className="w-4 h-4" />
-            Add Item
-          </button>
         </div>
 
-        {/* Stats */}
-        {stats && (
-          <div className="grid grid-cols-4 gap-3 mb-4">
-            <div className="bg-slate-800/50 rounded p-3">
-              <div className="text-xs text-slate-400 mb-1">Total Items</div>
-              <div className="text-lg font-bold text-slate-100">{stats.totalItems}</div>
+        <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-5">
+          {/* Stats */}
+          {stats && (
+            <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
+              <Stat label="Items" value={String(stats.totalItems)} icon={<Hash size={12} />} />
+              <Stat label="Total units" value={stats.totalQuantity.toLocaleString()} icon={<Layers size={12} />} />
+              <Stat label="Est. value" value={money(stats.totalValue)} icon={<DollarSign size={12} />} tone="text-green-400" />
+              <Stat label="Categories" value={String(stats.byCategory.length)} icon={<Boxes size={12} />} />
+              <Stat label="Working" value={String(stats.byCondition.working ?? 0)} icon={<Sparkles size={12} />} tone="text-green-400" />
+              <Stat label="Needs detail" value={String(stats.totalItems - stats.enrichedCount)} icon={<Bot size={12} />} tone={(stats.totalItems - stats.enrichedCount) > 0 ? 'text-amber-300' : undefined} />
             </div>
-            <div className="bg-slate-800/50 rounded p-3">
-              <div className="text-xs text-slate-400 mb-1">Total Value</div>
-              <div className="text-lg font-bold text-slate-100">${stats.totalValue.toLocaleString()}</div>
+          )}
+
+          <AgentHint />
+
+          {/* Toolbar */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="relative flex-1 min-w-[180px]">
+              <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-muted" />
+              <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search items, specs, tags…" className="w-full pl-7 pr-3 py-1.5 rounded-lg bg-base border border-border text-xs text-text-primary placeholder:text-text-muted outline-none focus:border-border" />
             </div>
-            <div className="bg-amber-900/30 rounded p-3 border border-amber-700/50">
-              <div className="text-xs text-amber-300 mb-1">Low Stock</div>
-              <div className="text-lg font-bold text-amber-200">{stats.lowStockCount}</div>
-            </div>
-            <div className="bg-red-900/30 rounded p-3 border border-red-700/50">
-              <div className="text-xs text-red-300 mb-1">Out of Stock</div>
-              <div className="text-lg font-bold text-red-200">{stats.outOfStockCount}</div>
-            </div>
+            <select value={condFilter} onChange={e => setCondFilter(e.target.value)} className="px-2 py-1.5 rounded-lg bg-base border border-border text-xs text-text-secondary outline-none">
+              <option value="all">All conditions</option>
+              {conditions.map(c => <option key={c} value={c}>{condMeta(c).label}</option>)}
+            </select>
           </div>
-        )}
 
-        {/* Filters */}
-        <div className="flex gap-3">
-          <input
-            type="text"
-            placeholder="Search by name or SKU..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="flex-1 bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-violet-500"
-          />
-          <select
-            value={filter}
-            onChange={(e) => setFilter(e.target.value as any)}
-            className="bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-violet-500"
-          >
-            <option value="all">All Items</option>
-            <option value="low">Low Stock</option>
-            <option value="out-of-stock">Out of Stock</option>
-          </select>
-        </div>
-      </div>
-
-      {/* Items List */}
-      <div className="flex-1 overflow-y-auto">
-        {filteredItems.length === 0 ? (
-          <div className="flex items-center justify-center h-full text-slate-500">
-            <p>No items found</p>
-          </div>
-        ) : (
-          <div className="divide-y divide-slate-800">
-            {filteredItems.map((item) => (
-              <div
-                key={item.id}
-                className="p-4 hover:bg-slate-800/50 transition cursor-pointer border-l-4 border-l-transparent hover:border-l-violet-500"
-              >
-                <div className="flex items-start justify-between mb-2">
-                  <div>
-                    <h3 className="font-semibold text-slate-100">{item.name}</h3>
-                    <p className="text-xs text-slate-500">SKU: {item.sku}</p>
-                  </div>
-                  <div className="text-right">
-                    <div className={`font-bold text-sm ${getStatusColor(item.status)}`}>
-                      {item.quantity} / {item.maxThreshold}
-                    </div>
-                    <p className="text-xs text-slate-500 capitalize">{item.status}</p>
-                  </div>
-                </div>
-
-                <div className="flex flex-wrap gap-2 mb-2">
-                  <span className="text-xs bg-slate-800 text-slate-300 px-2 py-1 rounded capitalize">
-                    {item.category}
-                  </span>
-                  {item.condition && (
-                    <span className={`text-xs px-2 py-1 rounded capitalize ${getConditionBg(item.condition)}`}>
-                      {item.condition}
-                    </span>
-                  )}
-                  {item.location && (
-                    <span className="text-xs bg-slate-800 text-slate-300 px-2 py-1 rounded">
-                      📍 {item.location}
-                    </span>
-                  )}
-                </div>
-
-                <div className="flex justify-between text-xs text-slate-400">
-                  <div>
-                    {item.supplier && <span>Supplier: {item.supplier}</span>}
-                    {item.cost && <span className="ml-4">Cost: ${item.cost}</span>}
-                  </div>
-                  {item.lastRestockedAgo && (
-                    <span>{item.lastRestockedAgo}</span>
-                  )}
-                </div>
-
-                {item.notes && (
-                  <p className="text-xs text-slate-500 mt-2 italic">{item.notes}</p>
-                )}
-
-                {/* Alert for low/out-of-stock */}
-                {(item.status === 'low' || item.status === 'out-of-stock') && (
-                  <div className="flex items-center gap-2 mt-2 text-xs text-amber-300">
-                    <AlertCircle className="w-4 h-4" />
-                    <span>
-                      {item.status === 'low' 
-                        ? `Only ${item.quantity} left (min: ${item.minThreshold})`
-                        : 'Out of stock - reorder needed'}
-                    </span>
-                  </div>
-                )}
-              </div>
+          {/* Category chips */}
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <button onClick={() => setCatFilter('all')} className={clsx('px-2 py-1 rounded-full border text-xxs', catFilter === 'all' ? 'border-accent-blue/40 bg-accent-blue/15 text-accent-blue' : 'border-border bg-card text-text-muted hover:text-text-secondary')}>All</button>
+            {catCounts.map(c => (
+              <button key={c.category} onClick={() => setCatFilter(c.category)} className={clsx('flex items-center gap-1 px-2 py-1 rounded-full border text-xxs', catFilter === c.category ? 'border-accent-blue/40 bg-accent-blue/15 text-accent-blue' : 'border-border bg-card text-text-muted hover:text-text-secondary')}>
+                {catMeta(c.category).icon} {catMeta(c.category).label} <span className="opacity-60">{c.count}</span>
+              </button>
             ))}
           </div>
-        )}
+
+          {error && <div className="flex items-start gap-2 px-4 py-3 rounded-lg border border-amber-900/40 bg-amber-950/20 text-amber-300"><AlertCircle size={13} className="shrink-0 mt-0.5" /><p className="text-xs">{error}</p></div>}
+
+          {/* List */}
+          {loading ? (
+            <div className="space-y-1">{Array.from({ length: 6 }).map((_, i) => <div key={i} className="h-12 rounded-lg bg-card border border-border animate-pulse" />)}</div>
+          ) : filtered.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-40 gap-2 text-center">
+              <Boxes size={20} className="text-text-muted" />
+              <p className="text-sm text-text-muted">{items.length === 0 ? 'No items yet' : 'No items match your filters'}</p>
+              {items.length === 0 && <button onClick={() => setEditing('new')} className="text-xs text-accent-blue hover:underline">Add your first item</button>}
+            </div>
+          ) : (
+            <div className="flex flex-col divide-y divide-border rounded-lg border border-border overflow-hidden">
+              {filtered.map(it => <ItemRow key={it.id} item={it} active={it.id === selectedId} onClick={() => setSelectedId(it.id)} />)}
+            </div>
+          )}
+        </div>
       </div>
+
+      {selected && (
+        <DetailDrawer item={selected} onClose={() => setSelectedId(null)} onEdit={() => setEditing(selected)} onDelete={() => removeItem(selected)} onQty={d => adjustQty(selected, d)} onResearch={() => research(selected)} />
+      )}
+
+      {editing && (
+        <ItemForm initial={editing === 'new' ? null : editing} categories={categories} conditions={conditions} onSave={saveItem} onClose={() => setEditing(null)} />
+      )}
     </div>
   )
 }

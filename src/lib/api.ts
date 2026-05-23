@@ -370,6 +370,67 @@ export const metrics = {
   hermes:   (force = false) => get<PlatformMetricsResponse>('/hermes/metrics',   force ? { force: 1 } : undefined),
 }
 
+// ─── Inventory ─────────────────────────────────────────────────────────────────
+
+export type InventoryCondition = 'working' | 'untested' | 'partial' | 'broken' | 'unknown'
+
+export interface InventoryItem {
+  id:             string
+  name:           string
+  category:       string
+  quantity:       number
+  location:       string
+  condition:      string
+  estimatedValue: number
+  manufacturer:   string
+  model:          string
+  tags:           string[]
+  notes:          string
+  summary:        string
+  specs:          Record<string, string>
+  sources:        Array<{ title: string; url: string }>
+  datasheetUrl:   string
+  imageUrl:       string
+  enriched:       boolean
+  addedBy:        string
+  researchStatus: string
+  researchError:  string
+  researchRequestedAt: string
+  createdAt:      string
+  updatedAt:      string
+  totalValue:     number
+  updatedAgo:     string
+}
+
+export interface InventoryStats {
+  totalItems:    number
+  totalQuantity: number
+  totalValue:    number
+  enrichedCount: number
+  byCategory:    Array<{ category: string; count: number; quantity: number; value: number }>
+  byCondition:   Record<string, number>
+  locations:     string[]
+}
+
+export interface InventoryResponse {
+  items:      InventoryItem[]
+  stats:      InventoryStats
+  categories: string[]
+  conditions: string[]
+  fetchedAt:  string
+}
+
+export type InventoryBody = Partial<Omit<InventoryItem, 'id' | 'totalValue' | 'updatedAgo' | 'createdAt' | 'updatedAt'>> & { name: string }
+
+export const inventory = {
+  list:   ()                              => get<InventoryResponse>('/inventory'),
+  get:    (id: string)                    => get<{ item: InventoryItem }>(`/inventory/${id}`),
+  create: (body: InventoryBody)           => post<{ item: InventoryItem }>('/inventory', body),
+  update: (id: string, body: Partial<InventoryBody>) => patch<{ item: InventoryItem }>(`/inventory/${id}`, body),
+  remove: (id: string)                    => del<{ ok: boolean }>(`/inventory/${id}`),
+  research: (id: string, source?: 'openclaw' | 'hermes') => post<{ ok: boolean; status: string; source: string }>(`/inventory/${id}/research`, source ? { source } : {}),
+}
+
 // ─── Memory ───────────────────────────────────────────────────────────────────
 
 export type MemoryEntryType = 'user' | 'feedback' | 'project' | 'reference' | 'other'
