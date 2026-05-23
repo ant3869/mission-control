@@ -200,6 +200,7 @@ async function pollSessionActivity() {
           new Date(a.updatedAt ?? a.lastActiveAt ?? 0).getTime())
         .map((s: any) => s.key ?? s.id ?? s.sessionKey).filter(Boolean)
       activeSessionIds = (live.length ? live : recent).slice(0, 2)
+      console.log(`[Watch] sessions polled — active: [${activeSessionIds.join(', ')}]`)
       // Cache channel info per session for labelling message events.
       for (const s of arr) {
         const k = s.key ?? s.id; if (!k) continue
@@ -218,6 +219,7 @@ async function pollSessionActivity() {
       const hist = await request('chat.history', { sessionKey: sid, limit: 30, maxChars: 50_000 }, 8000)
       const messages: any[] = Array.isArray(hist) ? hist
         : (hist?.messages ?? hist?.history ?? hist?.entries ?? [])
+      console.log(`[Watch] chat.history ${sid} → ${messages.length} msgs`)
 
       for (const msg of messages) {
         const msgTs = (() => {
@@ -245,6 +247,7 @@ async function pollSessionActivity() {
             inp?.query ?? inp?.description ?? inp?.content?.slice?.(0, 80) ??
             (typeof inp === 'string' ? inp : '') ?? ''
           ).slice(0, 200)
+          console.log(`[Watch] tool event → ${name}: ${toolInput.slice(0, 60)}`)
           push({ seq: ++seq, ts: msgTs, event: 'tool', kind: 'tool', title: 'tool call',
             sub: name, sessionKey: sid, meta: { tool: name, toolInput } })
         }
