@@ -1,153 +1,171 @@
 import { Router } from 'express'
+import { DatabaseSync } from 'node:sqlite'
+import { existsSync, mkdirSync } from 'fs'
+import { join } from 'path'
 import type { InventoryItem } from '../../src/types/index.js'
-import { getAllObsidianItems, getInventoryStats } from '../services/obsidian-vault-sync.js'
-import { queueEnrichment } from '../services/inventory-enrichment.js'
 
 const router = Router()
 
-// In-memory inventory store
-let inventoryItems: InventoryItem[] = []
+// ─── SQLite setup ─────────────────────────────────────────────────────────────
 
-// Load from Obsidian on startup
-async function loadFromObsidian() {
-  try {
-    const items = getAllObsidianItems()
-    inventoryItems = items
-    console.log(`[Inventory] Loaded ${items.length} items from Obsidian vault`)
-  } catch (error) {
-    console.error('[Inventory] Failed to load from Obsidian:', error)
+const dataDir = join(process.cwd(), 'data')
+if (!existsSync(dataDir)) mkdirSync(dataDir, { recursive: true })
+
+const db = new DatabaseSync(join(dataDir, 'openclaw.db'))
+db.exec('PRAGMA journal_mode = WAL;')
+db.exec(`
+  CREATE TABLE IF NOT EXISTS inventory_items (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    sku TEXT NOT NULL DEFAULT '',
+    category TEXT NOT NULL DEFAULT 'general',
+    quantity INTEGER NOT NULL DEFAULT 1,
+    min_threshold INTEGER NOT NULL DEFAULT 1,
+    max_threshold INTEGER NOT NULL DEFAULT 10,
+    status TEXT NOT NULL DEFAULT 'in-stock',
+    condition TEXT,
+    location TEXT,
+    supplier TEXT,
+    cost REAL,
+    notes TEXT,
+    tags TEXT DEFAULT '[]',
+    last_restocked_ago TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+`)
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function rowToItem(row: any): InventoryItem {
+  return {
+    id: row.id,
+    name: row.name,
+    sku: row.sku,
+    category: row.category,
+    quantity: row.quantity,
+    minThreshold: row.min_threshold,
+    maxThreshold: row.max_threshold,
+    status: row.status,
+    condition: row.condition ?? undefined,
+    location: row.location ?? undefined,
+    supplier: row.supplier ?? undefined,
+    cost: row.cost ?? undefined,
+    notes: row.notes ?? undefined,
+    tags: JSON.parse(row.tags ?? '[]'),
+    lastRestockedAgo: row.last_restocked_ago ?? undefined,
   }
 }
 
-// Initialize on module load
-loadFromObsidian().catch(err => console.error(err))
+function calcStatus(quantity: number, minThreshold: number): InventoryItem['status'] {
+  if (quantity === 0) return 'out-of-stock'
+  if (quantity <= minThreshold) return 'low'
+  return 'in-stock'
+}
+
+// ─── Routes ───────────────────────────────────────────────────────────────────
 
 // GET /api/inventory/items
 router.get('/items', (_req, res) => {
-  res.json(inventoryItems)
+  const rows = db.prepare('SELECT * FROM inventory_items ORDER BY updated_at DESC').all()
+  res.json((rows as any[]).map(rowToItem))
 })
 
 // GET /api/inventory/stats
 router.get('/stats', (_req, res) => {
-  const stats = getInventoryStats()
+  const rows = db.prepare('SELECT * FROM inventory_items').all() as any[]
+  const items = rows.map(rowToItem)
+
+  const byCategory: Record<string, number> = {}
+  const byCondition = { working: 0, broken: 0, parts: 0, unknown: 0 }
+  let lowStockCount = 0
+  let outOfStockCount = 0
+  let totalValue = 0
+
+  for (const item of items) {
+    byCategory[item.category] = (byCategory[item.category] ?? 0) + 1
+    if (item.status === 'low') lowStockCount++
+    if (item.status === 'out-of-stock') outOfStockCount++
+    if (item.cost) totalValue += item.cost * item.quantity
+    const cond = (item.condition ?? 'unknown') as keyof typeof byCondition
+    if (cond in byCondition) byCondition[cond]++
+    else byCondition.unknown++
+  }
+
   res.json({
-    totalItems: stats.total,
-    totalValue: 0, // Could calculate from cost data
-    lowStockCount: 0,
-    outOfStockCount: stats.broken + stats.parts,
-    byCategory: stats.byCategory,
-    byCondition: {
-      working: stats.working,
-      broken: stats.broken,
-      parts: stats.parts,
-      unknown: stats.unknown,
-    },
+    totalItems: items.length,
+    totalValue: Math.round(totalValue * 100) / 100,
+    lowStockCount,
+    outOfStockCount,
+    byCategory,
+    byCondition,
   })
 })
 
 // GET /api/inventory/items/:id
 router.get('/items/:id', (req, res) => {
-  const item = inventoryItems.find(i => i.id === req.params.id)
-  if (!item) {
-    return res.status(404).json({ error: 'Item not found' })
-  }
-  res.json(item)
+  const row = db.prepare('SELECT * FROM inventory_items WHERE id = ?').get(req.params.id)
+  if (!row) return res.status(404).json({ error: 'Item not found' })
+  res.json(rowToItem(row as any))
 })
 
-// POST /api/inventory/items — Create and auto-enrich with AI
-router.post('/items', async (req, res) => {
-  try {
-    const { name, model, category, sku, quantity, notes } = req.body
-    
-    if (!name) {
-      return res.status(400).json({ error: 'Item name is required' })
-    }
+// POST /api/inventory/items
+router.post('/items', (req, res) => {
+  const { name, model, category, sku, quantity, condition, location, supplier, cost, notes } = req.body
+  if (!name) return res.status(400).json({ error: 'Item name is required' })
 
-    // Create base item
-    const newItem: InventoryItem = {
-      id: `item-${Date.now()}`,
-      name,
-      sku: sku || model || '',
-      category: category || 'hardware',
-      quantity: quantity || 1,
-      minThreshold: 1,
-      maxThreshold: 10,
-      status: 'in-stock',
-      notes: notes || '',
-      tags: [],
-    }
+  const id = `item-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
+  const qty = Number(quantity) || 1
+  const minThreshold = 1
+  const status = calcStatus(qty, minThreshold)
 
-    inventoryItems.push(newItem)
+  db.prepare(`
+    INSERT INTO inventory_items (id, name, sku, category, quantity, min_threshold, max_threshold, status, condition, location, supplier, cost, notes)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(id, name, sku || model || '', category || 'general', qty, minThreshold, 10, status,
+    condition ?? null, location ?? null, supplier ?? null, cost ? Number(cost) : null, notes ?? null)
 
-    // Queue enrichment in background using OpenClaw/Hermes
-    // This will fetch specs, price, manufacturer info, etc.
-    queueEnrichment({
-      item_id: newItem.id,
-      name,
-      model,
-      category,
-      existing_data: newItem,
-    })
-      .then(jobId => {
-        console.log(`[Inventory] Enrichment queued: ${jobId}`)
-      })
-      .catch(err => {
-        console.error('[Inventory] Failed to queue enrichment:', err)
-      })
-
-    res.status(201).json(newItem)
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to create item' })
-  }
+  const newItem = rowToItem(db.prepare('SELECT * FROM inventory_items WHERE id = ?').get(id) as any)
+  res.status(201).json(newItem)
 })
 
 // PATCH /api/inventory/items/:id
 router.patch('/items/:id', (req, res) => {
-  const item = inventoryItems.find(i => i.id === req.params.id)
-  if (!item) {
-    return res.status(404).json({ error: 'Item not found' })
-  }
+  const row = db.prepare('SELECT * FROM inventory_items WHERE id = ?').get(req.params.id) as any
+  if (!row) return res.status(404).json({ error: 'Item not found' })
 
-  Object.assign(item, req.body)
+  const { name, sku, category, quantity, condition, location, supplier, cost, notes, minThreshold, maxThreshold, tags } = req.body
+  const qty = quantity !== undefined ? Number(quantity) : row.quantity
+  const min = minThreshold !== undefined ? Number(minThreshold) : row.min_threshold
+  const max = maxThreshold !== undefined ? Number(maxThreshold) : row.max_threshold
 
-  // Recalculate status
-  if (item.quantity === 0) {
-    item.status = 'out-of-stock'
-  } else if (item.quantity <= item.minThreshold) {
-    item.status = 'low'
-  } else {
-    item.status = 'in-stock'
-  }
+  db.prepare(`
+    UPDATE inventory_items SET
+      name = ?, sku = ?, category = ?, quantity = ?, min_threshold = ?, max_threshold = ?,
+      status = ?, condition = ?, location = ?, supplier = ?, cost = ?, notes = ?, tags = ?,
+      updated_at = datetime('now')
+    WHERE id = ?
+  `).run(
+    name ?? row.name, sku ?? row.sku, category ?? row.category,
+    qty, min, max, calcStatus(qty, min),
+    condition !== undefined ? condition : row.condition,
+    location !== undefined ? location : row.location,
+    supplier !== undefined ? supplier : row.supplier,
+    cost !== undefined ? Number(cost) : row.cost,
+    notes !== undefined ? notes : row.notes,
+    tags !== undefined ? JSON.stringify(tags) : row.tags,
+    req.params.id,
+  )
 
-  res.json(item)
+  res.json(rowToItem(db.prepare('SELECT * FROM inventory_items WHERE id = ?').get(req.params.id) as any))
 })
 
 // DELETE /api/inventory/items/:id
 router.delete('/items/:id', (req, res) => {
-  const index = inventoryItems.findIndex(i => i.id === req.params.id)
-  if (index === -1) {
-    return res.status(404).json({ error: 'Item not found' })
-  }
-
-  inventoryItems.splice(index, 1)
+  const row = db.prepare('SELECT id FROM inventory_items WHERE id = ?').get(req.params.id)
+  if (!row) return res.status(404).json({ error: 'Item not found' })
+  db.prepare('DELETE FROM inventory_items WHERE id = ?').run(req.params.id)
   res.status(204).send()
-})
-
-// POST /api/inventory/sync-obsidian — Sync from Obsidian vault
-router.post('/sync-obsidian', async (_req, res) => {
-  try {
-    const items = getAllObsidianItems()
-    inventoryItems = items
-
-    res.json({
-      success: true,
-      imported: items.length,
-      total: inventoryItems.length,
-      message: `Synced ${items.length} items from Obsidian vault`,
-    })
-  } catch (error) {
-    res.status(500).json({ error: 'Sync failed' })
-  }
 })
 
 export const inventoryRouter = router

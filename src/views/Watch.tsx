@@ -140,12 +140,17 @@ function AgentCard({ source, event }: { source: WatchSource; event: WatchEvent |
   const age    = event ? Date.now() - new Date(event.ts).getTime() : Infinity
   const recent = age < 8_000
   const status = event ? classify(event) : null
-  const idle   = !status || age > 60_000
+  // live = actively happening right now (< 8s)
+  // stale = finished within 10 min — show dimmed last-known state
+  // idle = nothing for 10+ min (or no data)
+  const live  = recent && !!status?.active
+  const stale = !live && !!status && age < 600_000
+  const idle  = !status || age >= 600_000
 
   return (
     <div className={clsx(
       'relative flex flex-col gap-4 p-6 rounded-xl border transition-all duration-500',
-      recent && status?.active
+      live
         ? `${cfg.bg} ring-1 ${cfg.ring} border-transparent`
         : 'bg-card border-border',
     )}>
@@ -153,7 +158,7 @@ function AgentCard({ source, event }: { source: WatchSource; event: WatchEvent |
       <div className="flex items-center gap-2.5">
         <div className={clsx(
           'w-2.5 h-2.5 rounded-full shrink-0 transition-colors duration-300',
-          recent && status?.active ? `${cfg.dot} animate-pulse` : 'bg-slate-600',
+          live ? `${cfg.dot} animate-pulse` : stale ? cfg.dot + ' opacity-40' : 'bg-slate-600',
         )} />
         <span className="text-xs font-semibold tracking-widest uppercase text-text-muted">
           {cfg.label}
@@ -166,15 +171,15 @@ function AgentCard({ source, event }: { source: WatchSource; event: WatchEvent |
           <span className="text-2xl font-light text-text-muted italic">idle</span>
         </div>
       ) : (
-        <div className="flex flex-col gap-2 min-w-0">
+        <div className={clsx('flex flex-col gap-2 min-w-0 transition-opacity duration-500', stale && 'opacity-40')}>
           <div className="flex items-start gap-3">
-            <span className={clsx('shrink-0 mt-0.5', status!.color)}>
+            <span className={clsx('shrink-0 mt-0.5', live ? status!.color : 'text-text-muted')}>
               {status!.icon}
             </span>
             <div className="flex flex-col gap-1 min-w-0">
               <p className="text-text-primary font-medium leading-snug">
-                <span className="text-text-muted">{cfg.name} is </span>
-                <span className={clsx('font-semibold', status!.color)}>
+                <span className="text-text-muted">{cfg.name} {stale ? 'was' : 'is'} </span>
+                <span className={clsx('font-semibold', live ? status!.color : 'text-text-muted')}>
                   {status!.verb}
                 </span>
               </p>

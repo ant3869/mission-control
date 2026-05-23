@@ -231,6 +231,11 @@ async function pollSessionActivity() {
         const content = msg.content ?? msg.body ?? ''
         const blocks: any[] = Array.isArray(content) ? content : []
 
+        // Only surface events that are recent. Older messages get marked seen
+        // to prevent re-emitting after a server restart, but are not pushed.
+        const msgAgeMs = Date.now() - new Date(msgTs).getTime()
+        const isRecent = msgAgeMs < 120_000 // 2 minutes
+
         // Extract tool call blocks — OpenClaw uses type:"toolCall"
         for (let bi = 0; bi < blocks.length; bi++) {
           const b = blocks[bi]
@@ -241,14 +246,15 @@ async function pollSessionActivity() {
           if (toolSeen.has(sig)) continue
           toolSeen.add(sig)
           if (toolSeen.size > 800) toolSeen.clear()
+          if (!isRecent) continue
           const inp = b.input ?? b.arguments ?? {}
           const toolInput = String(
             inp?.command ?? inp?.file_path ?? inp?.path ?? inp?.url ??
             inp?.query ?? inp?.description ?? inp?.content?.slice?.(0, 80) ??
             (typeof inp === 'string' ? inp : '') ?? ''
           ).slice(0, 200)
-          console.log(`[Watch] tool event → ${name}: ${toolInput.slice(0, 60)}`)
-          push({ seq: ++seq, ts: msgTs, event: 'tool', kind: 'tool', title: 'tool call',
+          console.log(`[Watch] tool → ${name}: ${toolInput.slice(0, 60)}`)
+          push({ seq: ++seq, ts: new Date().toISOString(), event: 'tool', kind: 'tool', title: 'tool call',
             sub: name, sessionKey: sid, meta: { tool: name, toolInput } })
         }
 
@@ -257,10 +263,12 @@ async function pollSessionActivity() {
           const sig = `${sid}:msg-in:${msgId}`
           if (!toolSeen.has(sig)) {
             toolSeen.add(sig)
-            const channel = String(msg.channelId ?? msg.channel ?? '') || (sessionChannels[sid] ?? '')
-            push({ seq: ++seq, ts: msgTs, event: 'message', kind: 'message', title: 'incoming message',
-              sub: String(typeof content === 'string' ? content : '').slice(0, 160),
-              sessionKey: sid, meta: { channel, direction: 'in' } })
+            if (isRecent) {
+              const channel = String(msg.channelId ?? msg.channel ?? '') || (sessionChannels[sid] ?? '')
+              push({ seq: ++seq, ts: new Date().toISOString(), event: 'message', kind: 'message', title: 'incoming message',
+                sub: String(typeof content === 'string' ? content : '').slice(0, 160),
+                sessionKey: sid, meta: { channel, direction: 'in' } })
+            }
           }
         }
 
@@ -274,11 +282,14 @@ async function pollSessionActivity() {
           const sig = `${sid}:msg-out:${msgId}`
           if (!toolSeen.has(sig)) {
             toolSeen.add(sig)
-            const channel = String(msg.channelId ?? msg.channel ?? '') || (sessionChannels[sid] ?? '')
-            const text = blocks.find((b: any) => b?.type === 'text')?.text
-              ?? (typeof content === 'string' ? content : '')
-            push({ seq: ++seq, ts: msgTs, event: 'message.sent', kind: 'message', title: 'outgoing message',
-              sub: String(text).slice(0, 160), sessionKey: sid, meta: { channel, direction: 'out' } })
+            if (isRecent) {
+              const channel = String(msg.channelId ?? msg.channel ?? '') || (sessionChannels[sid] ?? '')
+              const text = blocks.find((b: any) => b?.type === 'text')?.text
+                ?? (typeof content === 'string' ? content : '')
+              console.log(`[Watch] reply → ${String(text).slice(0, 60)}`)
+              push({ seq: ++seq, ts: new Date().toISOString(), event: 'message.sent', kind: 'message', title: 'outgoing message',
+                sub: String(text).slice(0, 160), sessionKey: sid, meta: { channel, direction: 'out' } })
+            }
           }
         }
       }
