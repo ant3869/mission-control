@@ -40,9 +40,12 @@ settingsRouter.get('/connectors', async (_req, res) => {
         }
       }
       const s = await probeStatus(c.id)
+      const authFailed = s.authOk === false
       return {
         ...pub,
-        status: s.reachable ? 'connected' : 'error',
+        // Reachable but token-rejected is an error, not a healthy connection —
+        // otherwise the public /api/status makes a bad token look "connected".
+        status: s.reachable ? (authFailed ? 'error' : 'connected') : 'error',
         reachable: s.reachable,
         version: s.version,
         gatewayStatus: s.gatewayStatus,
@@ -87,8 +90,9 @@ settingsRouter.post('/connectors/:id/test', async (req, res) => {
 
   const s = await probeStatus(id, true)
   res.json({
-    ok: s.reachable,
+    ok: s.reachable && s.authOk !== false,
     reachable: s.reachable,
+    authOk: s.authOk,
     version: s.version,
     gatewayStatus: s.gatewayStatus,
     platforms: s.platforms,
