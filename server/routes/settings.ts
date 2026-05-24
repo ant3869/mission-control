@@ -93,6 +93,11 @@ settingsRouter.post('/connectors/:id/test', async (req, res) => {
     ok: s.reachable && s.authOk !== false,
     reachable: s.reachable,
     authOk: s.authOk,
+    // Diagnostics: what the server actually tried, so a base-URL typo or a
+    // stored-mask is visible without leaking the token itself.
+    baseUrl: cfg.baseUrl,
+    triedUrl: `${cfg.baseUrl}/api/sessions`,
+    tokenLen: cfg.token.length,
     version: s.version,
     gatewayStatus: s.gatewayStatus,
     platforms: s.platforms,
