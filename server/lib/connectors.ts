@@ -120,7 +120,10 @@ export function saveConnector(id: ConnectorId, patch: ConnectorPatch): Connector
   if (patch.baseUrl !== undefined) next.baseUrl = patch.baseUrl.trim().replace(/\/+$/, '')
   if (patch.enabled !== undefined) next.enabled = patch.enabled
   // Empty-string token means "leave unchanged"; an explicit null clears it.
-  if (typeof patch.token === 'string' && patch.token.trim()) next.token = patch.token.trim()
+  // A value starting with the mask char (••••) is the redacted hint echoed
+  // back by a client — never store it, or the gateway will 401 every request.
+  const tokenPatch = typeof patch.token === 'string' ? patch.token.trim() : patch.token
+  if (typeof tokenPatch === 'string' && tokenPatch && !tokenPatch.startsWith('••••')) next.token = tokenPatch
   if (patch.token === null as unknown as string) next.token = ''
 
   cache[id] = next

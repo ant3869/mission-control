@@ -210,21 +210,39 @@ export interface StatusProbe {
   activeSessions: number | null
   latencyMs: number
   error: string | null
+  // null = not determined (only the public /api/status was probed);
+  // false = gateway reachable but the token was rejected (HTTP 401/403).
+  authOk: boolean | null
 }
 
 export async function probeStatus(source: AgentSource, force = false): Promise<StatusProbe> {
   if (usesWebSocket(source)) {
+    // The OpenClaw WS handshake is itself authenticated, so a reachable
+    // snapshot already proves the token is accepted.
     const snap = await ocSnapshot(force)
     return {
       reachable: snap.reachable, version: snap.version,
       gatewayStatus: snap.reachable ? 'connected' : null, platforms: [],
       activeSessions: snap.activeSessions, latencyMs: snap.latencyMs, error: snap.error,
+      authOk: snap.reachable ? true : null,
     }
   }
   const s = await fetchStatus(source)
+  // Hermes' /api/status is public, so "reachable" alone can't prove the token
+  // is valid — every authenticated endpoint may still 401. Verify against one.
+  let authOk: boolean | null = null
+  let error = s.error
+  if (s.reachable) {
+    const authed = await fetchSessions(source)
+    if (authed.ok) authOk = true
+    else if (/\b40[13]\b|unauth/i.test(String(authed.error ?? ''))) {
+      authOk = false
+      error = 'Gateway reachable but the token was rejected (HTTP 401). Set the token to match the gateway’s configured auth token, then restart the gateway (it does not hot-reload).'
+    }
+  }
   return {
     reachable: s.reachable, version: s.version, gatewayStatus: s.gatewayStatus,
-    platforms: s.platforms, activeSessions: s.activeSessions, latencyMs: s.latencyMs, error: s.error,
+    platforms: s.platforms, activeSessions: s.activeSessions, latencyMs: s.latencyMs, error, authOk,
   }
 }
 
