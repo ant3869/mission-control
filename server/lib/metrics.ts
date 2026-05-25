@@ -5,16 +5,18 @@
 //          frontend metrics page renders either.
 
 import type { AgentSource } from './agentEvents.js'
-import { isLive } from './connectors.js'
+import { isLive, getConnector } from './connectors.js'
 import { getMetricsRaw } from './openclawWs.js'
 import { fetchStatus, fetchSessions, fetchCronJobs, fetchAnalyticsUsage, fetchSkills, fetchToolsets } from './gateway.js'
+import { discoverMemoryFilesFromFS, resolveMemoryFilePath } from './memoryFilesFs.js'
+import { fetchMemoryFiles } from './gateway.js'
 
 export interface Breakdown { name: string; tokens: number; cost: number; count: number }
 export interface SessionRow { key: string; title: string; channel: string; model: string; kind: string; tokens: number; cost: number; updatedAt: string | null; startedAt: string | null; status: string; runtimeMs: number; isHeartbeat: boolean }
 export interface CronJobMetric { id: string; name: string; agentId: string; enabled: boolean; schedule: string; delivery: string; lastRunAt: string | null; nextRunAt: string | null }
 export interface CronRunMetric { ts: string; jobId: string; status: string; action: string; error: string | null }
 export interface ChannelMetric { id: string; label: string; enabled: boolean; configured: boolean; running: boolean; lastStartAt: string | null }
-export interface MemoryFile { name: string; size: number; updatedAt: string | null; missing: boolean }
+export interface MemoryFile { name: string; size: number; updatedAt: string | null; missing: boolean; path?: string }
 export interface SubAgentInfo { key: string; title: string; status: string; tokens: number; updatedAt: string | null }
 export interface AutonomyFactor { label: string; score: number; detail: string }
 export interface Autonomy { score: number; level: string; factors: AutonomyFactor[] }
@@ -135,6 +137,8 @@ async function openclawMetrics(force: boolean): Promise<PlatformMetrics> {
   const b = await getMetricsRaw(force)
   if (!b.reachable) return empty('openclaw', b.error ?? 'unreachable', b.latencyMs)
   const r = b.results
+  const ocCfg = getConnector('openclaw')
+  const ocExtraDirs = ocCfg?.workspaceDir ? [ocCfg.workspaceDir] : undefined
   const uc = r['usage.cost'] ?? {}
   const su = r['sessions.usage'] ?? {}
   const agg = su.aggregates ?? {}
@@ -187,9 +191,13 @@ async function openclawMetrics(force: boolean): Promise<PlatformMetrics> {
   const subAgentSessions = sessionList.filter(s => /:subagent:/i.test(s.key) || /subagent/i.test(s.kind))
   const totalSessionsCount = num(r['sessions.list']?.totalCount) || sessionList.length || (su.sessions ?? []).length
   const autonomousSessions = sessionList.filter(s => s.isHeartbeat || isAutonomousKey(s.key, s.kind)).length
-  const memoryFiles: MemoryFile[] = (r['agents.files.list']?.files ?? []).map((f: any): MemoryFile => ({
+  const wsFiles: MemoryFile[] = (r['agents.files.list']?.files ?? []).map((f: any): MemoryFile => ({
     name: String(f.name ?? ''), size: num(f.size), updatedAt: iso(f.updatedAtMs ?? f.updatedAt), missing: !!f.missing,
+    path: String(f.path ?? '') || resolveMemoryFilePath(String(f.name ?? ''), ocExtraDirs) || undefined,
   }))
+  // If the WS RPC returned no files, show nothing — don't fall back to local FS
+  // (OpenClaw may be running remotely; local filesystem files would be stale/wrong)
+  const memoryFiles: MemoryFile[] = wsFiles
   const msg = agg.messages ?? {}
   const autonomy = computeAutonomy({
     user: num(msg.user), assistant: num(msg.assistant), toolCalls: num(msg.toolCalls), total: num(msg.total),
@@ -304,15 +312,35 @@ async function hermesMetrics(): Promise<PlatformMetrics> {
   // while every authenticated endpoint 401s — which used to render as silently
   // empty metrics. Surface the auth failure so the UI can tell the user to
   // re-enter the token instead of showing a blank dashboard.
-  const authFailed = !usageR.ok && !sessionsR.ok && !cronR.ok &&
-    [usageR, sessionsR, cronR, skillsR, toolsetsR].some(r => /\b40[13]\b|unauth/i.test(String(r.error ?? '')))
-  const authError = authFailed
-    ? 'Hermes rejected the token (HTTP 401). The token likely rotated on the 0.13.0 upgrade — re-enter a current token in Settings → Hermes.'
+  // Memory files: pull from the gateway REST API first; if it exposes no file
+  // endpoint (Hermes serves its SPA for unknown /api routes) fall back to a
+  // configured workspace dir on the local filesystem.
+  const hermesCfg  = getConnector('hermes')
+  const hermesDirs = hermesCfg?.workspaceDir ? [hermesCfg.workspaceDir] : undefined
+  const remoteFiles = await fetchMemoryFiles('hermes')
+  const memoryFiles: MemoryFile[] = remoteFiles.length > 0
+    ? remoteFiles.map(f => ({ name: f.name, size: f.size, updatedAt: f.updatedAt || null, missing: false, path: f.path }))
+    : (hermesDirs ? discoverMemoryFilesFromFS(hermesDirs) : [])
+
+  const allAuthEndpointsFailed = !usageR.ok && !sessionsR.ok && !cronR.ok
+  const errorTexts = [usageR, sessionsR, cronR, skillsR, toolsetsR].map(r => String(r.error ?? ''))
+  const hasAuthError   = errorTexts.some(e => /\b40[13]\b|unauth/i.test(e))
+  const hasNotFound    = errorTexts.some(e => /\b404\b/.test(e))
+  const hasNetworkErr  = errorTexts.some(e => /timeout|ECONNREFUSED|fetch failed/i.test(e))
+
+  const dataError = allAuthEndpointsFailed
+    ? hasAuthError
+      ? 'Hermes rejected the token (HTTP 401/403). Re-enter a current token in Settings → Hermes.'
+      : hasNotFound
+        ? `Hermes API endpoints returned 404 — the API version may differ. (usage: ${usageR.error ?? 'n/a'}, sessions: ${sessionsR.error ?? 'n/a'}). Try upgrading Hermes or check the base URL in Settings.`
+        : hasNetworkErr
+          ? `Cannot reach Hermes (${usageR.error ?? sessionsR.error ?? 'network error'}). Check the base URL in Settings.`
+          : `Hermes analytics unavailable (usage: ${usageR.error ?? 'n/a'}, sessions: ${sessionsR.error ?? 'n/a'}).`
     : null
 
   return {
     source: 'hermes', reachable: statusR.reachable || usageR.ok,
-    version: statusR.version, error: authError, latencyMs: statusR.latencyMs, fetchedAt: new Date().toISOString(),
+    version: statusR.version, error: dataError, latencyMs: statusR.latencyMs, fetchedAt: new Date().toISOString(),
     tokens: { input: num(t.total_input), output: num(t.total_output), cacheRead: num(t.total_cache_read), cacheWrite: 0, total: num(t.total_input) + num(t.total_output) + num(t.total_cache_read) },
     cost: { total: num(t.total_estimated_cost ?? t.total_actual_cost), input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     daily,
@@ -349,7 +377,7 @@ async function hermesMetrics(): Promise<PlatformMetrics> {
     skills: (skillsR.ok ? skillsR.data ?? [] : []).map((s: any) => ({ name: String(s.name ?? ''), description: String(s.description ?? '') })).filter((s: any) => s.name),
     health: { ok: statusR.reachable, eventLoop: null, memory: null, updateAvailable: false },
     heartbeat: [],
-    memoryFiles: [],
+    memoryFiles,
     subAgents: {
       total: subAgentSessions.length,
       recent: subAgentSessions.slice(0, 12).map((s: any): SubAgentInfo => ({ key: String(s.id ?? ''), title: String(s.title ?? s.id ?? ''), status: s.is_active ? 'active' : String(s.end_reason ?? ''), tokens: num(s.input_tokens) + num(s.output_tokens), updatedAt: iso(s.last_active) })),

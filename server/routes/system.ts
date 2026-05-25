@@ -2,34 +2,37 @@
  * System health → /api/system
  *
  * Reads the real Claude config from the user's home directory to discover
- * MCP servers, plugins, and skills, then pings them to check health.
+ * MCP servers, plugins, skills, and commands, then pings what it can to check
+ * health. Also reports host/runtime info for the dashboard's System panel.
  *
- * GET /api/system/components   → all components with live status
+ * GET /api/system/components   → components + host info, with live status
  */
 import { Router } from 'express'
 import { readFileSync, existsSync, readdirSync, statSync } from 'fs'
-import { homedir } from 'os'
+import { homedir, platform, arch, release, hostname, cpus, totalmem, freemem, loadavg } from 'os'
 import { join } from 'path'
 import { deriveHealth, type AgentSource } from '../lib/agentEvents.js'
+import { getConnectors } from '../lib/connectors.js'
 
 export const systemRouter = Router()
 
-// ─── Read Claude config ────────────────────────────────────────────────────────
+const claudeDir = () =>
+  process.env.USERPROFILE ? join(process.env.USERPROFILE, '.claude') : join(homedir(), '.claude')
+
+// ─── Read JSON config files ─────────────────────────────────────────────────────
+
+function readJsonSafe(path: string): Record<string, any> | null {
+  try { return existsSync(path) ? JSON.parse(readFileSync(path, 'utf8')) : null } catch { return null }
+}
 
 function readClaudeConfig(): Record<string, any> {
   const candidates = [
     join(homedir(), '.claude', 'settings.json'),
     join(homedir(), '.config', 'claude', 'settings.json'),
-    // Windows paths surfaced via WSL or USERPROFILE
     process.env.APPDATA ? join(process.env.APPDATA, 'Claude', 'settings.json') : '',
     process.env.USERPROFILE ? join(process.env.USERPROFILE, '.claude', 'settings.json') : '',
   ].filter(Boolean)
-
-  for (const p of candidates) {
-    if (existsSync(p)) {
-      try { return JSON.parse(readFileSync(p, 'utf8')) } catch { /* ignore */ }
-    }
-  }
+  for (const p of candidates) { const j = readJsonSafe(p); if (j) return j }
   return {}
 }
 
@@ -39,13 +42,13 @@ function readClaudeDesktopConfig(): Record<string, any> {
     process.env.APPDATA ? join(process.env.APPDATA, 'Claude', 'claude_desktop_config.json') : '',
     join(homedir(), '.config', 'Claude', 'claude_desktop_config.json'),
   ].filter(Boolean)
-
-  for (const p of candidates) {
-    if (existsSync(p)) {
-      try { return JSON.parse(readFileSync(p, 'utf8')) } catch { /* ignore */ }
-    }
-  }
+  for (const p of candidates) { const j = readJsonSafe(p); if (j) return j }
   return {}
+}
+
+// ~/.claude/mcp.json — the CLI's own MCP registry (was previously ignored).
+function readMcpJson(): Record<string, any> {
+  return readJsonSafe(join(claudeDir(), 'mcp.json')) ?? {}
 }
 
 // ─── Ping an HTTP endpoint ─────────────────────────────────────────────────────
@@ -63,24 +66,83 @@ async function pingEndpoint(url: string, timeoutMs = 3000): Promise<{ ok: boolea
   }
 }
 
-// ─── Try to discover skills ────────────────────────────────────────────────────
+// ─── Discover skills / commands ────────────────────────────────────────────────
 
-function discoverSkills(): string[] {
-  const skillDirs = [
-    join(homedir(), '.claude', 'skills'),
-    join(process.cwd(), 'mnt', '.claude', 'skills'),
-  ]
-  const skills: string[] = []
-  for (const dir of skillDirs) {
-    if (!existsSync(dir)) continue
-    try {
-      for (const entry of readdirSync(dir)) {
-        const full = join(dir, entry)
-        if (statSync(full).isDirectory()) skills.push(entry)
-      }
-    } catch { /* ignore */ }
+function listDir(dir: string, kind: 'dir' | 'file'): string[] {
+  if (!existsSync(dir)) return []
+  try {
+    return readdirSync(dir).filter(entry => {
+      try {
+        const st = statSync(join(dir, entry))
+        return kind === 'dir' ? st.isDirectory() : st.isFile()
+      } catch { return false }
+    })
+  } catch { return [] }
+}
+
+function discoverSkills(): Array<{ name: string; scope: string }> {
+  const out: Array<{ name: string; scope: string }> = []
+  for (const [dir, scope] of [
+    [join(claudeDir(), 'skills'), 'user'],
+    [join(process.cwd(), '.claude', 'skills'), 'project'],
+  ] as Array<[string, string]>) {
+    for (const name of listDir(dir, 'dir')) out.push({ name, scope })
   }
-  return skills
+  return out
+}
+
+function discoverCommands(): string[] {
+  return [
+    ...listDir(join(claudeDir(), 'commands'), 'file'),
+    ...listDir(join(process.cwd(), '.claude', 'commands'), 'file'),
+  ].filter(f => f.endsWith('.md')).map(f => f.replace(/\.md$/, ''))
+}
+
+// ─── Discover plugins ───────────────────────────────────────────────────────────
+
+interface PluginInfo { id: string; name: string; marketplace: string; enabled: boolean; version?: string; installedAt?: string }
+
+function discoverPlugins(settings: Record<string, any>): PluginInfo[] {
+  const enabled: Record<string, boolean> = settings.enabledPlugins ?? {}
+  const installed = readJsonSafe(join(claudeDir(), 'plugins', 'installed_plugins.json'))?.plugins ?? {}
+
+  const keys = new Set<string>([...Object.keys(enabled), ...Object.keys(installed)])
+  return [...keys].map(key => {
+    const [name, marketplace = ''] = key.split('@')
+    const meta = Array.isArray(installed[key]) ? installed[key][0] : undefined
+    return {
+      id: key,
+      name,
+      marketplace,
+      enabled: enabled[key] !== false && key in enabled,
+      version: meta?.version,
+      installedAt: meta?.installedAt,
+    }
+  }).sort((a, b) => a.name.localeCompare(b.name))
+}
+
+// ─── Host / runtime info ─────────────────────────────────────────────────────────
+
+function hostInfo() {
+  const mem = process.memoryUsage()
+  const totalMb = totalmem() / 1_048_576
+  const freeMb  = freemem() / 1_048_576
+  return {
+    hostname:    hostname(),
+    platform:    platform(),
+    release:     release(),
+    arch:        arch(),
+    nodeVersion: process.version,
+    cpuModel:    cpus()[0]?.model?.trim() ?? 'unknown',
+    cpuCount:    cpus().length,
+    loadAvg:     loadavg()[0] ?? 0,
+    totalMemMb:  Math.round(totalMb),
+    freeMemMb:   Math.round(freeMb),
+    usedMemPct:  totalMb > 0 ? Math.round(((totalMb - freeMb) / totalMb) * 100) : 0,
+    rssMb:       Math.round(mem.rss / 1_048_576),
+    heapUsedMb:  Math.round(mem.heapUsed / 1_048_576),
+    uptimeSec:   Math.round(process.uptime()),
+  }
 }
 
 // ─── Main route ───────────────────────────────────────────────────────────────
@@ -88,17 +150,20 @@ function discoverSkills(): string[] {
 systemRouter.get('/components', async (_req, res) => {
   const config        = readClaudeConfig()
   const desktopConfig = readClaudeDesktopConfig()
+  const mcpJson       = readMcpJson()
   const components: any[] = []
   const now = new Date().toISOString()
 
-  // ── MCP Servers ───────────────────────────────────────────────────────────
+  // ── MCP Servers (settings.json + desktop config + mcp.json) ────────────────
   const mcpServers: Record<string, any> = {
-    ...(config.mcpServers         ?? {}),
-    ...(desktopConfig.mcpServers  ?? {}),
+    ...(config.mcpServers        ?? {}),
+    ...(desktopConfig.mcpServers ?? {}),
+    ...(mcpJson.mcpServers       ?? {}),
   }
 
   for (const [name, cfg] of Object.entries(mcpServers)) {
     const url: string | undefined = (cfg as any).url ?? (cfg as any).baseUrl
+    const command: string | undefined = (cfg as any).command
     let status = 'healthy'
     let latencyMs: number | undefined
     let error: string | undefined
@@ -108,11 +173,9 @@ systemRouter.get('/components', async (_req, res) => {
       status    = ping.ok ? 'healthy' : 'error'
       latencyMs = ping.latencyMs
       error     = ping.error
-    } else {
-      // stdio MCP — report as healthy if configured (no way to ping without spawning)
-      status = 'healthy'
     }
 
+    const transport = url ? 'http' : command ? 'stdio' : 'unknown'
     components.push({
       id:          `mcp-${name}`,
       name,
@@ -120,21 +183,47 @@ systemRouter.get('/components', async (_req, res) => {
       status,
       latencyMs,
       error,
-      description: (cfg as any).description ?? (url ? `HTTP MCP at ${url}` : 'stdio transport'),
+      transport,
+      description: (cfg as any).description
+        ?? (url ? `HTTP MCP · ${url}` : command ? `stdio · ${command}${Array.isArray((cfg as any).args) ? ' ' + (cfg as any).args.join(' ') : ''}` : 'MCP server'),
       lastChecked: now,
       version:     (cfg as any).version,
     })
   }
 
-  // ── Skills ────────────────────────────────────────────────────────────────
-  const skills = discoverSkills()
-  for (const skill of skills) {
+  // ── Plugins ────────────────────────────────────────────────────────────────
+  for (const p of discoverPlugins(config)) {
     components.push({
-      id:          `skill-${skill}`,
-      name:        skill,
+      id:          `plugin-${p.id}`,
+      name:        p.name,
+      type:        'plugin',
+      status:      p.enabled ? 'healthy' : 'offline',
+      description: `${p.marketplace || 'local'}${p.installedAt ? ` · installed ${new Date(p.installedAt).toLocaleDateString()}` : ''}`,
+      lastChecked: now,
+      version:     p.version,
+    })
+  }
+
+  // ── Skills ───────────────────────────────────────────────────────────────────
+  for (const s of discoverSkills()) {
+    components.push({
+      id:          `skill-${s.scope}-${s.name}`,
+      name:        s.name,
       type:        'skill',
       status:      'healthy',
-      description: `Local skill: ${skill}`,
+      description: `${s.scope} skill`,
+      lastChecked: now,
+    })
+  }
+
+  // ── Slash commands ────────────────────────────────────────────────────────────
+  for (const cmd of discoverCommands()) {
+    components.push({
+      id:          `command-${cmd}`,
+      name:        `/${cmd}`,
+      type:        'command',
+      status:      'healthy',
+      description: 'Custom slash command',
       lastChecked: now,
     })
   }
@@ -144,7 +233,6 @@ systemRouter.get('/components', async (_req, res) => {
     { name: 'Anthropic API', url: 'https://api.anthropic.com', type: 'extension', description: 'Claude API endpoint' },
     { name: 'Google Calendar API', url: 'https://www.googleapis.com', type: 'extension', description: 'Calendar sync' },
   ]
-
   for (const svc of coreServices) {
     const ping = await pingEndpoint(svc.url)
     components.push({
@@ -160,17 +248,22 @@ systemRouter.get('/components', async (_req, res) => {
   }
 
   // ── Agent platforms (OpenClaw + Hermes) ───────────────────────────────────
+  const connectors = getConnectors()
   for (const [source, label] of [['openclaw', 'OpenClaw'], ['hermes', 'Hermes']] as Array<[AgentSource, string]>) {
+    const conn = connectors.find(c => c.id === source)
     try {
       const h = deriveHealth(source)
+      const configured = !!(conn?.enabled && conn?.baseUrl)
       components.push({
         id:          `ext-${source}`,
         name:        label,
         type:        'extension',
-        status:      h.status === 'healthy' ? 'healthy' : h.status === 'warning' ? 'warning' : 'offline',
+        status:      !configured ? 'offline' : h.status === 'healthy' ? 'healthy' : h.status === 'warning' ? 'warning' : 'offline',
         latencyMs:   h.latencyMs,
-        error:       h.status === 'offline' ? 'No recent events' : undefined,
-        description: `${label} event bus · ${h.eventCount} events${h.lastEventAt ? ` · last: ${new Date(h.lastEventAt).toLocaleTimeString()}` : ''}`,
+        error:       !configured ? 'Not connected — add a token in Settings' : h.status === 'offline' ? 'No recent events' : undefined,
+        description: configured
+          ? `${conn!.baseUrl} · ${h.eventCount} events${h.lastEventAt ? ` · last ${new Date(h.lastEventAt).toLocaleTimeString()}` : ''}`
+          : `${label} gateway connector`,
         lastChecked: now,
       })
     } catch { /* skip if db not available */ }
@@ -178,6 +271,7 @@ systemRouter.get('/components', async (_req, res) => {
 
   res.json({
     components,
+    host:      hostInfo(),
     fetchedAt: now,
     source:    Object.keys(mcpServers).length > 0 ? 'claude-config' : 'defaults',
   })

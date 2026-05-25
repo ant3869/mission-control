@@ -4,6 +4,7 @@ import cors from 'cors'
 import { calendarRouter } from './routes/calendar.js'
 import { systemRouter } from './routes/system.js'
 import { radarRouter } from './routes/radar.js'
+import { modelOpsRouter } from './routes/modelops.js'
 import { authRouter } from './routes/auth.js'
 import { chatsRouter } from './routes/chats.js'
 import { memoryRouter } from './routes/memory.js'
@@ -20,6 +21,11 @@ import { openclawRouter } from './routes/openclaw.js'
 import { hermesRouter }   from './routes/hermes.js'
 import { settingsRouter } from './routes/settings.js'
 import { watchRouter }    from './routes/watch.js'
+import { brainRouter }    from './routes/brain.js'
+import { flowRouter }     from './routes/flow.js'
+import { flowmapRouter }  from './routes/flowmap.js'
+import { alertsRouter }   from './routes/alerts.js'
+import { securityRouter } from './routes/security.js'
 
 const app = express()
 const PORT = process.env.API_PORT ?? 3001
@@ -31,6 +37,7 @@ app.use('/api/auth',     authRouter)
 app.use('/api/calendar', calendarRouter)
 app.use('/api/system',   systemRouter)
 app.use('/api/radar',    radarRouter)
+app.use('/api/modelops', modelOpsRouter)
 app.use('/api/chats',    chatsRouter)
 app.use('/api/memory',  memoryRouter)
 app.use('/api/docs',    docsRouter)
@@ -46,6 +53,11 @@ app.use('/api/openclaw', openclawRouter)
 app.use('/api/hermes',   hermesRouter)
 app.use('/api/settings', settingsRouter)
 app.use('/api/watch',    watchRouter)
+app.use('/api/brain',    brainRouter)
+app.use('/api/flow',     flowRouter)
+app.use('/api/flowmap',  flowmapRouter)
+app.use('/api/alerts',   alertsRouter)
+app.use('/api/security', securityRouter)
 
 app.get('/api/health', (_req, res) => res.json({ ok: true, ts: new Date().toISOString() }))
 

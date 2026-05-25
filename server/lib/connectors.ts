@@ -11,11 +11,12 @@ import { maskSecret } from './redact.js'
 export type ConnectorId = 'openclaw' | 'hermes'
 
 export interface ConnectorConfig {
-  id:      ConnectorId
-  label:   string
-  baseUrl: string
-  token:   string
-  enabled: boolean
+  id:           ConnectorId
+  label:        string
+  baseUrl:      string
+  token:        string
+  enabled:      boolean
+  workspaceDir?: string  // optional: absolute path to the agent's memory workspace dir
 }
 
 /** Connector config with the token masked — safe to send to the browser. */

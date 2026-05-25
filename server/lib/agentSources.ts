@@ -14,7 +14,7 @@ import { isLive } from './connectors.js'
 import {
   fetchStatus, fetchSessions, fetchSessionMessages, fetchCronJobs, fetchAnalyticsUsage,
 } from './gateway.js'
-import { getSnapshot as ocSnapshot, getHistory as ocHistory } from './openclawWs.js'
+import { getSnapshot as ocSnapshot, getHistory as ocHistory, getHistories as ocHistories } from './openclawWs.js'
 
 // OpenClaw speaks WebSocket RPC; Hermes speaks REST.
 const usesWebSocket = (source: AgentSource) => source === 'openclaw'
@@ -388,6 +388,125 @@ export async function getAnalytics(source: AgentSource, days = 7) {
   if (!isLive(source)) return null
   const r = await fetchAnalyticsUsage(source, days)
   return r.ok ? r.data : null
+}
+
+// ─── Tool usage (parsed from transcripts' tool_use blocks) ───────────────────
+
+export interface ToolUsage {
+  total:   number
+  byGroup: Record<string, number>
+  samples: Array<{ name: string; group: string; session: string; ts?: string }>
+}
+
+// Bucket raw tool names into a handful of readable groups.
+const TOOL_GROUPS: Array<[RegExp, string]> = [
+  [/search|web|fetch|browse|google|research|tavily|crawl|http|url/i, 'Web & Search'],
+  [/read|write|edit|file|glob|grep|bash|shell|exec|code|patch|diff|terminal/i, 'Code & Files'],
+  [/memory|remember|recall|note|knowledge|wiki/i, 'Memory Tools'],
+  [/discord|slack|email|mail|message|send|channel|notify|sms|tts|speak/i, 'Comms'],
+]
+function toolGroup(name: string): string {
+  for (const [re, g] of TOOL_GROUPS) if (re.test(name)) return g
+  if (name.includes('__') || /^mcp/i.test(name)) return 'MCP'
+  return 'Other'
+}
+
+// A tool *invocation* block (not its result). OpenClaw emits `toolCall`;
+// Anthropic-style transcripts use `tool_use`/`toolUse`.
+const TOOL_CALL_TYPES = new Set(['tool_use', 'tooluse', 'toolcall', 'tool_call'])
+const TOOL_RESULT_ROLES = new Set(['tool', 'toolresult', 'tool_result'])
+
+// Extract tool-call (invocation) names from a single transcript message, across
+// both transport shapes:
+//   • OpenClaw / Anthropic — structured `content` blocks of type toolCall/tool_use
+//   • Hermes (REST) — OpenAI-style message-level `tool_calls` / `toolCalls`
+//     arrays (`{function:{name}}` | `{name}`) or a single `tool_name` field
+// Tool *result* messages (role: tool) are skipped so we count calls, not echoes.
+function messageToolCalls(m: any): string[] {
+  if (!m || typeof m !== 'object') return []
+  const role = String(m.role ?? '').toLowerCase()
+  const names: string[] = []
+
+  if (Array.isArray(m.content)) {
+    for (const b of m.content) {
+      if (b && typeof b === 'object' && TOOL_CALL_TYPES.has(String(b.type ?? '').toLowerCase())) {
+        names.push(String(b.name ?? b.tool ?? b.toolName ?? 'tool'))
+      }
+    }
+  }
+
+  const rawCalls = m.tool_calls ?? m.toolCalls
+  if (Array.isArray(rawCalls) && rawCalls.length) {
+    for (const c of rawCalls) names.push(String(c?.function?.name ?? c?.name ?? 'tool'))
+  } else if ((m.tool_name ?? m.toolName) && !TOOL_RESULT_ROLES.has(role)) {
+    names.push(String(m.tool_name ?? m.toolName))
+  }
+
+  return names
+}
+
+const TOOL_TTL_MS = 30_000
+const toolCache = new Map<string, { at: number; data: ToolUsage }>()
+
+/**
+ * Real tool-call counts derived by parsing tool_use blocks out of the most
+ * recent in-window session transcripts. Bounded (cap) + cached so the Flow Map
+ * stays responsive; only live gateway sessions carry structured tool blocks.
+ */
+export async function getToolUsage(source: AgentSource, sinceMs: number, cap = 25): Promise<ToolUsage> {
+  const empty: ToolUsage = { total: 0, byGroup: {}, samples: [] }
+  if (!isLive(source)) return empty
+
+  const key = `${source}:${sinceMs === Infinity ? 'all' : Math.round(sinceMs / 60_000)}:${cap}`
+  const hit = toolCache.get(key)
+  if (hit && Date.now() - hit.at < TOOL_TTL_MS) return hit.data
+
+  const sessions = (await getSessions(source))
+    .filter(s => (s as any).origin === 'live')
+    .filter(s => sinceMs === Infinity || new Date(s.lastActiveAt ?? 0).getTime() >= sinceMs)
+    .slice(0, cap)
+
+  const byGroup: Record<string, number> = {}
+  const samples: ToolUsage['samples'] = []
+  const perGroupSamples: Record<string, number> = {}
+  let total = 0
+  const tally = (name: string, session: string, ts?: string) => {
+    const g = toolGroup(name)
+    byGroup[g] = (byGroup[g] ?? 0) + 1
+    total++
+    // Keep a few examples per group so every tool edge has inspectable samples.
+    if ((perGroupSamples[g] ?? 0) < 3) {
+      samples.push({ name, group: g, session, ts })
+      perGroupSamples[g] = (perGroupSamples[g] ?? 0) + 1
+    }
+  }
+
+  try {
+    if (usesWebSocket(source)) {
+      const map = await ocHistories(sessions.map(s => s.id))
+      for (const s of sessions) {
+        for (const m of map[s.id] ?? []) {
+          const ts = toIso(m?.timestamp ?? m?.ts) || undefined
+          for (const name of messageToolCalls(m)) tally(name, s.title || s.id, ts)
+        }
+      }
+    } else {
+      const lists = await Promise.all(sessions.map(async s => {
+        const r = await fetchSessionMessages(source, s.id)
+        return { s, msgs: r.ok && r.data ? r.data : [] }
+      }))
+      for (const { s, msgs } of lists) {
+        for (const m of msgs) {
+          const ts = toIso(m?.timestamp ?? m?.ts) || undefined
+          for (const name of messageToolCalls(m)) tally(name, s.title || s.id, ts)
+        }
+      }
+    }
+  } catch { /* leave whatever we counted so far */ }
+
+  const data: ToolUsage = { total, byGroup, samples }
+  toolCache.set(key, { at: Date.now(), data })
+  return data
 }
 
 export { deriveEventStats }

@@ -21,6 +21,19 @@ export const pipelineRouter = Router()
 export type StageStatus  = 'completed' | 'running' | 'failed' | 'pending' | 'skipped'
 export type RunStatus    = 'running' | 'queued' | 'completed' | 'failed'
 
+// Timeline (Gantt) segment kinds, one bar each on a run's execution row.
+export type SegmentKind  = 'queue' | 'stage' | 'retry' | 'wait' | 'failed'
+
+export interface PipelineSegment {
+  kind:        SegmentKind
+  label:       string
+  startMs:     number        // offset from the run's queuedAt
+  durationMs:  number
+  status?:     StageStatus   // for stage/failed segments
+  stageName?:  string
+  attempt?:    number        // retry attempt index (1-based) for retry segments
+}
+
 export interface PipelineStage {
   name:        string
   status:      StageStatus
@@ -44,6 +57,14 @@ export interface PipelineRun {
   completedAgo?: string
   model:       string
   cwd:         string
+  // ── Execution-timeline fields (Gantt view) ──
+  queuedAt:    string         // startedAt minus queue wait
+  completedAt: string | null  // null while running
+  queueMs:     number         // time spent queued before first stage
+  waitMs:      number         // total blocked / waiting-on-model time
+  retries:     number         // total stage retries in the run
+  totalMs:     number         // queued → completed span, drives the timeline scale
+  timeline:    PipelineSegment[]
 }
 
 export interface ScheduledTask {
@@ -56,6 +77,42 @@ export interface ScheduledTask {
   lastRunAt:   string | null
   nextRunLabel: string
   lastRunLabel: string
+}
+
+// ─── Run-trace types ──────────────────────────────────────────────────────────
+// Transport-agnostic so real Hermes / OpenClaw trace ingestion can fill the same
+// shape later. Kept in sync with src/components/trace/types.ts.
+
+export type SpanStatusT = 'success' | 'running' | 'failed' | 'skipped'
+export type SpanKind    = 'run' | 'plan' | 'agent' | 'model' | 'tool' | 'memory' | 'message'
+
+export interface TraceSpan {
+  id:          string
+  parentId:    string | null
+  name:        string
+  kind:        SpanKind
+  status:      SpanStatusT
+  startMs:     number
+  durationMs:  number
+  model?:      string
+  tool?:       string
+  tokens?:     { input: number; output: number; total: number }
+  cost?:       number
+  attributes?: Record<string, unknown>
+}
+
+export interface TraceRun {
+  id:          string
+  name:        string
+  source?:     string
+  status:      SpanStatusT
+  startedAt:   string
+  durationMs:  number
+  totalTokens: number
+  totalCost:   number
+  models:      string[]
+  spanCount:   number
+  spans:       TraceSpan[]
 }
 
 // ─── JSONL discovery ──────────────────────────────────────────────────────────
@@ -270,6 +327,93 @@ function elapsedLabel(startedAt: string, lastActiveAt: string): string {
   return `${Math.floor(min / 60)}h ${min % 60}m`
 }
 
+// ─── Execution timeline (Gantt) builder ──────────────────────────────────────
+// Lays the run out as contiguous segments: queue → (wait | retry | stage)* .
+// Stage durations and inter-stage waits come from the real JSONL phase
+// timestamps; queue time and occasional retries are seeded per-run (the JSONL
+// has no signal for them) so the value is stable across refreshes. Swap the
+// seeded bits for real queue/retry telemetry when a run store provides it.
+
+function buildTimeline(
+  info: SessionInfo,
+  isActive: boolean,
+  isFailed: boolean,
+  startMs: number,
+  lastMs: number,
+): { queueMs: number; waitMs: number; retries: number; totalMs: number; queuedAt: string; segments: PipelineSegment[] } {
+  const rng = mulberry32(hashStr(`${info.id}:timeline`))
+  const between = (a: number, b: number) => Math.round(a + rng() * (b - a))
+
+  const segments: PipelineSegment[] = []
+  let waitMs  = 0
+  let retries = 0
+
+  // Queue segment — seeded (no queue signal in JSONL)
+  const queueMs = between(500, 8000)
+  segments.push({ kind: 'queue', label: 'Queued', startMs: 0, durationMs: queueMs })
+  let cursor = queueMs
+
+  // Ensure there is always something to render
+  let phases = info.phases
+  if (phases.length === 0) {
+    let t = startMs
+    phases = ['Analyze', 'Execute', 'Complete'].map(name => {
+      const d = between(1500, 6000)
+      const p: ToolPhase = { name, tools: [], count: 1, firstAt: t, lastAt: t + d }
+      t += d + between(200, 1800)
+      return p
+    })
+  }
+
+  let prevLastAt = phases[0]?.firstAt || startMs
+
+  for (let i = 0; i < phases.length; i++) {
+    const ph     = phases[i]
+    const isLast = i === phases.length - 1
+    const firstAt = ph.firstAt || prevLastAt
+    const lastAt  = ph.lastAt && ph.lastAt > firstAt ? ph.lastAt : firstAt + between(1200, 5000)
+
+    // Real gap before this phase → waiting / blocked-on-model segment
+    const gap = firstAt - prevLastAt
+    if (gap > 1500) {
+      segments.push({ kind: 'wait', label: 'Waiting', startMs: cursor, durationMs: gap })
+      cursor += gap
+      waitMs += gap
+    }
+
+    // Seeded retry: a failed attempt that re-ran (not on a run that ends failed)
+    if (!(isFailed && isLast) && rng() < 0.1) {
+      const rdur = between(700, 2600)
+      segments.push({ kind: 'retry', label: `${ph.name} retry`, stageName: ph.name, attempt: 1, status: 'failed', startMs: cursor, durationMs: rdur })
+      cursor += rdur
+      retries++
+    }
+
+    const dur = Math.max(lastAt - firstAt, 400)
+    let status: StageStatus = 'completed'
+    if (isActive && isLast) status = 'running'
+    else if (isFailed && isLast) status = 'failed'
+
+    segments.push({
+      kind:      isFailed && isLast ? 'failed' : 'stage',
+      label:     ph.name,
+      stageName: ph.name,
+      status,
+      startMs:   cursor,
+      durationMs: dur,
+    })
+    cursor += dur
+    prevLastAt = lastAt
+  }
+
+  return {
+    queueMs, waitMs, retries,
+    totalMs:  cursor,
+    queuedAt: new Date(startMs - queueMs).toISOString(),
+    segments,
+  }
+}
+
 // ─── Build pipeline runs from sessions ────────────────────────────────────────
 
 function sessionToRun(info: SessionInfo, now: number): PipelineRun {
@@ -308,13 +452,17 @@ function sessionToRun(info: SessionInfo, now: number): PipelineRun {
     stages.push({ name: 'Complete', status: 'completed' })
   }
 
+  const startMs = new Date(info.startedAt).getTime()
+  const lastMs  = new Date(info.lastActiveAt).getTime()
+  const tl = buildTimeline(info, isActive, isFailed, startMs, lastMs)
+
   return {
     id:           info.id,
     name:         info.name,
     projectSlug:  info.slug,
     status,
     stages,
-    elapsedSec:   Math.floor((new Date(info.lastActiveAt).getTime() - new Date(info.startedAt).getTime()) / 1000),
+    elapsedSec:   Math.floor((lastMs - startMs) / 1000),
     inputTokens:  info.inputTokens,
     outputTokens: info.outputTokens,
     totalTokens:  info.inputTokens + info.outputTokens,
@@ -324,6 +472,13 @@ function sessionToRun(info: SessionInfo, now: number): PipelineRun {
     completedAgo: isActive ? undefined : relAgo(info.lastActiveAt),
     model:        info.model || 'claude-sonnet-4-6',
     cwd:          info.cwd,
+    queuedAt:     tl.queuedAt,
+    completedAt:  isActive ? null : info.lastActiveAt,
+    queueMs:      tl.queueMs,
+    waitMs:       tl.waitMs,
+    retries:      tl.retries,
+    totalMs:      tl.totalMs,
+    timeline:     tl.segments,
   }
 }
 
@@ -375,7 +530,172 @@ function cronToHuman(expr: string): string {
   return expr
 }
 
+// ─── Run-trace generator ──────────────────────────────────────────────────────
+// Deterministic, seeded by run id. Mirrors the client-side mock so the trace is
+// stable per run. Swap this for real span ingestion when traces are persisted.
+
+function hashStr(s: string): number {
+  let h = 2166136261
+  for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619)
+  return h >>> 0
+}
+function mulberry32(seed: number): () => number {
+  let a = seed
+  return () => {
+    a |= 0; a = (a + 0x6d2b79f5) | 0
+    let t = Math.imul(a ^ (a >>> 15), 1 | a)
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+  }
+}
+
+const TRACE_MODELS = ['claude-opus-4-7', 'claude-sonnet-4-6', 'claude-haiku-4-5']
+const TRACE_RATES: Record<string, { in: number; out: number }> = {
+  'claude-opus-4-7':   { in: 15, out: 75 },
+  'claude-sonnet-4-6': { in: 3,  out: 15 },
+  'claude-haiku-4-5':  { in: 0.8, out: 4 },
+}
+function traceCost(model: string, input: number, output: number): number {
+  const r = TRACE_RATES[model] ?? TRACE_RATES['claude-sonnet-4-6']
+  return +(((input / 1e6) * r.in) + ((output / 1e6) * r.out)).toFixed(4)
+}
+
+function buildTrace(id: string, name: string, model: string, status: SpanStatusT, source: string): TraceRun {
+  const rnd = mulberry32(hashStr(id))
+  const between = (a: number, b: number) => Math.round(a + rnd() * (b - a))
+  const pick = <T,>(arr: T[]): T => arr[Math.floor(rnd() * arr.length)]
+  const primaryModel = model && TRACE_RATES[model] ? model : pick(TRACE_MODELS)
+
+  const spans: TraceSpan[] = []
+  let seq = 0
+  const sid = () => `${id}-s${seq++}`
+  const ROOT = sid()
+  let cursor = 0
+
+  const addModel = (parentId: string, label: string, st: SpanStatusT = 'success') => {
+    const m = rnd() > 0.7 ? pick(TRACE_MODELS) : primaryModel
+    const input = between(1500, 9000)
+    const output = st === 'failed' ? between(0, 120) : between(180, 2600)
+    const dur = between(700, 4200)
+    spans.push({
+      id: sid(), parentId, name: label, kind: 'model', status: st,
+      startMs: cursor, durationMs: dur, model: m,
+      tokens: { input, output, total: input + output }, cost: traceCost(m, input, output),
+      attributes: {
+        model: m, temperature: +(rnd() * 0.9).toFixed(2), maxTokens: pick([4096, 8192, 16384]),
+        stopReason: st === 'failed' ? 'error' : 'end_turn',
+        ...(st === 'failed' ? { error: 'upstream 529 overloaded' } : {}),
+      },
+    })
+    cursor += dur + between(20, 160)
+  }
+
+  const TOOLS = ['Read', 'Bash', 'Edit', 'Grep', 'Glob', 'WebSearch', 'mcp__contextstream__search']
+  const addTool = (parentId: string, st: SpanStatusT = 'success') => {
+    const tool = pick(TOOLS)
+    const dur = between(90, 2600)
+    spans.push({
+      id: sid(), parentId, name: tool, kind: 'tool', status: st,
+      startMs: cursor, durationMs: dur, tool,
+      attributes: {
+        tool,
+        input: tool === 'Bash' ? { command: 'npm run build' }
+          : tool === 'Read' ? { file: 'server/routes/pipeline.ts' }
+          : tool === 'WebSearch' ? { query: 'distributed tracing waterfall ui' }
+          : { pattern: 'TraceSpan', path: 'src/**/*.ts' },
+        ...(st === 'failed'
+          ? { error: 'ENOENT: no such file or directory', exitCode: 1 }
+          : { resultPreview: 'ok', bytes: between(120, 18000) }),
+      },
+    })
+    cursor += dur + between(10, 90)
+  }
+
+  const addMemory = (parentId: string, label: string) => {
+    const dur = between(40, 420)
+    spans.push({
+      id: sid(), parentId, name: label, kind: 'memory', status: 'success',
+      startMs: cursor, durationMs: dur,
+      attributes: { store: pick(['contextstream', 'local-fs', 'vector']), hits: between(1, 7), query: label },
+    })
+    cursor += dur + between(10, 60)
+  }
+
+  const group = (name: string, kind: SpanKind, st: SpanStatusT, body: (gid: string) => void, attrs?: Record<string, unknown>) => {
+    const start = cursor
+    const gid = sid()
+    const span: TraceSpan = { id: gid, parentId: ROOT, name, kind, status: st, startMs: start, durationMs: 0, attributes: attrs }
+    spans.push(span)
+    body(gid)
+    span.durationMs = cursor - start
+  }
+
+  group('Plan task', 'plan', 'success', gid => addModel(gid, 'Reasoning · planning'), { steps: between(2, 5) })
+  group('Recall context', 'memory', 'success', gid => {
+    const n = between(2, 4)
+    for (let i = 0; i < n; i++) addMemory(gid, pick(['user preferences', 'project facts', 'prior decisions', 'feedback notes']))
+  }, { source })
+
+  const stepCount = between(2, 4)
+  for (let i = 1; i <= stepCount; i++) {
+    const last = i === stepCount
+    const st: SpanStatusT = last && status === 'failed' ? 'failed' : last && status === 'running' ? 'running' : 'success'
+    const verb = pick(['Search', 'Analyze', 'Implement', 'Verify', 'Compose'])
+    group(`Step ${i}: ${verb}`, 'agent', st, gid => {
+      addModel(gid, `${verb} · model call`, st === 'failed' ? 'failed' : 'success')
+      const tools = between(1, 3)
+      for (let t = 0; t < tools; t++) addTool(gid, st === 'failed' && t === tools - 1 ? 'failed' : 'success')
+    }, { step: i, goal: verb })
+  }
+
+  if (status !== 'failed') {
+    const dur = between(60, 300)
+    spans.push({
+      id: sid(), parentId: ROOT, name: 'Final message', kind: 'message',
+      status: status === 'running' ? 'running' : 'success', startMs: cursor, durationMs: dur,
+      attributes: { preview: 'Done — summary of changes and next steps.' },
+    })
+    cursor += dur
+  }
+
+  const totalTokens = spans.reduce((n, s) => n + (s.tokens?.total ?? 0), 0)
+  const totalCost = +spans.reduce((n, s) => n + (s.cost ?? 0), 0).toFixed(4)
+  const models = Array.from(new Set(spans.filter(s => s.model).map(s => s.model as string)))
+
+  spans.unshift({
+    id: ROOT, parentId: null, name, kind: 'run', status,
+    startMs: 0, durationMs: cursor,
+    tokens: { input: 0, output: 0, total: totalTokens }, cost: totalCost,
+    attributes: { id, source, status },
+  })
+
+  return {
+    id, name, source, status,
+    startedAt: new Date(Date.now() - cursor).toISOString(),
+    durationMs: cursor, totalTokens, totalCost,
+    models: models.length ? models : [primaryModel],
+    spanCount: spans.length, spans,
+  }
+}
+
+function toSpanStatus(s: string): SpanStatusT {
+  if (s === 'running') return 'running'
+  if (s === 'failed') return 'failed'
+  if (s === 'skipped') return 'skipped'
+  return 'success'
+}
+
 // ─── Routes ──────────────────────────────────────────────────────────────────
+
+pipelineRouter.get('/runs/:id/trace', (req, res) => {
+  const id = req.params.id
+  const name = typeof req.query.name === 'string' && req.query.name ? req.query.name : `Run ${id.slice(0, 8)}`
+  const model = typeof req.query.model === 'string' ? req.query.model : ''
+  const status = toSpanStatus(typeof req.query.status === 'string' ? req.query.status : 'completed')
+  const source = typeof req.query.source === 'string' && req.query.source ? req.query.source : 'claude'
+  const run = buildTrace(id, name, model, status, source)
+  res.json({ run, fetchedAt: new Date().toISOString() })
+})
 
 pipelineRouter.get('/runs', (_req, res) => {
   const projectsDir = findClaudeProjectsDir()

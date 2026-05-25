@@ -8,6 +8,7 @@
 import { randomUUID } from 'crypto'
 import type { AgentSource } from './agentEvents.js'
 import { ensureConnected, request as ocRequest } from './openclawLive.js'
+import { postWithBody, fetchSessionMessages } from './gateway.js'
 
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
 
@@ -100,7 +101,48 @@ async function researchOpenClaw(item: { id: string; name: string; manufacturer?:
   throw new Error('agent did not return structured data within ~3 minutes')
 }
 
+/** Research via Hermes: POST a prompt to the Hermes REST API, poll session history for the JSON reply. */
+async function researchHermes(item: { id: string; name: string; manufacturer?: string; model?: string; category?: string; notes?: string; tags?: string[] }): Promise<ResearchResult> {
+  const prompt = buildPrompt(item)
+  const sessionId = `dashboard-research-${item.id.slice(0, 8)}-${Date.now()}`
+
+  // Try common Hermes REST endpoints for sending a chat message.
+  const chatBody = { message: prompt, session_id: sessionId, sessionId, conversationId: sessionId, role: 'user', content: prompt }
+  const paths = [
+    `/api/chat/message`,
+    `/api/chat`,
+    `/api/sessions/${encodeURIComponent(sessionId)}/messages`,
+    `/api/messages`,
+  ]
+  let sent = false
+  for (const path of paths) {
+    const r = await postWithBody('hermes', path, chatBody, 10_000)
+    if (r.ok) { sent = true; break }
+  }
+  if (!sent) throw new Error('Hermes chat API unavailable — no supported REST endpoint found')
+
+  // Poll Hermes session for the agent's structured reply (~1-3 min).
+  for (let i = 0; i < 36; i++) {
+    await sleep(5000)
+    const h = await fetchSessionMessages('hermes', sessionId, true).catch(() => null)
+    const msgs: any[] = h?.data ?? []
+    const lastAssistant = [...msgs].reverse().find(m => String(m.role ?? m.type) === 'assistant')
+    const json = extractJson(extractText(lastAssistant?.content ?? lastAssistant?.message ?? lastAssistant?.text))
+    if (json && (json.summary || json.specs || json.model)) return json as ResearchResult
+  }
+  throw new Error('Hermes agent did not return structured data within ~3 minutes')
+}
+
 export async function researchItem(item: { id: string; name: string; manufacturer?: string; model?: string; category?: string; notes?: string; tags?: string[] }, source: AgentSource): Promise<ResearchResult> {
   if (source === 'openclaw') return researchOpenClaw(item)
-  throw new Error('Auto-research currently supports OpenClaw only (Hermes has no synchronous chat over the dashboard connector).')
+  if (source === 'hermes') {
+    // Try Hermes first; if it has no usable chat API, fall back to OpenClaw.
+    return researchHermes(item).catch(err => {
+      if (String(err?.message).includes('unavailable') || String(err?.message).includes('no supported')) {
+        return researchOpenClaw(item)
+      }
+      throw err
+    })
+  }
+  throw new Error(`Unknown agent source: ${source}`)
 }

@@ -197,12 +197,28 @@ function MessageBubble({ msg, assistantBadge }: {
   )
 }
 
-function SectionHeader({ title, count }: { title: string; count: number }) {
+function SectionHeader({
+  title, count, open, onToggle, dot,
+}: {
+  title: string
+  count: number
+  open: boolean
+  onToggle: () => void
+  dot?: string
+}) {
   return (
-    <div className="flex items-center gap-2 px-1 pt-2 pb-1">
-      <span className="text-xxs font-semibold uppercase tracking-wide text-text-muted">{title}</span>
-      <span className="ml-auto text-xxs text-text-muted">{count} found</span>
-    </div>
+    <button
+      onClick={onToggle}
+      className="w-full flex items-center gap-2 px-1 pt-2 pb-1 group"
+    >
+      {dot && <span className={clsx('w-1.5 h-1.5 rounded-full shrink-0', dot)} />}
+      <span className="text-xxs font-semibold uppercase tracking-wide text-text-muted group-hover:text-text-secondary transition-colors">{title}</span>
+      <span className="ml-auto text-xxs text-text-muted">{count}</span>
+      <ChevronRight size={11} className={clsx(
+        'text-text-muted transition-transform shrink-0',
+        open && 'rotate-90',
+      )} />
+    </button>
   )
 }
 
@@ -488,6 +504,10 @@ export function Chats() {
     return () => window.clearInterval(timer)
   }, [loadSessions])
 
+  const [claudeOpen, setClaudeOpen] = useState(true)
+  const [clawOpen,   setClawOpen]   = useState(true)
+  const [hermesOpen, setHermesOpen] = useState(true)
+
   const claudeSessions    = filtered.filter(s => s.source === 'claude')
   const clawSessions      = filtered.filter(s => s.source === 'openclaw' && !s.isHeartbeat)
   const heartbeatSessions = filtered.filter(s => s.source === 'openclaw' && s.isHeartbeat)
@@ -500,39 +520,21 @@ export function Chats() {
     <div className="flex h-full overflow-hidden">
       <div className="flex flex-col w-[320px] min-w-[320px] border-r border-border bg-surface overflow-hidden">
         <div className="px-3 pt-3 pb-2 border-b border-border shrink-0">
-          <div className="flex items-center gap-1.5 mb-2">
+          <div className="flex items-center gap-1.5 mb-2.5">
             <MessageSquare size={13} className="text-text-muted" />
             <span className="text-xs font-semibold text-text-primary">Chats</span>
-            <span className="ml-auto text-xxs text-text-muted">{filtered.length} total</span>
+            <div className="ml-auto flex items-center gap-2 text-xxs text-text-muted">
+              <div className="flex items-center gap-1"><Hash size={10} />{filtered.length}</div>
+              <div className="flex items-center gap-1"><Activity size={10} />{fmt(totalTok)}</div>
+              {fetchedAt && <span>{relativeTime(fetchedAt)}</span>}
+            </div>
             <button
               onClick={() => loadSessions(false)}
               disabled={loading}
-              className="p-1 rounded hover:bg-card text-text-muted hover:text-text-secondary transition-colors"
+              className="p-1 rounded hover:bg-card text-text-muted hover:text-text-secondary transition-colors ml-1"
             >
               <RefreshCw size={11} className={loading ? 'animate-spin' : ''} />
             </button>
-          </div>
-
-          <div className="grid grid-cols-1 gap-1.5 mb-2">
-            <div className="flex items-center gap-2 rounded border border-border bg-base px-2.5 py-2">
-              <span className={clsx('w-1.5 h-1.5 rounded-full', sourceDotClass('claude'))} />
-              <span className="text-xs text-text-secondary">Claude Sessions</span>
-              <span className="ml-auto text-xxs text-text-muted">{claudeSessions.length} found</span>
-            </div>
-            <div className="flex items-center gap-2 rounded border border-border bg-base px-2.5 py-2">
-              <span className={clsx('w-1.5 h-1.5 rounded-full', sourceDotClass('openclaw'))} />
-              <span className="text-xs text-text-secondary">OpenClaw Sessions</span>
-              <span className="ml-auto text-xxs text-text-muted">
-                {clawSessions.length + heartbeatSessions.length} found
-              </span>
-            </div>
-            <div className="flex items-center gap-2 rounded border border-border bg-base px-2.5 py-2">
-              <span className={clsx('w-1.5 h-1.5 rounded-full', sourceDotClass('hermes'))} />
-              <span className="text-xs text-text-secondary">Hermes Sessions</span>
-              <span className="ml-auto text-xxs text-text-muted">
-                {hermesSessions.length + hermesHeartbeats.length} found
-              </span>
-            </div>
           </div>
 
           <div className="relative">
@@ -543,14 +545,6 @@ export function Chats() {
               placeholder="Search sessions..."
               className="w-full pl-7 pr-3 py-2 rounded-lg bg-base border border-border text-xs text-text-primary placeholder:text-text-muted outline-none focus:border-border"
             />
-          </div>
-        </div>
-
-        <div className="px-3 py-2 border-b border-border shrink-0">
-          <div className="flex items-center gap-3 text-xxs text-text-muted">
-            <div className="flex items-center gap-1"><Hash size={11} />{filtered.length}</div>
-            <div className="flex items-center gap-1"><Activity size={11} />{totalTok.toLocaleString()} tok</div>
-            {fetchedAt && <div className="ml-auto">{relativeTime(fetchedAt)}</div>}
           </div>
         </div>
 
@@ -572,69 +566,100 @@ export function Chats() {
               <p className="text-sm text-text-muted">No matching sessions</p>
             </div>
           ) : (
-            <div className="space-y-2">
+            <div className="space-y-0.5">
+              {/* ── Claude ── */}
               <div>
-                <SectionHeader title="Claude Sessions" count={claudeSessions.length} />
-                <div className="space-y-1">
-                  {claudeSessions.length === 0 ? (
-                    <div className="px-2 py-2 text-xxs text-text-muted">No Claude sessions</div>
-                  ) : (
-                    claudeSessions.map(session => (
-                      <SessionItem
-                        key={sourceKey(session)}
-                        session={session}
-                        isActive={selected ? sourceKey(selected) === sourceKey(session) : false}
-                        onClick={() => selectSession(session)}
-                      />
-                    ))
-                  )}
-                </div>
+                <SectionHeader
+                  title="Claude"
+                  count={claudeSessions.length}
+                  open={claudeOpen}
+                  onToggle={() => setClaudeOpen(o => !o)}
+                  dot={sourceDotClass('claude')}
+                />
+                {claudeOpen && (
+                  <div className="space-y-1 pb-1">
+                    {claudeSessions.length === 0 ? (
+                      <div className="px-2 py-2 text-xxs text-text-muted">No Claude sessions</div>
+                    ) : (
+                      claudeSessions.map(session => (
+                        <SessionItem
+                          key={sourceKey(session)}
+                          session={session}
+                          isActive={selected ? sourceKey(selected) === sourceKey(session) : false}
+                          onClick={() => selectSession(session)}
+                        />
+                      ))
+                    )}
+                  </div>
+                )}
               </div>
 
+              {/* ── OpenClaw ── */}
               <div>
-                <SectionHeader title="OpenClaw Sessions" count={clawSessions.length + heartbeatSessions.length} />
-                <HeartbeatStack
-                  sessions={heartbeatSessions}
-                  selected={selected}
-                  onSelect={selectSession}
+                <SectionHeader
+                  title="OpenClaw"
+                  count={clawSessions.length + heartbeatSessions.length}
+                  open={clawOpen}
+                  onToggle={() => setClawOpen(o => !o)}
+                  dot={sourceDotClass('openclaw')}
                 />
-                <div className="space-y-1">
-                  {clawSessions.length === 0 && heartbeatSessions.length === 0 ? (
-                    <div className="px-2 py-2 text-xxs text-text-muted">No OpenClaw sessions</div>
-                  ) : (
-                    clawSessions.map(session => (
-                      <SessionItem
-                        key={sourceKey(session)}
-                        session={session}
-                        isActive={selected ? sourceKey(selected) === sourceKey(session) : false}
-                        onClick={() => selectSession(session)}
-                      />
-                    ))
-                  )}
-                </div>
+                {clawOpen && (
+                  <div className="pb-1">
+                    <HeartbeatStack
+                      sessions={heartbeatSessions}
+                      selected={selected}
+                      onSelect={selectSession}
+                    />
+                    <div className="space-y-1">
+                      {clawSessions.length === 0 && heartbeatSessions.length === 0 ? (
+                        <div className="px-2 py-2 text-xxs text-text-muted">No OpenClaw sessions</div>
+                      ) : (
+                        clawSessions.map(session => (
+                          <SessionItem
+                            key={sourceKey(session)}
+                            session={session}
+                            isActive={selected ? sourceKey(selected) === sourceKey(session) : false}
+                            onClick={() => selectSession(session)}
+                          />
+                        ))
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
 
+              {/* ── Hermes ── */}
               <div>
-                <SectionHeader title="Hermes Sessions" count={hermesSessions.length + hermesHeartbeats.length} />
-                <HeartbeatStack
-                  sessions={hermesHeartbeats}
-                  selected={selected}
-                  onSelect={selectSession}
+                <SectionHeader
+                  title="Hermes"
+                  count={hermesSessions.length + hermesHeartbeats.length}
+                  open={hermesOpen}
+                  onToggle={() => setHermesOpen(o => !o)}
+                  dot={sourceDotClass('hermes')}
                 />
-                <div className="space-y-1">
-                  {hermesSessions.length === 0 && hermesHeartbeats.length === 0 ? (
-                    <div className="px-2 py-2 text-xxs text-text-muted">No Hermes sessions — add a token in Settings</div>
-                  ) : (
-                    hermesSessions.map(session => (
-                      <SessionItem
-                        key={sourceKey(session)}
-                        session={session}
-                        isActive={selected ? sourceKey(selected) === sourceKey(session) : false}
-                        onClick={() => selectSession(session)}
-                      />
-                    ))
-                  )}
-                </div>
+                {hermesOpen && (
+                  <div className="pb-1">
+                    <HeartbeatStack
+                      sessions={hermesHeartbeats}
+                      selected={selected}
+                      onSelect={selectSession}
+                    />
+                    <div className="space-y-1">
+                      {hermesSessions.length === 0 && hermesHeartbeats.length === 0 ? (
+                        <div className="px-2 py-2 text-xxs text-text-muted">No Hermes sessions</div>
+                      ) : (
+                        hermesSessions.map(session => (
+                          <SessionItem
+                            key={sourceKey(session)}
+                            session={session}
+                            isActive={selected ? sourceKey(selected) === sourceKey(session) : false}
+                            onClick={() => selectSession(session)}
+                          />
+                        ))
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
 
               {error && (

@@ -25,6 +25,7 @@ export type View =
   | 'team'
   | 'system'
   | 'radar'
+  | 'modelops'
   | 'factory'
   | 'pipeline'
   | 'feedback'
@@ -34,6 +35,7 @@ export type View =
   | 'hermes'
   | 'watch'
   | 'inventory'
+  | 'flowmap'
 
 export type TaskColor =
   | 'red'
@@ -163,7 +165,7 @@ export type ChatSession = {
 
 // ─── System ────────────────────────────────────────────────────────────────────
 
-export type SystemComponentType = 'mcp' | 'plugin' | 'skill' | 'extension'
+export type SystemComponentType = 'mcp' | 'plugin' | 'skill' | 'extension' | 'command'
 export type SystemStatus = 'healthy' | 'warning' | 'error' | 'offline'
 
 export type SystemComponent = {
@@ -406,4 +408,72 @@ export type InventoryStat = {
   totalValue: number
   lowStockCount: number
   outOfStockCount: number
+}
+
+// ─── Flow Map (node-link traffic graph) ──────────────────────────────────────────
+
+export type FlowNodeType =
+  | 'channel'   // Discord, DMs, inbound surfaces
+  | 'agent'     // Hermes / OpenClaw agents
+  | 'runtime'   // execution runtimes
+  | 'cron'      // scheduled / heartbeat jobs
+  | 'tool'      // tool groups
+  | 'memory'    // memory stores
+  | 'external'  // external services / APIs
+
+export type FlowEdgeKind = 'message' | 'invocation' | 'token' | 'handoff'
+
+export type FlowNodeMetrics = {
+  messages?:    number
+  invocations?: number
+  tokens?:      number
+  sessions?:    number
+}
+
+export type FlowNode = {
+  id:      string
+  label:   string
+  type:    FlowNodeType
+  metrics: FlowNodeMetrics
+  meta?:   Record<string, string | number>
+}
+
+export type FlowEdgeSample = {
+  ts?:     string
+  label:   string
+  detail?: string
+}
+
+export type FlowEdgeMetrics = {
+  messages?:    number
+  invocations?: number
+  tokens?:      number
+  handoffs?:    number
+}
+
+export type FlowEdge = {
+  id:      string
+  source:  string  // FlowNode id
+  target:  string  // FlowNode id
+  kind:    FlowEdgeKind
+  volume:  number   // primary weight → edge thickness
+  metrics: FlowEdgeMetrics
+  samples?: FlowEdgeSample[]
+}
+
+export type FlowRange = '1h' | '24h' | '7d' | 'all'
+
+export type FlowGraph = {
+  nodes:       FlowNode[]
+  edges:       FlowEdge[]
+  range:       FlowRange
+  live:        boolean   // true if any real telemetry fed the graph
+  generatedAt: string
+  stats: {
+    nodeCount:        number
+    edgeCount:        number
+    totalMessages:    number
+    totalInvocations: number
+    totalTokens:      number
+  }
 }

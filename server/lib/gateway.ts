@@ -66,7 +66,19 @@ async function rawGet<T>(id: ConnectorId, path: string, useCache = true): Promis
     if (!res.ok) {
       return { ok: false, data: null, error: `HTTP ${res.status}`, latencyMs }
     }
-    const data = (await res.json().catch(() => null)) as T
+    // A 200 that isn't JSON means we hit the SPA index.html fallthrough for an
+    // unknown route, not a real API endpoint. Treat it as a miss so getFirst()
+    // keeps trying candidate paths and we never cache the HTML as a successful
+    // (but empty) result.
+    const ct = res.headers.get('content-type') ?? ''
+    const body = await res.text()
+    if (!/json/i.test(ct) && !/^\s*[[{]/.test(body)) {
+      return { ok: false, data: null, error: `non-JSON response (${res.status})`, latencyMs }
+    }
+    let data: T
+    try { data = JSON.parse(body) as T } catch {
+      return { ok: false, data: null, error: 'invalid JSON response', latencyMs }
+    }
     if (useCache) cache.set(cacheKey, { at: Date.now(), data })
     return { ok: true, data, latencyMs }
   } catch (err: any) {
@@ -121,6 +133,30 @@ async function postFirst(id: ConnectorId, paths: string[]): Promise<GatewayResul
     last = r
   }
   return last
+}
+
+/** POST with an arbitrary JSON body (used for agent chat-send calls). */
+export async function postWithBody(id: ConnectorId, path: string, body: unknown, timeoutMs = TIMEOUT_MS): Promise<GatewayResult<any>> {
+  const start = Date.now()
+  const cfg = getConnector(id)
+  if (!cfg?.baseUrl) return { ok: false, data: null, error: 'not configured', latencyMs: 0 }
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    const res = await fetch(`${cfg.baseUrl}${path}`, {
+      method: 'POST', headers: { ...headers(cfg.token), 'Content-Type': 'application/json' },
+      body: JSON.stringify(body), signal: controller.signal,
+    })
+    const latencyMs = Date.now() - start
+    if (!res.ok) return { ok: false, data: null, error: `HTTP ${res.status}`, latencyMs }
+    const data = await res.json().catch(() => ({}))
+    return { ok: true, data, latencyMs }
+  } catch (err: any) {
+    const error = err?.name === 'AbortError' ? `timeout after ${timeoutMs}ms` : (err?.message ?? 'fetch failed')
+    return { ok: false, data: null, error, latencyMs: Date.now() - start }
+  } finally {
+    clearTimeout(timer)
+  }
 }
 
 export type CronAction = 'pause' | 'resume' | 'trigger'
@@ -189,6 +225,12 @@ export async function fetchAnalyticsUsage(id: ConnectorId, days = 7): Promise<Ga
     `/api/analytics/usage?days=${days}`,
     `/api/analytics/usage`,
     `/api/usage?days=${days}`,
+    `/api/usage`,
+    `/api/stats?days=${days}`,
+    `/api/stats`,
+    `/api/dashboard/stats`,
+    `/api/v1/analytics/usage?days=${days}`,
+    `/api/v1/usage`,
   ])
 }
 
@@ -226,4 +268,83 @@ export async function fetchLogs(id: ConnectorId, limit = 100): Promise<GatewayRe
 
 export function liveConnectorIds(): ConnectorId[] {
   return (['openclaw', 'hermes'] as ConnectorId[]).filter(isLive)
+}
+
+// ─── Workspace / memory file access ───────────────────────────────────────────
+// Both Hermes and OpenClaw may expose a REST endpoint for workspace file listing
+// and reading. We try several candidate paths and fail gracefully if none exist.
+
+export interface RemoteMemoryFile { name: string; size: number; updatedAt: string; path: string }
+
+export async function fetchMemoryFiles(id: ConnectorId): Promise<RemoteMemoryFile[]> {
+  const r = await getFirst<any>(id, [
+    '/api/workspace/files',
+    '/api/memory/files',
+    '/api/workspace',
+  ])
+  if (!r.ok || !r.data) return []
+  const raw = Array.isArray(r.data) ? r.data : (r.data?.files ?? r.data?.items ?? r.data?.data ?? [])
+  if (!Array.isArray(raw)) return []
+  return raw
+    .filter((f: any) => f && typeof f === 'object' && (f.name || f.filename))
+    .map((f: any): RemoteMemoryFile => ({
+      name: String(f.name ?? f.filename ?? ''),
+      size: Number(f.size ?? f.fileSize ?? 0) || 0,
+      updatedAt: f.updatedAt ?? f.updated_at ?? f.modifiedAt ?? f.mtime ?? '',
+      path: `[gateway] ${String(f.name ?? f.filename ?? '')}`,
+    }))
+}
+
+export async function fetchMemoryFileContent(id: ConnectorId, name: string): Promise<{ content: string; path: string } | null> {
+  const enc = encodeURIComponent(name)
+  const r = await getFirst<any>(id, [
+    `/api/workspace/files/${enc}`,
+    `/api/memory/files/${enc}`,
+    `/api/workspace/file?name=${enc}`,
+    `/api/memory/file?name=${enc}`,
+  ])
+  if (!r.ok || !r.data) return null
+  const content = r.data?.content ?? r.data?.text ?? r.data?.body
+  if (typeof content !== 'string') return null
+  return { content, path: `[gateway] ${name}` }
+}
+
+// ─── Diagnostics ──────────────────────────────────────────────────────────────
+
+export interface DiagProbe { path: string; status: number | null; ok: boolean; latencyMs: number; error?: string }
+
+export async function fetchDiagnostics(id: ConnectorId): Promise<DiagProbe[]> {
+  const cfg = getConnector(id)
+  if (!cfg?.baseUrl) return []
+
+  const paths = [
+    '/api/status',
+    '/api/sessions',
+    '/api/analytics/usage',
+    '/api/usage',
+    '/api/stats',
+    '/api/dashboard/stats',
+    '/api/cron/jobs',
+    '/api/logs',
+    '/api/skills',
+    '/api/tools/toolsets',
+  ]
+
+  return Promise.all(paths.map(async (path): Promise<DiagProbe> => {
+    const start = Date.now()
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), 4_000)
+    try {
+      const res = await fetch(`${cfg.baseUrl}${path}`, {
+        headers: headers(cfg.token),
+        signal: controller.signal,
+      })
+      return { path, status: res.status, ok: res.ok, latencyMs: Date.now() - start }
+    } catch (err: any) {
+      const error = err?.name === 'AbortError' ? 'timeout' : (err?.message ?? 'fetch failed')
+      return { path, status: null, ok: false, latencyMs: Date.now() - start, error }
+    } finally {
+      clearTimeout(timer)
+    }
+  }))
 }

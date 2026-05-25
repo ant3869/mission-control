@@ -51,14 +51,15 @@ watchRouter.get('/debug', (_req, res) => {
   res.json({ rawEvents: ocRawEvents() })
 })
 
-watchRouter.get('/debug-poll', async (_req, res) => {
+watchRouter.get('/debug-poll', async (req, res) => {
   const { request: ocRequest, isConnected } = await import('../lib/openclawLive.js')
   if (!isConnected()) return res.json({ error: 'not connected' })
   try {
     const sessionsList = await ocRequest('sessions.list', {}, 6000)
     const sessArr: any[] = Array.isArray(sessionsList) ? sessionsList
       : (sessionsList?.sessions ?? sessionsList?.data ?? sessionsList?.items ?? [])
-    const firstKey = sessArr[0]?.key ?? sessArr[0]?.id ?? null
+    const wantKey = typeof req.query.key === 'string' ? req.query.key : null
+    const firstKey = wantKey ?? sessArr[0]?.key ?? sessArr[0]?.id ?? null
     let history: any = null
     if (firstKey) {
       history = await ocRequest('chat.history', { sessionKey: firstKey, limit: 5, maxChars: 10000 }, 8000)

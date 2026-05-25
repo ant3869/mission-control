@@ -11,6 +11,7 @@ import { Chats } from './views/Chats'
 import { System } from './views/System'
 import { Pipeline } from './views/Pipeline'
 import { Radar } from './views/Radar'
+import { ModelOps } from './views/ModelOps'
 import { Tasks } from './views/Tasks'
 import { Content } from './views/Content'
 import { Approvals } from './views/Approvals'
@@ -23,6 +24,7 @@ import { Settings } from './views/Settings'
 import { OpenClawMetrics, HermesMetrics } from './views/PlatformMetrics'
 import { Watch } from './views/Watch'
 import { Inventory } from './views/Inventory'
+import { FlowMap } from './views/FlowMap'
 import { ComingSoon } from './views/ComingSoon'
 import type { View } from './types'
 
@@ -41,6 +43,7 @@ const VIEW_TITLES: Record<View, string> = {
   team:      'Team',
   system:    'System',
   radar:     'Radar',
+  modelops:  'Model Ops',
   factory:   'Factory',
   pipeline:  'Pipeline',
   feedback:  'Feedback',
@@ -49,7 +52,8 @@ const VIEW_TITLES: Record<View, string> = {
   openclaw:  'OpenClaw Metrics',
   hermes:    'Hermes Metrics',
   watch:     'Watch',
-  inventory: 'Inventory'
+  inventory: 'Inventory',
+  flowmap:   'Flow Map',
 }
 
 // Render each view once (on first visit) and keep it mounted — hidden via CSS.
@@ -93,6 +97,7 @@ export default function App() {
           <ViewPane view="system"    active={activeView} mounted={mounted}><System /></ViewPane>
           <ViewPane view="pipeline"  active={activeView} mounted={mounted}><Pipeline /></ViewPane>
           <ViewPane view="radar"     active={activeView} mounted={mounted}><Radar /></ViewPane>
+          <ViewPane view="modelops"  active={activeView} mounted={mounted}><ModelOps /></ViewPane>
           <ViewPane view="tasks"     active={activeView} mounted={mounted}><Tasks /></ViewPane>
           <ViewPane view="content"   active={activeView} mounted={mounted}><Content /></ViewPane>
           <ViewPane view="approvals" active={activeView} mounted={mounted}><Approvals /></ViewPane>
@@ -106,6 +111,7 @@ export default function App() {
           <ViewPane view="hermes"    active={activeView} mounted={mounted}><HermesMetrics onNavigate={navigate} /></ViewPane>
           <ViewPane view="watch"     active={activeView} mounted={mounted}><Watch /></ViewPane>
           <ViewPane view="inventory" active={activeView} mounted={mounted}><Inventory /></ViewPane>
+          <ViewPane view="flowmap"   active={activeView} mounted={mounted}><FlowMap /></ViewPane>
           <ViewPane view="team"      active={activeView} mounted={mounted}><ComingSoon view="team" /></ViewPane>
 
         </main>

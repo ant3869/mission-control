@@ -8,10 +8,16 @@
 import { Router } from 'express'
 import { ingestEvent, getRawEvents } from '../lib/agentEvents.js'
 import { getSessions, getSessionDetail, getAgents, getCron } from '../lib/agentSources.js'
-import { isLive } from '../lib/connectors.js'
-import { cronAction, type CronAction } from '../lib/gateway.js'
+import { isLive, getConnector } from '../lib/connectors.js'
+import { cronAction, fetchDiagnostics, fetchMemoryFileContent, type CronAction } from '../lib/gateway.js'
 import { getPlatformMetrics } from '../lib/metrics.js'
 import { addListener as liveAddListener, recent as liveRecent } from '../lib/hermesLive.js'
+import { isSafeMemoryFileName, readMemoryFile, writeMemoryFile } from '../lib/memoryFilesFs.js'
+
+function hermesExtraDirs(): string[] | undefined {
+  const dir = getConnector('hermes')?.workspaceDir
+  return dir ? [dir] : undefined
+}
 
 export const hermesRouter = Router()
 const SOURCE = 'hermes' as const
@@ -77,4 +83,37 @@ hermesRouter.get('/stream', (req, res) => {
 
 hermesRouter.get('/events', (_req, res) => {
   res.json({ events: getRawEvents(SOURCE), fetchedAt: new Date().toISOString() })
+})
+
+// ─── Memory file read/write ────────────────────────────────────────────────────
+
+hermesRouter.get('/memory-file', async (req, res) => {
+  const name = String(req.query.name ?? '')
+  if (!isSafeMemoryFileName(name)) return res.status(400).json({ error: 'invalid file name' })
+  // Try reading via gateway REST first (works when Hermes is running, even remotely)
+  const gw = await fetchMemoryFileContent('hermes', name)
+  if (gw) return res.json({ name, content: gw.content, path: gw.path })
+  // Fall back to local FS only if a workspaceDir is configured
+  const result = readMemoryFile(name, hermesExtraDirs())
+  if (!result) return res.status(404).json({ error: 'file not found' })
+  return res.json({ name, content: result.content, path: result.path })
+})
+
+hermesRouter.put('/memory-file', (req, res) => {
+  const name = String(req.query.name ?? '')
+  if (!isSafeMemoryFileName(name)) return res.status(400).json({ error: 'invalid file name' })
+  const content = req.body?.content
+  if (typeof content !== 'string') return res.status(400).json({ error: 'content must be a string' })
+  const result = writeMemoryFile(name, content, hermesExtraDirs())
+  if (!result.ok) return res.status(result.error === 'file not found' ? 404 : 500).json({ error: result.error })
+  return res.json({ ok: true, path: result.path })
+})
+
+// GET /api/hermes/diagnostics — probe all key Hermes API paths and report which ones respond
+hermesRouter.get('/diagnostics', async (_req, res) => {
+  if (!isLive(SOURCE)) {
+    return res.status(409).json({ error: 'connector not enabled — add a token in Settings', probes: [] })
+  }
+  const probes = await fetchDiagnostics(SOURCE)
+  res.json({ probes, fetchedAt: new Date().toISOString() })
 })

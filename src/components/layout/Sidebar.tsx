@@ -3,7 +3,7 @@ import {
   CheckSquare, Bot, FileText, ThumbsUp, Calendar, FolderKanban,
   Brain, BookOpen, UserCircle, Building2, Network, Settings,
   Radar, Factory, GitBranch, MessageSquare, ChevronRight, NotebookPen, Cog,
-  Activity, Gauge, Boxes, Radio, Package,
+  Activity, Gauge, Radio, Package, Workflow, BarChart3,
 } from 'lucide-react'
 import { clsx } from 'clsx'
 import type { View } from '../../types'
@@ -45,6 +45,7 @@ const NAV_SECTIONS: NavSection[] = [
     items: [
       { id: 'system',   label: 'System',   icon: <Settings size={iconSize} /> },
       { id: 'radar',    label: 'Radar',    icon: <Radar size={iconSize} /> },
+      { id: 'modelops', label: 'Model Ops', icon: <BarChart3 size={iconSize} /> },
       { id: 'factory',  label: 'Factory',  icon: <Factory size={iconSize} /> },
       { id: 'pipeline', label: 'Pipeline', icon: <GitBranch size={iconSize} /> },
       { id: 'feedback', label: 'Feedback', icon: <MessageSquare size={iconSize} /> },
@@ -56,6 +57,7 @@ const NAV_SECTIONS: NavSection[] = [
       { id: 'openclaw', label: 'OpenClaw', icon: <Activity size={iconSize} /> },
       { id: 'hermes',   label: 'Hermes',   icon: <Gauge size={iconSize} /> },
       { id: 'watch',    label: 'Watch',    icon: <Radio size={iconSize} /> },
+      { id: 'flowmap',  label: 'Flow Map', icon: <Workflow size={iconSize} /> },
     ],
   },
 ]

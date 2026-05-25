@@ -3,7 +3,7 @@ import { clsx } from 'clsx'
 import {
   Boxes, Clock, Plus, Minus, Search, RefreshCw, X, Trash2, Pencil, ExternalLink,
   MapPin, DollarSign, Hash, Bot, FileText, AlertCircle, Layers, Sparkles, Save,
-  CheckCircle2, Zap, LockKeyhole,
+  CheckCircle2, Zap, LockKeyhole, ChevronDown, ChevronRight,
 } from 'lucide-react'
 import { inventory as invApi, type InventoryItem, type InventoryStats, type InventoryBody } from '../lib/api'
 
@@ -24,6 +24,9 @@ const CATEGORY_META: Record<string, { label: string; icon: string }> = {
   sensor:          { label: 'Sensor',          icon: '📡' },
   network:         { label: 'Network',         icon: '🌐' },
   tool:            { label: 'Tool',            icon: '🛠️' },
+  breakout:        { label: 'Breakout',        icon: '🔧' },
+  camera:          { label: 'Camera',          icon: '📷' },
+  tablet:          { label: 'Tablet',          icon: '📱' },
   other:           { label: 'Other',           icon: '📦' },
 }
 const catMeta = (c: string) => CATEGORY_META[c] ?? { label: c || 'Other', icon: '📦' }
@@ -243,8 +246,15 @@ function DetailDrawer({ item, onClose, onEdit, onDelete, onQty, onResearch, onSt
         {/* Agent research */}
         <div className="rounded-lg border border-violet-900/30 bg-violet-950/15 p-3">
           {researching ? (
-            <div className="flex items-center gap-2 text-xs text-violet-200">
-              <RefreshCw size={13} className="animate-spin text-violet-400" /> Agent is researching… (~1–2 min, keep this open)
+            <div className="flex flex-col gap-1.5">
+              <div className="flex items-center gap-2 text-xs text-violet-200">
+                <RefreshCw size={13} className="animate-spin text-violet-400" /> Agent is researching… (~1–2 min, keep this open)
+              </div>
+              {item.researchRequestedAt && Date.now() - new Date(item.researchRequestedAt).getTime() > 5 * 60 * 1000 && (
+                <button onClick={onResearch} className="text-xxs text-violet-400/70 hover:text-violet-300 text-left underline underline-offset-2">
+                  Stuck? Click to retry
+                </button>
+              )}
             </div>
           ) : (
             <button onClick={onResearch} className="flex items-center gap-2 text-xs text-violet-200 hover:text-violet-100 w-full">
@@ -335,6 +345,63 @@ function ItemForm({ initial, categories, conditions, onSave, onClose }: {
   )
 }
 
+// ─── Category section colors ───────────────────────────────────────────────────
+
+const CAT_COLORS: Record<string, { bar: string; label: string; border: string; bg: string }> = {
+  computer:        { bar: 'border-l-sky-500',     label: 'text-sky-400',     border: 'border-sky-900/30',     bg: 'bg-sky-950/5' },
+  laptop:          { bar: 'border-l-blue-500',    label: 'text-blue-400',    border: 'border-blue-900/30',    bg: 'bg-blue-950/5' },
+  sbc:             { bar: 'border-l-red-500',     label: 'text-red-400',     border: 'border-red-900/30',     bg: 'bg-red-950/5' },
+  microcontroller: { bar: 'border-l-orange-500',  label: 'text-orange-400',  border: 'border-orange-900/30',  bg: 'bg-orange-950/5' },
+  storage:         { bar: 'border-l-violet-500',  label: 'text-violet-400',  border: 'border-violet-900/30',  bg: 'bg-violet-950/5' },
+  battery:         { bar: 'border-l-green-500',   label: 'text-green-400',   border: 'border-green-900/30',   bg: 'bg-green-950/5' },
+  power:           { bar: 'border-l-yellow-500',  label: 'text-yellow-400',  border: 'border-yellow-900/30',  bg: 'bg-yellow-950/5' },
+  console:         { bar: 'border-l-fuchsia-500', label: 'text-fuchsia-400', border: 'border-fuchsia-900/30', bg: 'bg-fuchsia-950/5' },
+  peripheral:      { bar: 'border-l-cyan-500',    label: 'text-cyan-400',    border: 'border-cyan-900/30',    bg: 'bg-cyan-950/5' },
+  cable:           { bar: 'border-l-slate-500',   label: 'text-slate-400',   border: 'border-slate-900/30',   bg: 'bg-slate-950/5' },
+  component:       { bar: 'border-l-teal-500',    label: 'text-teal-400',    border: 'border-teal-900/30',    bg: 'bg-teal-950/5' },
+  sensor:          { bar: 'border-l-pink-500',    label: 'text-pink-400',    border: 'border-pink-900/30',    bg: 'bg-pink-950/5' },
+  network:         { bar: 'border-l-indigo-500',  label: 'text-indigo-400',  border: 'border-indigo-900/30',  bg: 'bg-indigo-950/5' },
+  tool:            { bar: 'border-l-amber-500',   label: 'text-amber-400',   border: 'border-amber-900/30',   bg: 'bg-amber-950/5' },
+  breakout:        { bar: 'border-l-lime-500',    label: 'text-lime-400',    border: 'border-lime-900/30',    bg: 'bg-lime-950/5' },
+  camera:          { bar: 'border-l-rose-500',    label: 'text-rose-400',    border: 'border-rose-900/30',    bg: 'bg-rose-950/5' },
+  tablet:          { bar: 'border-l-emerald-500', label: 'text-emerald-400', border: 'border-emerald-900/30', bg: 'bg-emerald-950/5' },
+  other:           { bar: 'border-l-zinc-500',    label: 'text-zinc-400',    border: 'border-zinc-900/30',    bg: 'bg-zinc-950/5' },
+}
+const catColor = (c: string) => CAT_COLORS[c] ?? CAT_COLORS.other
+
+// ─── Category section ──────────────────────────────────────────────────────────
+
+function CategorySection({ category, items, selectedId, onSelect }: {
+  category: string; items: InventoryItem[]; selectedId: string | null; onSelect: (id: string) => void
+}) {
+  const [collapsed, setCollapsed] = useState(false)
+  const cm = catMeta(category)
+  const cc = catColor(category)
+  return (
+    <div className={clsx('rounded-lg border overflow-hidden', cc.border, cc.bg)}>
+      <button
+        onClick={() => setCollapsed(o => !o)}
+        className={clsx('flex items-center gap-2 w-full px-3 py-2 text-left hover:brightness-110 transition-all border-b', collapsed ? 'border-transparent' : cc.border)}
+      >
+        <span className={clsx('flex items-center gap-1.5 flex-1 text-xxs font-semibold uppercase tracking-wide', cc.label)}>
+          <span>{cm.icon}</span>
+          <span>{cm.label}</span>
+          <span className="opacity-50 font-normal normal-case tracking-normal">({items.length})</span>
+        </span>
+        {collapsed
+          ? <ChevronRight size={12} className={cc.label} />
+          : <ChevronDown size={12} className={cc.label} />
+        }
+      </button>
+      {!collapsed && (
+        <div className="flex flex-col divide-y divide-border">
+          {items.map(it => <ItemRow key={it.id} item={it} active={it.id === selectedId} onClick={() => onSelect(it.id)} />)}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── Agent hint ────────────────────────────────────────────────────────────────
 
 function AgentHint() {
@@ -378,6 +445,7 @@ export function Inventory() {
   const [condFilter, setCondFilter] = useState<string>('all')
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [editing, setEditing]       = useState<InventoryItem | null | 'new'>(null)
+  const [researchingAll, setResearchingAll] = useState(false)
   const { toast, show: showToast }  = useToast()
 
   const load = useCallback(async () => {
@@ -462,7 +530,37 @@ export function Inventory() {
     } catch (e: any) { showToast('error', e.message ?? 'Could not start research') }
   }
 
+  const researchAll = async () => {
+    setResearchingAll(true)
+    showToast('saving', 'Queuing all unresearched items…')
+    try {
+      const r = await invApi.researchAll()
+      if (r.queued === 0) { showToast('saved', 'Nothing to research — all items already enriched'); setResearchingAll(false); return }
+      const parts = [r.openclaw > 0 && `${r.openclaw} via OpenClaw`, r.hermes > 0 && `${r.hermes} via Hermes`].filter(Boolean).join(', ')
+      showToast('saved', `Researching ${r.queued} item${r.queued !== 1 ? 's' : ''} (${parts})`)
+      await load()
+      let n = 0
+      const timer = setInterval(async () => {
+        n++
+        try {
+          const d = await invApi.list()
+          setItems(d.items); setStats(d.stats)
+          const stillPending = d.items.filter(i => i.researchStatus === 'pending').length
+          if (stillPending === 0 || n > 90) {
+            clearInterval(timer); setResearchingAll(false)
+            const done  = d.items.filter(i => i.researchStatus === 'done' && i.enriched).length
+            const failed = d.items.filter(i => i.researchStatus === 'failed').length
+            if (n > 90) showToast('error', 'Research timed out — some items may still be processing')
+            else showToast('saved', `Research complete — ${done} enriched${failed > 0 ? `, ${failed} failed` : ''}`)
+          }
+        } catch { if (n > 90) { clearInterval(timer); setResearchingAll(false) } }
+      }, 5000)
+    } catch (e: any) { showToast('error', e.message ?? 'Could not start bulk research'); setResearchingAll(false) }
+  }
+
   const catCounts = stats?.byCategory ?? []
+  const unresearchedCount = items.filter(i => !i.enriched && i.researchStatus !== 'pending').length
+  const pendingCount = items.filter(i => i.researchStatus === 'pending').length
 
   return (
     <div className="flex h-full overflow-hidden relative">
@@ -484,11 +582,17 @@ export function Inventory() {
               <RefreshCw size={11} className={loading ? 'animate-spin' : ''} />
               {loading ? 'Syncing…' : 'Sync'}
             </button>
+            {(unresearchedCount > 0 || researchingAll) && (
+              <button onClick={researchAll} disabled={researchingAll || unresearchedCount === 0} title={researchingAll ? `Researching ${pendingCount} item${pendingCount !== 1 ? 's' : ''}…` : `Research ${unresearchedCount} unenriched item${unresearchedCount !== 1 ? 's' : ''}`} className={clsx('flex items-center gap-1.5 px-3 py-1.5 rounded border text-xs font-medium', researchingAll ? 'border-violet-700/40 bg-violet-950/30 text-violet-400 cursor-default' : 'border-violet-700/40 bg-violet-950/20 text-violet-300 hover:bg-violet-950/40')}>
+                <Bot size={13} className={researchingAll ? 'animate-pulse' : ''} />
+                {researchingAll ? `Researching ${pendingCount}…` : `Research All (${unresearchedCount})`}
+              </button>
+            )}
             <button onClick={() => setEditing('new')} className="flex items-center gap-1.5 px-3 py-1.5 rounded border border-accent-blue/40 bg-accent-blue/15 text-accent-blue hover:bg-accent-blue/25 text-xs font-medium"><Plus size={13} /> Add item</button>
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-5">
+        <div className="shrink-0 p-6 pb-3 space-y-4 border-b border-border">
           {/* Stats */}
           {stats && (
             <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
@@ -526,10 +630,12 @@ export function Inventory() {
           </div>
 
           {error && <div className="flex items-start gap-2 px-4 py-3 rounded-lg border border-amber-900/40 bg-amber-950/20 text-amber-300"><AlertCircle size={13} className="shrink-0 mt-0.5" /><p className="text-xs">{error}</p></div>}
+        </div>
 
-          {/* Item list */}
+        {/* ── Scrollable item list ── */}
+        <div className="flex-1 min-h-0 overflow-y-auto px-6 pb-6">
           {loading ? (
-            <div className="space-y-1">{Array.from({ length: 6 }).map((_, i) => <div key={i} className="h-12 rounded-lg bg-card border border-border animate-pulse" />)}</div>
+            <div className="space-y-1 pt-1">{Array.from({ length: 6 }).map((_, i) => <div key={i} className="h-12 rounded-lg bg-card border border-border animate-pulse" />)}</div>
           ) : filtered.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-40 gap-2 text-center">
               <Boxes size={20} className="text-text-muted" />
@@ -537,13 +643,20 @@ export function Inventory() {
               {items.length === 0 && <button onClick={() => setEditing('new')} className="text-xs text-accent-blue hover:underline">Add your first item</button>}
             </div>
           ) : (
-            <>
-              {/* Available / not in-use */}
-              {available.length > 0 && (
-                <div className="flex flex-col divide-y divide-border rounded-lg border border-border overflow-hidden">
-                  {available.map(it => <ItemRow key={it.id} item={it} active={it.id === selectedId} onClick={() => setSelectedId(it.id)} />)}
-                </div>
-              )}
+            <div className="flex flex-col gap-2 pt-1">
+              {/* Category sections for available/non-deployed items */}
+              {(() => {
+                const categorized = available.reduce<Record<string, InventoryItem[]>>((acc, it) => {
+                  const k = it.category || 'other'
+                  ;(acc[k] ??= []).push(it)
+                  return acc
+                }, {})
+                return Object.entries(categorized)
+                  .sort(([a], [b]) => a.localeCompare(b))
+                  .map(([cat, its]) => (
+                    <CategorySection key={cat} category={cat} items={its} selectedId={selectedId} onSelect={setSelectedId} />
+                  ))
+              })()}
 
               {/* In-operation section — always shown last */}
               {operational.length > 0 && (
@@ -559,7 +672,7 @@ export function Inventory() {
                   </div>
                 </div>
               )}
-            </>
+            </div>
           )}
         </div>
       </div>

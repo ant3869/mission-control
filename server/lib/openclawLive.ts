@@ -47,11 +47,17 @@ let backoff = 1000
 let reconnectTimer: NodeJS.Timeout | null = null
 let pollTimer: NodeJS.Timeout | null = null
 let sessRefreshAt = 0
+let lastMsgAt = 0  // last time ANY ws frame arrived — drives the stale watchdog
 let activeSessionIds: string[] = []
 const sessionChannels: Record<string, string> = {}
 // Track per-session state to detect new runs without requiring real-time tool events
 const sessionStartedAt: Record<string, number> = {}  // last known startedAt per session
 const toolSeen = new Set<string>()
+// Tool calls / replies already surfaced from chat.history polling, deduped by
+// the gateway's block id (it no longer pushes real-time session.message events,
+// so history polling is our live source of tool activity).
+const emittedBlocks = new Set<string>()
+let polling = false
 // Timestamp of the last real tool/message/thinking activity pushed. The poll's
 // generic "working" filler is suppressed for a few seconds after real activity
 // so live tool events (from session.message) aren't immediately overwritten.
@@ -190,12 +196,11 @@ function normalize(raw: any): LiveEvent | null {
     // Tool call mid-run — the signal we actually want surfaced live.
     const toolBlock = blocks.find((b: any) => b?.type === 'toolCall' || b?.type === 'tool_use' || b?.type === 'toolUse')
     if (toolBlock) {
+      const sig = `tool:${toolBlock.id ?? base.seq}`
+      if (emittedBlocks.has(sig)) return null  // already surfaced via history poll
+      rememberEmitted(sig)
       const toolName = String(toolBlock.name ?? toolBlock.tool ?? 'tool').toLowerCase()
-      const inp = toolBlock.arguments ?? toolBlock.input ?? {}
-      const toolInput = (typeof inp === 'string' ? inp
-        : String(inp.command ?? inp.file_path ?? inp.path ?? inp.url ?? inp.query ??
-                 inp.pattern ?? inp.description ?? inp.content?.slice?.(0, 80) ??
-                 Object.values(inp as object)[0] ?? '')).slice(0, 200)
+      const toolInput = toolInputOf(toolBlock)
       return { ...base, ts: ts2, kind: 'tool', title: 'tool call', sub: toolName,
         meta: { tool: toolName, toolInput } }
     }
@@ -258,8 +263,97 @@ function push(e: LiveEvent) {
   for (const fn of listeners) { try { fn(e) } catch { /* ignore */ } }
 }
 
+const EMITTED_MAX = 600
+function rememberEmitted(sig: string) {
+  emittedBlocks.add(sig)
+  if (emittedBlocks.size > EMITTED_MAX) {
+    const keep = [...emittedBlocks].slice(-Math.floor(EMITTED_MAX / 2))
+    emittedBlocks.clear()
+    for (const s of keep) emittedBlocks.add(s)
+  }
+}
+
+function toolInputOf(block: any): string {
+  const inp = block?.arguments ?? block?.input ?? {}
+  if (typeof inp === 'string') return inp.slice(0, 200)
+  if (inp && typeof inp === 'object') {
+    const v = inp.command ?? inp.file_path ?? inp.path ?? inp.url ?? inp.query ??
+      inp.pattern ?? inp.description ??
+      (typeof inp.content === 'string' ? inp.content.slice(0, 80) : undefined) ??
+      Object.values(inp)[0]
+    return String(v ?? '').slice(0, 200)
+  }
+  return ''
+}
+
+// Pull the latest unseen tool call / assistant reply out of a running session's
+// chat.history and emit it as a fresh live event. This replaces the gateway's
+// (now-silent) real-time session.message stream as the source of tool activity.
+async function pollSessionMessages(sessionKey: string, channel: string) {
+  let hist: any
+  try { hist = await request('chat.history', { sessionKey, limit: 12, maxChars: 12000 }, 8000) }
+  catch { return }
+  const msgs: any[] = Array.isArray(hist?.messages) ? hist.messages : []
+  // Surface tools from any turn committed in the last ~15 min. chat.history only
+  // commits AFTER a turn finishes (the gateway exposes NO live mid-turn data and
+  // no real-time tool events), so a long turn's tools land all at once when it
+  // ends — the window must be wide enough to not drop them. Dedup (emittedBlocks)
+  // makes this safe to re-scan every tick.
+  const FRESH_MS = 15 * 60_000
+  const now = Date.now()
+  // Walk oldest → newest, emitting every tool call / assistant reply we haven't
+  // shown yet (deduped by gateway block id). The event tail gets the full
+  // sequence in order; the Watch card lands on the newest. Fresh ts so the card
+  // reads "is" not "was".
+  for (let i = 0; i < msgs.length; i++) {
+    const msg = msgs[i]
+    const role = String(msg.role ?? '').toLowerCase()
+    const blocks: any[] = Array.isArray(msg.content) ? msg.content : []
+    const tsMs = Number(msg.timestamp ?? 0)
+    if (tsMs && now - tsMs > FRESH_MS) continue
+
+    const toolBlock = blocks.find((b: any) => b?.type === 'toolCall' || b?.type === 'tool_use' || b?.type === 'toolUse')
+    if (toolBlock) {
+      const sig = `tool:${toolBlock.id ?? msg.__openclaw?.id ?? `${sessionKey}:${tsMs || i}`}`
+      if (emittedBlocks.has(sig)) continue
+      rememberEmitted(sig)
+      const toolName = String(toolBlock.name ?? toolBlock.tool ?? 'tool').toLowerCase()
+      push({ seq: ++seq, ts: new Date().toISOString(), event: 'tool', kind: 'tool',
+        title: 'tool call', sub: toolName, sessionKey,
+        meta: { tool: toolName, toolInput: toolInputOf(toolBlock), channel } })
+      continue
+    }
+
+    if (role === 'assistant') {
+      const textBlock = blocks.find((b: any) => b?.type === 'text' && typeof b?.text === 'string' && b.text.trim())
+      if (textBlock) {
+        const sig = `msg:${msg.__openclaw?.id ?? `${sessionKey}:${tsMs || i}`}`
+        if (emittedBlocks.has(sig)) continue
+        rememberEmitted(sig)
+        push({ seq: ++seq, ts: new Date().toISOString(), event: 'message', kind: 'message',
+          title: 'outgoing message', sub: textBlock.text.trim().slice(0, 160), sessionKey,
+          meta: { channel, direction: 'out' } })
+      }
+    }
+    // toolResult / user / thinking-only → skip; nothing to surface.
+  }
+}
+
 async function pollSessionActivity() {
-  if (!connected) return
+  // Watchdog: the gateway pushes health every ~10-15s. If we've heard nothing
+  // for 45s while still "connected", the socket is half-open (e.g. the gateway
+  // restarted without a clean close, so no 'close' fired) — force a reconnect.
+  if (connected && lastMsgAt && Date.now() - lastMsgAt > 45_000) {
+    console.log('[Watch] openclaw stream stale (no frames 45s) — forcing reconnect')
+    connected = false
+    rejectAllPending('stale — reconnecting')
+    try { ws?.close() } catch { /* ignore */ }
+    ws = null; backoff = 1000
+    scheduleReconnect()
+    return
+  }
+  if (!connected || polling) return
+  polling = true
 
   // ── 1. Poll sessions.list every tick (3s) ─────────────────────────────────
   // This is our primary real-time signal — chat.history only commits after a
@@ -278,6 +372,7 @@ async function pollSessionActivity() {
       .map((s: any) => s.key ?? s.id ?? s.sessionKey).filter(Boolean)
     activeSessionIds = (live.length ? live : byRecency).slice(0, 3)
 
+    const running: Array<{ k: string; rec: number }> = []
     for (const s of arr) {
       const k: string = s.key ?? s.id
       if (!k) continue
@@ -315,30 +410,38 @@ async function pollSessionActivity() {
       // window silently missed almost every active run.
       const isRunning = /running/i.test(String(s.status ?? '')) || s.hasActiveRun === true
       if (isRunning) {
+        running.push({ k, rec: new Date(s.updatedAt ?? s.startedAt ?? 0).getTime() })
         const activeSig = `${k}:active:${startedAt}`
         if (!toolSeen.has(activeSig)) {
           toolSeen.add(activeSig)
           if (toolSeen.size > 800) toolSeen.clear()
           console.log(`[Watch] active run on ${k} — channel: ${channel}`)
         }
-        // Generic "working" filler — only when no real tool/message/thinking
-        // activity has streamed in the last 5s. Live session.message events are
-        // richer (the actual tool), so we let them win and only fill the gaps
-        // (e.g. a long model call before the first tool). Fresh ts each tick
-        // (3s < the UI's 8s "live" window) keeps the card live through the run.
-        if (Date.now() - lastActivityTs > 5_000) {
-          push({ seq: ++seq, ts: new Date().toISOString(), event: 'session.active',
-            kind: 'session', title: 'active run', sub: 'running',
-            sessionKey: k, meta: { channel, direction: 'in' } })
-        }
       }
     }
-    // NOTE: the old chat.history "after-run scan" was removed. It only committed
-    // AFTER a turn finished, so its tool labels arrived stale (rendered as
-    // "Claw WAS using …", dimmed) and duplicated what the live session.message
-    // stream now surfaces in real time. session.message is the source of truth
-    // for tools + replies; sessions.list here is only for run/channel detection.
+
+    // ── Surface live tool calls / replies from the running session(s). ──────
+    // The gateway no longer emits real-time `session.message` events, so
+    // chat.history is now the only live source of tool activity. Poll the most
+    // recently-active running sessions and emit any tool call / assistant reply
+    // we haven't shown yet, stamped with a fresh ts so the card reads "is" not
+    // "was". Deduped by the gateway block id in pollSessionMessages().
+    running.sort((a, b) => b.rec - a.rec)
+    for (const { k } of running.slice(0, 2)) {
+      await pollSessionMessages(k, sessionChannels[k] || 'Discord')
+    }
+
+    // ── Generic "working" filler — only when no real tool/message/thinking
+    // activity has streamed in the last 5s, so live tool events win the card.
+    // Fresh ts each tick (3s < the UI's 8s "live" window) keeps it live. ─────
+    if (running.length && Date.now() - lastActivityTs > 5_000) {
+      const k = running[0].k
+      push({ seq: ++seq, ts: new Date().toISOString(), event: 'session.active',
+        kind: 'session', title: 'active run', sub: 'running',
+        sessionKey: k, meta: { channel: sessionChannels[k] || 'Discord', direction: 'in' } })
+    }
   } catch { /* sessions.list rpc failed */ }
+  finally { polling = false }
 }
 
 function startPolling() {
@@ -380,6 +483,7 @@ function open() {
   connected = false
 
   sock.addEventListener('message', (ev: any) => {
+    lastMsgAt = Date.now()
     let m: any
     try { m = JSON.parse(String(ev.data)) } catch { return }
     if (m.type === 'event' && m.event === 'connect.challenge') { sock.send(JSON.stringify(connectMsg(cfg.token))); return }

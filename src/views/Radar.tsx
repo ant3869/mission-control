@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { clsx } from 'clsx'
-import { TrendingUp, Activity, DollarSign, Zap, BarChart2, RefreshCw, AlertCircle, Bot, Grid3x3, AlertTriangle, Repeat2 } from 'lucide-react'
-import { radar, type DailyUsageLive, type RadarUsageResponse, type RadarInsightsResponse, type InsightsToolAnomaly } from '../lib/api'
+import { TrendingUp, Activity, DollarSign, Zap, BarChart2, RefreshCw, AlertCircle, Bot, Grid3x3, AlertTriangle, Repeat2, Database } from 'lucide-react'
+import { radar, type DailyUsageLive, type RadarUsageResponse, type RadarInsightsResponse, type InsightsToolAnomaly, type RadarTokenBreakdown } from '../lib/api'
 
 type Period = '7d' | '14d' | '30d'
 
@@ -11,6 +11,15 @@ function fmt(n: number) {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(2)}M`
   if (n >= 1_000)     return `${(n / 1_000).toFixed(1)}k`
   return String(n)
+}
+
+// Adaptive currency formatting: whole dollars for big numbers, more precision
+// for small per-session amounts so they don't all collapse to "$0.00".
+function money(n: number): string {
+  if (n >= 100) return `$${n.toFixed(0)}`
+  if (n >= 1)   return `$${n.toFixed(2)}`
+  if (n > 0)    return `$${n.toFixed(4)}`
+  return '$0'
 }
 
 // ─── CSS bar chart ─────────────────────────────────────────────────────────────
@@ -30,7 +39,7 @@ function BarChart({ data, valueKey, color, prefix = '' }: {
         const isLast = d === last
         const pct    = (d[valueKey] / max) * 100
         const val    = d[valueKey]
-        const label  = valueKey === 'cost' ? `$${val.toFixed(4)}` : valueKey === 'tokens' ? fmt(val) : String(val)
+        const label  = valueKey === 'cost' ? money(val) : valueKey === 'tokens' ? fmt(val) : String(val)
 
         return (
           <div key={i} className="group relative flex-1 flex flex-col items-center justify-end h-full">
@@ -68,6 +77,54 @@ function StatCard({ label, value, sub, icon, color }: {
   )
 }
 
+// ─── Token mix (explains why the token count is huge but cost is low) ───────────
+
+const TOKEN_SEGMENTS = [
+  { key: 'cacheRead'  as const, label: 'Cache read',  color: '#14b8a6', note: '0.1× rate' },
+  { key: 'cacheWrite' as const, label: 'Cache write', color: '#f59e0b', note: '1.25× rate' },
+  { key: 'input'      as const, label: 'Input',       color: '#3b82f6', note: '1× rate' },
+  { key: 'output'     as const, label: 'Output',      color: '#8b5cf6', note: 'output rate' },
+]
+
+function TokenMix({ breakdown }: { breakdown: RadarTokenBreakdown }) {
+  const total = breakdown.input + breakdown.output + breakdown.cacheWrite + breakdown.cacheRead
+  if (total === 0) return null
+
+  return (
+    <div className="bg-card border border-border rounded-lg p-4 flex flex-col gap-3">
+      <div className="flex items-center gap-2">
+        <Database size={12} className="text-teal-400" />
+        <span className="text-xxs font-semibold uppercase tracking-wider text-text-muted">Token Mix</span>
+        <span className="ml-auto text-xxs text-text-muted">{fmt(total)} total · cache reads billed at 10% of input</span>
+      </div>
+      {/* Stacked proportion bar */}
+      <div className="flex h-2.5 w-full rounded-full overflow-hidden bg-border">
+        {TOKEN_SEGMENTS.map(seg => {
+          const v = breakdown[seg.key]
+          const pct = (v / total) * 100
+          if (pct <= 0) return null
+          return <div key={seg.key} className="h-full first:rounded-l-full last:rounded-r-full" style={{ width: `${pct}%`, backgroundColor: seg.color }} title={`${seg.label}: ${fmt(v)}`} />
+        })}
+      </div>
+      {/* Legend — wraps so it never overflows */}
+      <div className="flex flex-wrap gap-x-5 gap-y-1.5">
+        {TOKEN_SEGMENTS.map(seg => {
+          const v   = breakdown[seg.key]
+          const pct = (v / total) * 100
+          return (
+            <div key={seg.key} className="flex items-center gap-1.5 min-w-0">
+              <span className="w-2 h-2 rounded-sm shrink-0" style={{ backgroundColor: seg.color }} />
+              <span className="text-xxs text-text-secondary">{seg.label}</span>
+              <span className="text-xxs font-semibold text-text-primary tabular-nums">{fmt(v)}</span>
+              <span className="text-xxs text-text-muted">({pct.toFixed(pct < 1 ? 1 : 0)}% · {seg.note})</span>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 // ─── Model breakdown row ───────────────────────────────────────────────────────
 
 const MODEL_COLORS: Record<string, string> = {
@@ -94,12 +151,12 @@ function ModelRow({ stat, maxTokens }: { stat: RadarUsageResponse['modelBreakdow
   const pct   = maxTokens > 0 ? (stat.tokens / maxTokens) * 100 : 0
   const color = modelColor(stat.model)
   return (
-    <div className="flex items-center gap-4 px-4 py-3 border-b border-border last:border-b-0">
-      <div className="flex items-center gap-2 w-24 shrink-0">
+    <div className="flex items-center gap-3 sm:gap-4 px-4 py-3 border-b border-border last:border-b-0">
+      <div className="flex items-center gap-2 w-20 sm:w-24 shrink-0 min-w-0">
         <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: color }} />
-        <span className="text-xs font-semibold text-text-primary">{modelShortName(stat.model)}</span>
+        <span className="text-xs font-semibold text-text-primary truncate">{modelShortName(stat.model)}</span>
       </div>
-      <div className="flex-1">
+      <div className="flex-1 min-w-0">
         <div className="flex justify-between text-xxs text-text-muted mb-1">
           <span>{fmt(stat.tokens)} tokens</span>
           <span>{pct.toFixed(0)}%</span>
@@ -108,12 +165,12 @@ function ModelRow({ stat, maxTokens }: { stat: RadarUsageResponse['modelBreakdow
           <div className="h-full rounded-full opacity-80" style={{ width: `${pct}%`, backgroundColor: color }} />
         </div>
       </div>
-      <div className="flex items-center gap-5 shrink-0">
-        <div className="text-right">
-          <p className="text-xs font-semibold text-text-primary tabular-nums">${stat.cost.toFixed(4)}</p>
+      <div className="flex items-center gap-4 sm:gap-5 shrink-0">
+        <div className="text-right w-16">
+          <p className="text-xs font-semibold text-text-primary tabular-nums">${stat.cost.toFixed(2)}</p>
           <p className="text-xxs text-text-muted">cost</p>
         </div>
-        <div className="text-right">
+        <div className="text-right w-10">
           <p className="text-xs font-semibold text-text-primary tabular-nums">{stat.runs}</p>
           <p className="text-xxs text-text-muted">runs</p>
         </div>
@@ -252,23 +309,23 @@ function RunRate({ data }: { data: RadarInsightsResponse['runRate'] }) {
       <div className="px-4 py-4">
         {/* Summary stats */}
         <div className="grid grid-cols-3 gap-3 mb-4">
-          <div className="flex flex-col gap-1">
+          <div className="flex flex-col gap-1 min-w-0">
             <span className="text-xxs text-text-muted uppercase tracking-wider">Daily avg</span>
-            <span className="text-xl font-bold text-text-primary tabular-nums">${avgDailyCost.toFixed(4)}</span>
+            <span className="text-xl font-bold text-text-primary tabular-nums">{money(avgDailyCost)}</span>
             {showTrend && (
               <span className={clsx('text-xxs font-medium', trendUp ? 'text-red-400' : trendDown ? 'text-green-400' : 'text-text-muted')}>
                 {trendUp ? '↑' : trendDown ? '↓' : '→'} {Math.abs(trendPct)}% vs prior period
               </span>
             )}
           </div>
-          <div className="flex flex-col gap-1">
+          <div className="flex flex-col gap-1 min-w-0">
             <span className="text-xxs text-text-muted uppercase tracking-wider">Weekly proj.</span>
-            <span className="text-xl font-bold text-text-primary tabular-nums">${projectedWeeklyCost.toFixed(2)}</span>
+            <span className="text-xl font-bold text-text-primary tabular-nums">{money(projectedWeeklyCost)}</span>
             <span className="text-xxs text-text-muted">7-day forecast</span>
           </div>
-          <div className="flex flex-col gap-1">
+          <div className="flex flex-col gap-1 min-w-0">
             <span className="text-xxs text-text-muted uppercase tracking-wider">Monthly proj.</span>
-            <span className="text-xl font-bold text-text-primary tabular-nums">${projectedMonthlyCost.toFixed(2)}</span>
+            <span className="text-xl font-bold text-text-primary tabular-nums">{money(projectedMonthlyCost)}</span>
             <span className="text-xxs text-text-muted">30-day forecast</span>
           </div>
         </div>
@@ -282,14 +339,14 @@ function RunRate({ data }: { data: RadarInsightsResponse['runRate'] }) {
                 const barPct = topSessions[0].cost > 0 ? (s.cost / topSessions[0].cost) * 100 : 0
                 return (
                   <div key={i} className="flex items-center gap-3 py-1.5 border-b border-border-subtle last:border-b-0">
-                    <span className="font-mono text-xxs text-text-muted w-20 shrink-0 truncate">{s.sessionId}…</span>
-                    <div className="flex-1 relative h-1.5 bg-border rounded-full overflow-hidden">
+                    <span className="font-mono text-xxs text-text-muted w-16 shrink-0 truncate">{s.sessionId}…</span>
+                    <div className="flex-1 min-w-0 relative h-1.5 bg-border rounded-full overflow-hidden">
                       <div className="absolute inset-y-0 left-0 bg-green-500/60 rounded-full" style={{ width: `${barPct}%` }} />
                     </div>
-                    <span className="text-xs font-semibold text-green-400 tabular-nums w-16 text-right shrink-0">${s.cost.toFixed(4)}</span>
-                    <span className="text-xxs text-text-muted w-14 shrink-0">{fmt(s.tokens)} tok</span>
-                    <span className="text-xxs text-text-muted w-14 shrink-0">{modelShortName(s.model)}</span>
-                    <span className="text-xxs text-text-muted w-16 shrink-0 text-right">{s.date}</span>
+                    <span className="text-xs font-semibold text-green-400 tabular-nums w-16 text-right shrink-0">{money(s.cost)}</span>
+                    <span className="hidden sm:block text-xxs text-text-muted w-14 shrink-0 text-right">{fmt(s.tokens)} tok</span>
+                    <span className="hidden md:block text-xxs text-text-muted w-14 shrink-0">{modelShortName(s.model)}</span>
+                    <span className="hidden lg:block text-xxs text-text-muted w-16 shrink-0 text-right">{s.date}</span>
                   </div>
                 )
               })}
@@ -336,15 +393,15 @@ function ToolAnomalies({ anomalies }: { anomalies: InsightsToolAnomaly[] }) {
         {anomalies.map((a, i) => {
           const sty = SEVERITY_STYLES[a.severity]
           return (
-            <div key={i} className="flex items-center gap-3 px-4 py-2.5">
+            <div key={i} className="flex items-center gap-3 px-4 py-2.5 min-w-0">
               <div className={clsx('w-1.5 h-1.5 rounded-full shrink-0', sty.dot)} />
               <span className={clsx('text-xxs font-semibold px-1.5 py-0.5 rounded border shrink-0', sty.badge)}>{sty.label}</span>
-              <span className="text-xs font-semibold text-text-primary shrink-0">{a.tool}</span>
-              <span className="text-xxs text-text-muted">
+              <span className="text-xs font-semibold text-text-primary shrink-0 max-w-[8rem] truncate">{a.tool}</span>
+              <span className="text-xxs text-text-muted truncate min-w-0 flex-1">
                 {a.maxConsecutive}× consecutive · {a.totalCalls} total calls
               </span>
-              <span className="ml-auto font-mono text-xxs text-text-muted">{a.sessionId}…</span>
-              <span className="text-xxs text-text-muted shrink-0 w-20 text-right">{a.date}</span>
+              <span className="hidden md:block font-mono text-xxs text-text-muted shrink-0">{a.sessionId}…</span>
+              <span className="hidden sm:block text-xxs text-text-muted shrink-0 w-20 text-right">{a.date}</span>
             </div>
           )
         })}
@@ -411,7 +468,7 @@ export function Radar() {
               ? <span className="animate-pulse">Loading usage data…</span>
               : data
               ? <><span className="text-text-secondary">
-                    {period} · {fmt(data.totalTokens)} tokens · ${data.totalCost.toFixed(4)}
+                    {period} · {fmt(data.totalTokens)} tokens · {money(data.totalCost)}
                   </span>
                   {today && <>&nbsp;·&nbsp;<span className="opacity-50">today: {fmt(today.tokens)} tok</span></>}
                 </>
@@ -439,21 +496,21 @@ export function Radar() {
       {/* Error banner */}
       {error && <SetupBanner error={error} />}
 
-      <div className="flex-1 overflow-y-auto px-6 py-5 flex flex-col gap-5">
+      <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
         {/* Stat cards */}
         {(data || loading) && (
           <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
             <StatCard
               label="Total Cost"
-              value={loading ? '—' : `$${data!.totalCost.toFixed(4)}`}
-              sub={`${period} period`}
+              value={loading ? '—' : money(data!.totalCost)}
+              sub={`${period} · est. from token usage`}
               icon={<DollarSign size={12} />}
               color="text-green-400"
             />
             <StatCard
               label="Total Tokens"
               value={loading ? '—' : fmt(data!.totalTokens)}
-              sub="input + output"
+              sub={loading || !data?.tokenBreakdown ? 'all categories' : `${fmt(data.tokenBreakdown.cacheRead)} cache read`}
               icon={<Activity size={12} />}
               color="text-violet-400"
             />
@@ -466,7 +523,7 @@ export function Radar() {
             />
             <StatCard
               label="Today"
-              value={loading || !today ? '—' : `$${today.cost.toFixed(4)}`}
+              value={loading || !today ? '—' : money(today.cost)}
               sub={loading || !today ? '' : `${today.runs} runs · ${fmt(today.tokens)} tok`}
               icon={<TrendingUp size={12} />}
               color="text-amber-400"
@@ -474,11 +531,14 @@ export function Radar() {
           </div>
         )}
 
+        {/* Token mix — clarifies the large token count is mostly cheap cache reads */}
+        {data?.tokenBreakdown && <TokenMix breakdown={data.tokenBreakdown} />}
+
         {/* Charts */}
         {daily.length > 0 && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
             {[
-              { valueKey: 'cost'   as const, label: 'Daily Cost',   color: 'bg-green-500',  prefix: '$' },
+              { valueKey: 'cost'   as const, label: 'Daily Cost',   color: 'bg-green-500',  prefix: ''  },
               { valueKey: 'tokens' as const, label: 'Daily Tokens', color: 'bg-violet-500', prefix: ''  },
               { valueKey: 'runs'   as const, label: 'Daily Runs',   color: 'bg-blue-500',   prefix: ''  },
             ].map(({ valueKey, label, color, prefix }) => (
@@ -568,8 +628,10 @@ export function Radar() {
         {insights && (
           <>
             <ActivityHeatmap data={insights.heatmap} />
-            <RunRate         data={insights.runRate} />
-            <ToolAnomalies   anomalies={insights.toolAnomalies} />
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-5 items-start">
+              <RunRate       data={insights.runRate} />
+              <ToolAnomalies anomalies={insights.toolAnomalies} />
+            </div>
           </>
         )}
 

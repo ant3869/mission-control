@@ -12,6 +12,10 @@ export default {
         surface: '#0f0f12',
         card: '#141417',
         'card-hover': '#1a1a1e',
+        // Semantic aliases used by the Flow/Brain/Alerts/Security views.
+        // Map onto the existing palette so cards layer correctly: page < card.
+        'bg-primary': '#0b0b0d',   // page background (= base)
+        'bg-secondary': '#141417', // card surface (= card)
         border: '#1e1e24',
         'border-subtle': '#17171c',
         'text-primary': '#e4e4e8',

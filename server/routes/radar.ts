@@ -32,6 +32,13 @@ const MODEL_PRICING: Record<string, { input: number; output: number }> = {
   'default':           { input:  3.00, output: 15.00 },
 }
 
+// Anthropic prompt-caching multipliers relative to the base input rate.
+// Cache *writes* (5-minute TTL) cost 1.25x the input rate; cache *reads* cost
+// only 0.10x. In agentic CLI usage cache reads dominate token volume by 10-100x,
+// so billing them at the full input rate (the previous bug) inflated cost ~10x.
+const CACHE_WRITE_MULT = 1.25
+const CACHE_READ_MULT  = 0.10
+
 function priceFor(model: string) {
   for (const [key, val] of Object.entries(MODEL_PRICING)) {
     if (key !== 'default' && model.includes(key)) return val
@@ -39,9 +46,14 @@ function priceFor(model: string) {
   return MODEL_PRICING['default']
 }
 
-function calcCost(model: string, inp: number, out: number): number {
+interface TokenSplit { input: number; output: number; cacheWrite: number; cacheRead: number }
+
+function calcCost(model: string, t: TokenSplit): number {
   const p = priceFor(model)
-  return (inp / 1_000_000) * p.input + (out / 1_000_000) * p.output
+  return (t.input      / 1_000_000) * p.input
+       + (t.cacheWrite / 1_000_000) * p.input * CACHE_WRITE_MULT
+       + (t.cacheRead  / 1_000_000) * p.input * CACHE_READ_MULT
+       + (t.output     / 1_000_000) * p.output
 }
 
 // ─── JSONL project dir discovery ─────────────────────────────────────────────
@@ -63,11 +75,9 @@ function findClaudeProjectsDir(): string | null {
 
 // ─── JSONL usage extraction ───────────────────────────────────────────────────
 
-interface SessionUsage {
+interface SessionUsage extends TokenSplit {
   date:   string   // YYYY-MM-DD
   model:  string
-  input:  number
-  output: number
 }
 
 function extractUsageFromJsonl(filePath: string, cutoffMs: number): SessionUsage[] {
@@ -89,12 +99,16 @@ function extractUsageFromJsonl(filePath: string, cutoffMs: number): SessionUsage
       const model = e.message?.model ?? e.model ?? ''
       const usage = e.usage ?? e.message?.usage
 
-      if (usage && (usage.input_tokens > 0 || usage.output_tokens > 0)) {
+      const cacheWrite = usage?.cache_creation_input_tokens ?? 0
+      const cacheRead  = usage?.cache_read_input_tokens ?? 0
+      if (usage && (usage.input_tokens > 0 || usage.output_tokens > 0 || cacheWrite > 0 || cacheRead > 0)) {
         records.push({
           date,
           model,
-          input:  (usage.input_tokens ?? 0) + (usage.cache_creation_input_tokens ?? 0) + (usage.cache_read_input_tokens ?? 0),
-          output: usage.output_tokens ?? 0,
+          input:      usage.input_tokens ?? 0,
+          output:     usage.output_tokens ?? 0,
+          cacheWrite,
+          cacheRead,
         })
       }
     }
@@ -164,39 +178,37 @@ radarRouter.get('/usage', async (req, res) => {
 
   // Merge: prefer API records if available (de-duplicate by summing both isn't ideal,
   // so if API data exists use it; otherwise fall back to JSONL only)
-  type DayStats = { tokens: number; cost: number; runs: number }
+  type DayStats = TokenSplit & { tokens: number; cost: number; runs: number }
+  const emptyStats = (): DayStats => ({ tokens: 0, cost: 0, runs: 0, input: 0, output: 0, cacheWrite: 0, cacheRead: 0 })
   const byDay:   Record<string, DayStats> = {}
   const byModel: Record<string, DayStats> = {}
 
-  const processRecord = (date: string, model: string, inp: number, out: number) => {
+  const processRecord = (date: string, model: string, t: TokenSplit) => {
     if (!date || date < fmt(cutoff) || date > fmt(now)) return
-    const total = inp + out
-    const cost  = calcCost(model || 'default', inp, out)
+    const total = t.input + t.output + t.cacheWrite + t.cacheRead
+    const cost  = calcCost(model || 'default', t)
 
-    byDay[date]   ??= { tokens: 0, cost: 0, runs: 0 }
-    byDay[date].tokens += total
-    byDay[date].cost   += cost
-    byDay[date].runs   += 1
-
-    const mk = model || 'unknown'
-    byModel[mk] ??= { tokens: 0, cost: 0, runs: 0 }
-    byModel[mk].tokens += total
-    byModel[mk].cost   += cost
-    byModel[mk].runs   += 1
+    const add = (s: DayStats) => {
+      s.tokens += total; s.cost += cost; s.runs += 1
+      s.input += t.input; s.output += t.output; s.cacheWrite += t.cacheWrite; s.cacheRead += t.cacheRead
+    }
+    add(byDay[date]   ??= emptyStats())
+    add(byModel[model || 'unknown'] ??= emptyStats())
   }
 
   if (apiRecords && apiRecords.length > 0) {
     for (const r of apiRecords) {
       const date  = (r.timestamp ?? r.date ?? '').slice(0, 10)
       const model = r.model ?? 'unknown'
-      const inp   = (r.input_tokens ?? 0) + (r.cache_creation_input_tokens ?? 0) + (r.cache_read_input_tokens ?? 0)
-      const out   = r.output_tokens ?? 0
-      processRecord(date, model, inp, out)
+      processRecord(date, model, {
+        input:      r.input_tokens ?? 0,
+        output:     r.output_tokens ?? 0,
+        cacheWrite: r.cache_creation_input_tokens ?? 0,
+        cacheRead:  r.cache_read_input_tokens ?? 0,
+      })
     }
   } else {
-    for (const r of jsonlRecords) {
-      processRecord(r.date, r.model, r.input, r.output)
-    }
+    for (const r of jsonlRecords) processRecord(r.date, r.model, r)
   }
 
   const dailyUsage = Object.entries(byDay)
@@ -218,6 +230,16 @@ radarRouter.get('/usage', async (req, res) => {
       runs:   stats.runs,
     }))
 
+  const tokenBreakdown = Object.values(byModel).reduce(
+    (s, m) => ({
+      input:      s.input      + m.input,
+      output:     s.output     + m.output,
+      cacheWrite: s.cacheWrite + m.cacheWrite,
+      cacheRead:  s.cacheRead  + m.cacheRead,
+    }),
+    { input: 0, output: 0, cacheWrite: 0, cacheRead: 0 },
+  )
+
   const totalTokens = dailyUsage.reduce((s, d) => s + d.tokens, 0)
   const totalCost   = dailyUsage.reduce((s, d) => s + d.cost, 0)
   const totalRuns   = dailyUsage.reduce((s, d) => s + d.runs, 0)
@@ -229,6 +251,7 @@ radarRouter.get('/usage', async (req, res) => {
     totalTokens,
     totalCost:      Math.round(totalCost * 10000) / 10000,
     totalRuns,
+    tokenBreakdown,
     dailyUsage,
     modelBreakdown,
     openclawStats:  deriveEventStats('openclaw', cutoffMs),
@@ -297,12 +320,13 @@ radarRouter.get('/insights', async (req, res) => {
                 if (m) sessionModel = m
 
                 const usage = e.usage ?? e.message?.usage
-                if (usage && (usage.input_tokens > 0 || usage.output_tokens > 0)) {
-                  const inp = (usage.input_tokens ?? 0) + (usage.cache_creation_input_tokens ?? 0) + (usage.cache_read_input_tokens ?? 0)
-                  const out = usage.output_tokens ?? 0
-                  const c   = calcCost(m || 'default', inp, out)
+                const cw = usage?.cache_creation_input_tokens ?? 0
+                const cr = usage?.cache_read_input_tokens ?? 0
+                if (usage && (usage.input_tokens > 0 || usage.output_tokens > 0 || cw > 0 || cr > 0)) {
+                  const split = { input: usage.input_tokens ?? 0, output: usage.output_tokens ?? 0, cacheWrite: cw, cacheRead: cr }
+                  const c = calcCost(m || 'default', split)
                   sessionCost += c
-                  sessionToks += inp + out
+                  sessionToks += split.input + split.output + split.cacheWrite + split.cacheRead
                   const dayKey = ts.slice(0, 10)
                   costByDay[dayKey] = (costByDay[dayKey] ?? 0) + c
                 }

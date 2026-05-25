@@ -7,10 +7,18 @@
 import { Router } from 'express'
 import { ingestEvent, getRawEvents } from '../lib/agentEvents.js'
 import { getSessions, getSessionDetail, getAgents, getCron } from '../lib/agentSources.js'
-import { isLive } from '../lib/connectors.js'
+import { isLive, getConnector } from '../lib/connectors.js'
 import { cronAction, type CronAction } from '../lib/gateway.js'
 import { getPlatformMetrics } from '../lib/metrics.js'
 import { addListener as liveAddListener, recent as liveRecent } from '../lib/openclawLive.js'
+import { readMemoryFileRpc } from '../lib/openclawWs.js'
+import { fetchMemoryFileContent } from '../lib/gateway.js'
+import { isSafeMemoryFileName, readMemoryFile, writeMemoryFile } from '../lib/memoryFilesFs.js'
+
+function ocExtraDirs(): string[] | undefined {
+  const dir = getConnector('openclaw')?.workspaceDir
+  return dir ? [dir] : undefined
+}
 
 export const openclawRouter = Router()
 const SOURCE = 'openclaw' as const
@@ -78,4 +86,31 @@ openclawRouter.get('/stream', (req, res) => {
 
 openclawRouter.get('/events', (_req, res) => {
   res.json({ events: getRawEvents(SOURCE), fetchedAt: new Date().toISOString() })
+})
+
+// ─── Memory file read/write ────────────────────────────────────────────────────
+
+openclawRouter.get('/memory-file', async (req, res) => {
+  const name = String(req.query.name ?? '')
+  if (!isSafeMemoryFileName(name)) return res.status(400).json({ error: 'invalid file name' })
+  // Try reading via gateway RPC first (works when OpenClaw is running, even remotely)
+  const rpc = await readMemoryFileRpc(name)
+  if (rpc) return res.json({ name, content: rpc.content, path: rpc.path })
+  // Try HTTP REST on the OpenClaw gateway as second option
+  const gw = await fetchMemoryFileContent('openclaw', name)
+  if (gw) return res.json({ name, content: gw.content, path: gw.path })
+  // Fall back to local FS only if a workspaceDir is configured
+  const result = readMemoryFile(name, ocExtraDirs())
+  if (!result) return res.status(404).json({ error: 'file not found' })
+  return res.json({ name, content: result.content, path: result.path })
+})
+
+openclawRouter.put('/memory-file', (req, res) => {
+  const name = String(req.query.name ?? '')
+  if (!isSafeMemoryFileName(name)) return res.status(400).json({ error: 'invalid file name' })
+  const content = req.body?.content
+  if (typeof content !== 'string') return res.status(400).json({ error: 'content must be a string' })
+  const result = writeMemoryFile(name, content, ocExtraDirs())
+  if (!result.ok) return res.status(result.error === 'file not found' ? 404 : 500).json({ error: result.error })
+  return res.json({ ok: true, path: result.path })
 })

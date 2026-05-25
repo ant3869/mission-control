@@ -241,11 +241,42 @@ export function clearSnapshotCache() {
   metricsCache = null
 }
 
+function historyMessages(payload: any): any[] {
+  const p = payload ?? {}
+  return Array.isArray(p) ? p : (p.messages ?? p.history ?? p.entries ?? [])
+}
+
 /** Fetch a single session's full message history (transcript) over WS. */
 export async function getHistory(sessionKey: string, limit = 150): Promise<{ reachable: boolean; error: string | null; messages: any[] }> {
   const b = await runCalls([{ method: 'chat.history', params: { sessionKey, limit, maxChars: 200_000 } }])
   if (!b.reachable) return { reachable: false, error: b.error, messages: [] }
-  const p = b.results['chat.history'] ?? {}
-  const messages = Array.isArray(p) ? p : (p.messages ?? p.history ?? p.entries ?? [])
-  return { reachable: true, error: null, messages }
+  return { reachable: true, error: null, messages: historyMessages(b.results['chat.history']) }
+}
+
+/** Fetch many sessions' transcripts in a single batched WS round-trip (one
+ *  socket, not one per session). Returns a sessionKey → messages map. */
+export async function getHistories(sessionKeys: string[], limit = 120): Promise<Record<string, any[]>> {
+  const out: Record<string, any[]> = {}
+  if (sessionKeys.length === 0) return out
+  const calls: RpcCall[] = sessionKeys.map((k, i) => ({
+    method: 'chat.history', params: { sessionKey: k, limit, maxChars: 120_000 }, key: `h${i}`,
+  }))
+  const b = await runCalls(calls)
+  if (!b.reachable) return out
+  sessionKeys.forEach((k, i) => { out[k] = historyMessages(b.results[`h${i}`]) })
+  return out
+}
+
+/** Read a single memory file's content via WS RPC (agents.files.get).
+ *  The gateway returns { agentId, workspace, file: { name, path, content, … } }.
+ *  Returns null if the gateway is unreachable or the file is not found. */
+export async function readMemoryFileRpc(name: string): Promise<{ content: string; path: string } | null> {
+  const b = await runCalls([
+    { method: 'agents.files.get', params: { name, agentId: 'main' }, key: 'file' },
+  ])
+  if (!b.reachable) return null
+  const r = b.results['file']
+  const file = r?.file ?? r
+  if (!file || typeof file.content !== 'string') return null
+  return { content: file.content, path: String(file.path ?? `[gateway] ${name}`) }
 }

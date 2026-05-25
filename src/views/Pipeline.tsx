@@ -3,13 +3,18 @@ import { clsx } from 'clsx'
 import {
   Play, Clock, CheckCircle2, XCircle, Loader, Circle,
   ToggleLeft, ToggleRight, Timer, RefreshCw, AlertCircle,
-  CalendarClock, ChevronRight, Cpu, Bot, Send, Radio, Pause
+  CalendarClock, Cpu, Bot, Send, Radio, Pause, GitBranch,
+  LayoutGrid, GanttChartSquare
 } from 'lucide-react'
 import {
   pipeline as pipelineApi, agentCron,
-  type PipelineRun, type PipelineStage, type ScheduledTask, type StageStatus, type RunStatus,
+  type PipelineRun, type ScheduledTask, type StageStatus, type RunStatus,
   type AgentCronJob,
 } from '../lib/api'
+import { TraceDrawer, type TraceRunRef } from '../components/trace'
+import { PipelineTimeline } from '../components/pipeline'
+
+type ViewMode = 'cards' | 'timeline'
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -67,15 +72,19 @@ const PHASE_COLOR: Record<string, string> = {
 
 // ─── Run card ─────────────────────────────────────────────────────────────────
 
-function RunCard({ run }: { run: PipelineRun }) {
+function RunCard({ run, onOpen }: { run: PipelineRun; onOpen: () => void }) {
   const cfg = RUN_CFG[run.status]
   const completed = run.stages.filter(s => s.status === 'completed').length
   const pct = run.stages.length > 0 ? Math.round((completed / run.stages.length) * 100) : 0
 
   return (
-    <div className="flex flex-col bg-card border border-border rounded-lg p-4 gap-3">
+    <button
+      onClick={onOpen}
+      title="View run trace"
+      className="group flex flex-col text-left bg-card border border-border rounded-lg p-4 gap-3 hover:border-emerald-700/50 hover:bg-card-hover transition-colors"
+    >
       {/* Header */}
-      <div className="flex items-start justify-between gap-2">
+      <div className="flex items-start justify-between gap-2 w-full">
         <div className="flex items-start gap-2 min-w-0">
           <Cpu size={13} className="text-text-muted mt-0.5 shrink-0" />
           <div className="min-w-0">
@@ -129,20 +138,25 @@ function RunCard({ run }: { run: PipelineRun }) {
       </div>
 
       {/* Footer */}
-      {run.totalTokens > 0 && (
-        <p className="text-xxs text-text-muted border-t border-border-subtle pt-2">
-          {fmtTokens(run.totalTokens)} tokens · {run.model.includes('opus') ? 'Opus' : run.model.includes('haiku') ? 'Haiku' : 'Sonnet'}
-        </p>
-      )}
-    </div>
+      <div className="flex items-center justify-between gap-2 w-full border-t border-border-subtle pt-2">
+        <span className="text-xxs text-text-muted truncate">
+          {run.totalTokens > 0
+            ? `${fmtTokens(run.totalTokens)} tokens · ${run.model.includes('opus') ? 'Opus' : run.model.includes('haiku') ? 'Haiku' : 'Sonnet'}`
+            : 'No token data'}
+        </span>
+        <span className="flex items-center gap-1 text-xxs text-text-muted group-hover:text-emerald-300 transition-colors shrink-0">
+          <GitBranch size={9} /> Trace
+        </span>
+      </div>
+    </button>
   )
 }
 
 // ─── History row ──────────────────────────────────────────────────────────────
 
-function HistoryRow({ run }: { run: PipelineRun }) {
+function HistoryRow({ run, onOpen }: { run: PipelineRun; onOpen: () => void }) {
   return (
-    <div className="flex items-center gap-3 px-3 py-2.5 bg-card hover:bg-card-hover transition-colors">
+    <button onClick={onOpen} title="View run trace" className="group w-full text-left flex items-center gap-3 px-3 py-2.5 bg-card hover:bg-card-hover transition-colors">
       <span className="shrink-0">
         {run.status === 'completed'
           ? <CheckCircle2 size={13} className="text-green-400" />
@@ -158,7 +172,8 @@ function HistoryRow({ run }: { run: PipelineRun }) {
           <p className="text-xxs text-text-muted tabular-nums">{fmtTokens(run.totalTokens)} tok</p>
         )}
       </div>
-    </div>
+      <GitBranch size={11} className="shrink-0 text-text-muted opacity-0 group-hover:opacity-100 group-hover:text-emerald-300 transition-all" />
+    </button>
   )
 }
 
@@ -293,6 +308,12 @@ export function Pipeline() {
   const [error,     setError]     = useState<string | null>(null)
   const [fetchedAt, setFetchedAt] = useState('')
   const [cronFilter, setCronFilter] = useState<'all' | 'active' | 'paused'>('all')
+  const [viewMode, setViewMode] = useState<ViewMode>('cards')
+  const [trace, setTrace] = useState<TraceRunRef | null>(null)
+
+  const openTrace = useCallback((run: PipelineRun) => {
+    setTrace({ id: run.id, name: run.name, model: run.model, status: run.status, source: 'claude' })
+  }, [])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -332,6 +353,7 @@ export function Pipeline() {
   const totalRuns     = history.length
   const failedRuns    = history.filter(r => r.status === 'failed').length
   const successRate   = totalRuns > 0 ? Math.round(((totalRuns - failedRuns) / totalRuns) * 100) : 100
+  const timelineRuns  = [...active, ...history]
 
   const filteredSched = scheduled.filter(j =>
     cronFilter === 'all' ? true : cronFilter === 'active' ? j.enabled : !j.enabled
@@ -342,7 +364,7 @@ export function Pipeline() {
     : ''
 
   return (
-    <div className="flex flex-col h-full overflow-hidden">
+    <div className="relative flex flex-col h-full overflow-hidden">
       {/* Header */}
       <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-border shrink-0">
         <div>
@@ -359,6 +381,15 @@ export function Pipeline() {
         </div>
         <div className="flex items-center gap-3">
           {fetchedLabel && <span className="text-xxs text-text-muted">as of {fetchedLabel}</span>}
+          <div className="flex items-center gap-0.5 bg-card rounded border border-border p-0.5">
+            {([['cards', LayoutGrid, 'Cards'], ['timeline', GanttChartSquare, 'Timeline']] as const).map(([mode, Icon, label]) => (
+              <button key={mode} onClick={() => setViewMode(mode)} title={`${label} view`}
+                className={clsx('flex items-center gap-1.5 px-2.5 py-1 rounded text-xs transition-all',
+                  viewMode === mode ? 'bg-card-hover text-text-primary' : 'text-text-muted hover:text-text-secondary')}>
+                <Icon size={12} /> {label}
+              </button>
+            ))}
+          </div>
           <button onClick={load} disabled={loading}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded border border-border bg-card hover:bg-card-hover text-text-secondary hover:text-text-primary transition-colors text-xs">
             <RefreshCw size={11} className={loading ? 'animate-spin' : ''} />
@@ -376,29 +407,51 @@ export function Pipeline() {
       )}
 
       <div className="flex-1 overflow-y-auto">
-        {/* Active runs */}
-        <div className="px-6 py-4 border-b border-border">
-          <p className="text-xxs font-semibold uppercase tracking-wider text-text-muted mb-3 flex items-center gap-1.5">
-            <Play size={10} /> Active Runs
-            <span className="ml-1 px-1.5 py-0.5 rounded bg-card border border-border text-text-muted font-normal normal-case tracking-normal">
-              {active.length}
-            </span>
-          </p>
-          {loading ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
-              {[1,2,3,4].map(i => <div key={i} className="h-[180px] rounded-lg bg-card border border-border animate-pulse" />)}
-            </div>
-          ) : active.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-8 gap-2">
-              <Play size={16} className="text-text-muted" />
-              <p className="text-xs text-text-muted">No active runs in the last 2 hours</p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
-              {active.map(run => <RunCard key={run.id} run={run} />)}
-            </div>
-          )}
-        </div>
+        {/* Runs — cards or execution timeline */}
+        {viewMode === 'cards' ? (
+          <div className="px-6 py-4 border-b border-border">
+            <p className="text-xxs font-semibold uppercase tracking-wider text-text-muted mb-3 flex items-center gap-1.5">
+              <Play size={10} /> Active Runs
+              <span className="ml-1 px-1.5 py-0.5 rounded bg-card border border-border text-text-muted font-normal normal-case tracking-normal">
+                {active.length}
+              </span>
+            </p>
+            {loading ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+                {[1,2,3,4].map(i => <div key={i} className="h-[180px] rounded-lg bg-card border border-border animate-pulse" />)}
+              </div>
+            ) : active.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-8 gap-2">
+                <Play size={16} className="text-text-muted" />
+                <p className="text-xs text-text-muted">No active runs in the last 2 hours</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+                {active.map(run => <RunCard key={run.id} run={run} onOpen={() => openTrace(run)} />)}
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="px-6 py-4 border-b border-border">
+            <p className="text-xxs font-semibold uppercase tracking-wider text-text-muted mb-3 flex items-center gap-1.5">
+              <GanttChartSquare size={10} /> Execution Timeline
+              <span className="ml-1 px-1.5 py-0.5 rounded bg-card border border-border text-text-muted font-normal normal-case tracking-normal">
+                {timelineRuns.length}
+              </span>
+              <span className="font-normal normal-case tracking-normal opacity-50">· active + recent runs · queue, stage, retry &amp; failure timing</span>
+            </p>
+            {loading ? (
+              <div className="h-72 rounded-lg bg-card border border-border animate-pulse" />
+            ) : timelineRuns.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-8 gap-2">
+                <GanttChartSquare size={16} className="text-text-muted" />
+                <p className="text-xs text-text-muted">No runs in the last 48 hours</p>
+              </div>
+            ) : (
+              <PipelineTimeline runs={timelineRuns} onOpenTrace={openTrace} />
+            )}
+          </div>
+        )}
 
         {/* Agent cron jobs (OpenClaw / Hermes) */}
         <div className="px-6 py-4 border-b border-border">
@@ -426,8 +479,9 @@ export function Pipeline() {
           )}
         </div>
 
-        {/* Bottom: scheduled + history */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 divide-y lg:divide-y-0 lg:divide-x divide-border">
+        {/* Bottom: scheduled + history (history folds into the timeline view) */}
+        <div className={clsx('grid grid-cols-1 divide-y lg:divide-y-0 divide-border',
+          viewMode === 'cards' && 'lg:grid-cols-2 lg:divide-x')}>
           {/* Scheduled tasks */}
           <div className="px-6 py-4">
             <div className="flex items-center justify-between mb-3">
@@ -454,27 +508,31 @@ export function Pipeline() {
             )}
           </div>
 
-          {/* Run history */}
-          <div className="px-6 py-4">
-            <p className="text-xxs font-semibold uppercase tracking-wider text-text-muted mb-3 flex items-center gap-1.5">
-              <CheckCircle2 size={10} /> Recent History
-              <span className="ml-1 px-1.5 py-0.5 rounded bg-card border border-border text-text-muted font-normal normal-case tracking-normal">
-                {history.length}
-              </span>
-            </p>
-            {history.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-8 gap-2">
-                <CheckCircle2 size={16} className="text-text-muted" />
-                <p className="text-xs text-text-muted">No sessions in the last 48h</p>
-              </div>
-            ) : (
-              <div className="flex flex-col divide-y divide-border rounded-lg border border-border overflow-hidden">
-                {history.map(run => <HistoryRow key={run.id} run={run} />)}
-              </div>
-            )}
-          </div>
+          {/* Run history — folded into the timeline when that mode is active */}
+          {viewMode === 'cards' && (
+            <div className="px-6 py-4">
+              <p className="text-xxs font-semibold uppercase tracking-wider text-text-muted mb-3 flex items-center gap-1.5">
+                <CheckCircle2 size={10} /> Recent History
+                <span className="ml-1 px-1.5 py-0.5 rounded bg-card border border-border text-text-muted font-normal normal-case tracking-normal">
+                  {history.length}
+                </span>
+              </p>
+              {history.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-8 gap-2">
+                  <CheckCircle2 size={16} className="text-text-muted" />
+                  <p className="text-xs text-text-muted">No sessions in the last 48h</p>
+                </div>
+              ) : (
+                <div className="flex flex-col divide-y divide-border rounded-lg border border-border overflow-hidden">
+                  {history.map(run => <HistoryRow key={run.id} run={run} onOpen={() => openTrace(run)} />)}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
+
+      {trace && <TraceDrawer runRef={trace} onClose={() => setTrace(null)} />}
     </div>
   )
 }

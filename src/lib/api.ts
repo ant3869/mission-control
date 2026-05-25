@@ -3,6 +3,9 @@
  * All calls go through Vite's /api proxy → localhost:3001.
  */
 
+import type { TraceRun } from '../components/trace/types'
+export type { TraceRun, TraceSpan, SpanKind, SpanStatus } from '../components/trace/types'
+
 export class ApiError extends Error {
   constructor(public status: number, message: string) {
     super(message)
@@ -101,17 +104,36 @@ export const calendar = {
 export interface SystemComponentLive {
   id:          string
   name:        string
-  type:        'mcp' | 'plugin' | 'skill' | 'extension'
+  type:        'mcp' | 'plugin' | 'skill' | 'extension' | 'command'
   status:      'healthy' | 'warning' | 'error' | 'offline'
   latencyMs?:  number
   error?:      string
   description: string
   lastChecked: string
   version?:    string
+  transport?:  'http' | 'stdio' | 'unknown'
+}
+
+export interface SystemHostInfo {
+  hostname:    string
+  platform:    string
+  release:     string
+  arch:        string
+  nodeVersion: string
+  cpuModel:    string
+  cpuCount:    number
+  loadAvg:     number
+  totalMemMb:  number
+  freeMemMb:   number
+  usedMemPct:  number
+  rssMb:       number
+  heapUsedMb:  number
+  uptimeSec:   number
 }
 
 export interface SystemResponse {
   components: SystemComponentLive[]
+  host?:      SystemHostInfo
   fetchedAt:  string
   source:     string
 }
@@ -130,6 +152,13 @@ export interface DailyUsageLive {
   runs:    number
 }
 
+export interface RadarTokenBreakdown {
+  input:      number
+  output:     number
+  cacheWrite: number
+  cacheRead:  number
+}
+
 export interface RadarUsageResponse {
   days:           number
   startDate:      string
@@ -137,6 +166,7 @@ export interface RadarUsageResponse {
   totalTokens:    number
   totalCost:      number
   totalRuns:      number
+  tokenBreakdown: RadarTokenBreakdown
   dailyUsage:     DailyUsageLive[]
   modelBreakdown: Array<{ model: string; tokens: number; cost: number; runs: number }>
   openclawStats?: Array<{ date: string; events: number; messages: number }>
@@ -186,6 +216,127 @@ export interface RadarInsightsResponse {
 export const radar = {
   usage:    (days = 7)  => get<RadarUsageResponse>('/radar/usage', { days }),
   insights: (days = 30) => get<RadarInsightsResponse>('/radar/insights', { days }),
+}
+
+// ─── Model Ops (operational model analytics) ────────────────────────────────────
+
+export type ModelOpsSourceId = 'claude' | 'openclaw' | 'hermes' | 'mock' | string
+
+export interface ModelOpsModelRow {
+  source:       ModelOpsSourceId
+  sourceLabel:  string
+  model:        string
+  modelLabel:   string
+  provider:     string
+  runs:         number
+  tokens:       number
+  inputTokens:  number
+  outputTokens: number
+  cacheTokens:  number
+  cost:         number
+  avgLatencyMs: number
+  p95LatencyMs: number
+  failures:     number
+  failureRate:  number  // 0..1
+  estimated:    boolean // true when latency was synthesized (no real samples)
+}
+
+export interface ModelOpsProviderRow {
+  provider:     string
+  runs:         number
+  tokens:       number
+  cost:         number
+  avgLatencyMs: number
+  failureRate:  number
+}
+
+export interface ModelOpsSourceRow {
+  source:       ModelOpsSourceId
+  label:        string
+  reachable:    boolean
+  error:        string | null
+  models:       number
+  runs:         number
+  tokens:       number
+  cost:         number
+  avgLatencyMs: number
+  failureRate:  number
+  topModels:    Array<{ modelLabel: string; cost: number }>
+}
+
+export interface ModelOpsScatterPoint {
+  id:           string
+  source:       ModelOpsSourceId
+  model:        string
+  modelLabel:   string
+  provider:     string
+  cost:         number
+  tokens:       number
+  runs:         number
+  avgLatencyMs: number
+  failureRate:  number
+  date:         string
+}
+
+export interface ModelOpsRun {
+  id:           string
+  source:       ModelOpsSourceId
+  sourceLabel:  string
+  model:        string
+  modelLabel:   string
+  provider:     string
+  date:         string
+  tokens:       number
+  cost:         number
+  avgLatencyMs: number
+  failures:     number
+  failureRate:  number
+}
+
+export interface ModelOpsTrendPoint {
+  date:         string  // "Mar 21"
+  dateIso:      string
+  requests:     number
+  cost:         number
+  tokens:       number
+  avgLatencyMs: number
+  failures:     number
+}
+
+export interface ModelOpsSummary {
+  totalSpend:    number
+  avgLatencyMs:  number
+  totalRequests: number
+  failures:      number
+  failureRate:   number
+  modelCount:    number
+  providerCount: number
+  spendTrendPct: number
+}
+
+export type ModelOpsScope = 'all' | 'claude' | 'agents'
+
+export interface ModelOpsResponse {
+  scope:               ModelOpsScope
+  days:                number
+  startDate:           string
+  endDate:             string
+  source:              'jsonl' | 'mock' | 'mixed'
+  estimatedDimensions: string[]
+  summary:             ModelOpsSummary
+  models:              ModelOpsModelRow[]
+  providers:           ModelOpsProviderRow[]
+  bySource:            ModelOpsSourceRow[]
+  scatter:             ModelOpsScatterPoint[]
+  trend:               ModelOpsTrendPoint[]
+  expensiveRuns:       ModelOpsRun[]
+  slowRuns:            ModelOpsRun[]
+  fetchedAt:           string
+}
+
+export const modelOps = {
+  summary: (days = 7, scope: ModelOpsScope = 'all') =>
+    get<ModelOpsResponse>('/modelops/summary', { days, scope }),
 }
 
 // ─── Chats ────────────────────────────────────────────────────────────────────
@@ -328,7 +479,7 @@ export interface MetricSessionRow { key: string; title: string; channel: string;
 export interface MetricCronJob { id: string; name: string; agentId: string; enabled: boolean; schedule: string; delivery: string; lastRunAt: string | null; nextRunAt: string | null }
 export interface MetricCronRun { ts: string; jobId: string; status: string; action: string; error: string | null }
 export interface MetricChannel { id: string; label: string; enabled: boolean; configured: boolean; running: boolean; lastStartAt: string | null }
-export interface MetricMemoryFile { name: string; size: number; updatedAt: string | null; missing: boolean }
+export interface MetricMemoryFile { name: string; size: number; updatedAt: string | null; missing: boolean; path?: string }
 export interface MetricSubAgent { key: string; title: string; status: string; tokens: number; updatedAt: string | null }
 export interface MetricAutonomyFactor { label: string; score: number; detail: string }
 export interface MetricAutonomy { score: number; level: string; factors: MetricAutonomyFactor[] }
@@ -368,6 +519,13 @@ export interface PlatformMetricsResponse { metrics: PlatformMetrics; fetchedAt: 
 export const metrics = {
   openclaw: (force = false) => get<PlatformMetricsResponse>('/openclaw/metrics', force ? { force: 1 } : undefined),
   hermes:   (force = false) => get<PlatformMetricsResponse>('/hermes/metrics',   force ? { force: 1 } : undefined),
+}
+
+export const memoryFile = {
+  read:  (source: ConnectorId, name: string) =>
+    get<{ name: string; content: string; path: string }>(`/${source}/memory-file`, { name }),
+  write: (source: ConnectorId, name: string, content: string) =>
+    put<{ ok: boolean; path: string }>(`/${source}/memory-file?name=${encodeURIComponent(name)}`, { content }),
 }
 
 // ─── Inventory ─────────────────────────────────────────────────────────────────
@@ -433,6 +591,7 @@ export const inventory = {
   remove:    (id: string)                    => del<{ ok: boolean }>(`/inventory/${id}`),
   setStatus: (id: string, status: 'available' | 'in-use' | 'reserved') => patch<{ item: InventoryItem }>(`/inventory/${id}/status`, { status }),
   research:  (id: string, source?: 'openclaw' | 'hermes') => post<{ ok: boolean; status: string; source: string }>(`/inventory/${id}/research`, source ? { source } : {}),
+  researchAll: () => post<{ queued: number; openclaw: number; hermes: number; skipped: number }>('/inventory/research-all', {}),
 }
 
 // ─── Memory ───────────────────────────────────────────────────────────────────
@@ -534,6 +693,17 @@ export const agents = {
 
 export type StageStatus = 'completed' | 'running' | 'failed' | 'pending' | 'skipped'
 export type RunStatus   = 'running'   | 'queued'  | 'completed' | 'failed'
+export type SegmentKind = 'queue' | 'stage' | 'retry' | 'wait' | 'failed'
+
+export interface PipelineSegment {
+  kind:        SegmentKind
+  label:       string
+  startMs:     number
+  durationMs:  number
+  status?:     StageStatus
+  stageName?:  string
+  attempt?:    number
+}
 
 export interface PipelineStage {
   name:         string
@@ -558,6 +728,14 @@ export interface PipelineRun {
   completedAgo?: string
   model:        string
   cwd:          string
+  // Execution-timeline (Gantt) fields
+  queuedAt:     string
+  completedAt:  string | null
+  queueMs:      number
+  waitMs:       number
+  retries:      number
+  totalMs:      number
+  timeline:     PipelineSegment[]
 }
 
 export interface ScheduledTask {
@@ -584,9 +762,13 @@ export interface PipelineScheduledResponse {
   fetchedAt: string
 }
 
+export interface TraceResponse { run: TraceRun; fetchedAt: string }
+
 export const pipeline = {
   runs:      () => get<PipelineRunsResponse>('/pipeline/runs'),
   scheduled: () => get<PipelineScheduledResponse>('/pipeline/scheduled'),
+  trace:     (id: string, opts?: { name?: string; model?: string; status?: string; source?: string }) =>
+               get<TraceResponse>(`/pipeline/runs/${encodeURIComponent(id)}/trace`, opts as Record<string, string> | undefined),
 }
 
 // ─── Office ───────────────────────────────────────────────────────────────────

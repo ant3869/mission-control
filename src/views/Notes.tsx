@@ -10,7 +10,7 @@ import { clsx } from 'clsx'
 import {
   Plus, Search, X, ChevronRight, ChevronDown, Pin, PinOff,
   Tag, Trash2, Eye, Edit3, Loader2, RefreshCw, BookOpen,
-  NotebookPen, AlignLeft, Palette, Check, MoreHorizontal,
+  NotebookPen, AlignLeft, Check,
 } from 'lucide-react'
 import { notes as notesApi } from '../lib/api'
 import type { NoteNotebook, NoteSection, NotePage } from '../lib/api'
@@ -21,7 +21,6 @@ function renderMd(src: string): React.ReactNode[] {
   const lines = src.split('\n')
   const out: React.ReactNode[] = []
   let codeBlock = false
-  let codeLang = ''
   let codeLines: string[] = []
   let listItems: React.ReactNode[] = []
 
@@ -57,9 +56,9 @@ function renderMd(src: string): React.ReactNode[] {
             <code className="text-xxs font-mono text-green-400 leading-relaxed">{codeLines.join('\n')}</code>
           </pre>
         )
-        codeBlock = false; codeLines = []; codeLang = ''
+        codeBlock = false; codeLines = []
       } else {
-        codeBlock = true; codeLang = line.slice(3); codeLines = []
+        codeBlock = true; codeLines = []
       }
       continue
     }
@@ -512,8 +511,6 @@ export function Notes() {
     await notesApi.deletePage(id)
   }
 
-  // ── Notebook color ──
-  const nbColor = (id: string) => notebooks.find(n => n.id === id)?.color ?? '#6366f1'
   const secColor = (id: string) => sections.find(s => s.id === id)?.color ?? '#6366f1'
 
   // ─────────────────────────────────────────────────────────────────────────────

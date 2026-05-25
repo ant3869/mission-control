@@ -17,7 +17,8 @@ export const inventoryRouter = Router()
 
 export const CATEGORIES = [
   'computer', 'laptop', 'sbc', 'microcontroller', 'storage', 'battery', 'power',
-  'console', 'peripheral', 'cable', 'component', 'sensor', 'network', 'tool', 'other',
+  'console', 'peripheral', 'cable', 'component', 'sensor', 'network', 'tool',
+  'breakout', 'camera', 'tablet', 'other',
 ] as const
 export const CONDITIONS = ['working', 'untested', 'partial', 'broken', 'unknown'] as const
 export const STATUSES   = ['available', 'in-use', 'reserved'] as const
@@ -87,6 +88,10 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_items_category ON items(category);
   CREATE INDEX IF NOT EXISTS idx_items_updated  ON items(updatedAt DESC);
 `)
+
+// On every startup/hot-reload, any items left in 'pending' from a previous run
+// are orphaned (their promises are gone). Reset them so research can be retried.
+db.exec(`UPDATE items SET researchStatus = 'idle', researchError = 'Reset: server restarted while research was in progress' WHERE researchStatus = 'pending'`)
 
 const COLS = [
   'id','name','category','quantity','location','condition','estimatedValue',
@@ -363,6 +368,60 @@ inventoryRouter.patch('/:id/status', (req, res) => {
   } catch (err: any) { res.status(500).json({ error: err.message }) }
 })
 
+// Bulk research: queue all unresearched items, split work between available agents.
+inventoryRouter.post('/research-all', (req, res) => {
+  try {
+    const ocLive = isLive('openclaw')
+    const hmLive = isLive('hermes')
+    if (!ocLive && !hmLive) return res.status(409).json({ error: 'No connected agent — enable OpenClaw or Hermes in Settings.' })
+
+    const allItems = loadItems()
+    const unresearched = allItems.filter(it => !it.enriched && it.researchStatus !== 'pending')
+    if (unresearched.length === 0) return res.json({ queued: 0, openclaw: 0, hermes: 0, skipped: allItems.length })
+
+    // Split between available agents; interleave so both get a mix of item types.
+    let ocItems: StoredItem[] = []
+    let hmItems: StoredItem[] = []
+    if (ocLive && hmLive) {
+      ocItems = unresearched.filter((_, i) => i % 2 === 0)
+      hmItems = unresearched.filter((_, i) => i % 2 === 1)
+    } else if (ocLive) {
+      ocItems = unresearched
+    } else {
+      hmItems = unresearched
+    }
+
+    // Mark all as pending immediately.
+    const now = new Date().toISOString()
+    for (const it of unresearched) {
+      dbSave({ ...it, researchStatus: 'pending', researchRequestedAt: now, researchError: '' })
+    }
+
+    // Fire all research tasks concurrently; each resolves independently.
+    const doResearch = (it: StoredItem, source: 'openclaw' | 'hermes') => {
+      researchItem(it, source).then(r => {
+        const cur = loadItem(it.id)
+        if (!cur) return
+        const merged = sanitize({
+          summary: r.summary, specs: r.specs, manufacturer: r.manufacturer, model: r.model,
+          estimatedValue: r.estimatedValue, category: r.category, condition: r.condition,
+          datasheetUrl: r.datasheetUrl, sources: r.sources, enriched: true, addedBy: source,
+        }, cur)
+        dbSave({ ...merged, id: cur.id, createdAt: cur.createdAt, updatedAt: new Date().toISOString(), researchStatus: 'done', researchError: '' })
+      }).catch(err => {
+        const cur = loadItem(it.id)
+        if (!cur) return
+        dbSave({ ...cur, researchStatus: 'failed', researchError: String(err?.message ?? err).slice(0, 200), updatedAt: new Date().toISOString() })
+      })
+    }
+
+    for (const it of ocItems) doResearch(it, 'openclaw')
+    for (const it of hmItems) doResearch(it, 'hermes')
+
+    res.json({ queued: unresearched.length, openclaw: ocItems.length, hermes: hmItems.length, skipped: allItems.length - unresearched.length })
+  } catch (err: any) { res.status(500).json({ error: err.message }) }
+})
+
 // Ask a connected agent to research + fill the item's spec sheet (async).
 inventoryRouter.post('/:id/research', (req, res) => {
   try {
@@ -373,7 +432,6 @@ inventoryRouter.post('/:id/research', (req, res) => {
     const source = requested ?? (isLive('openclaw') ? 'openclaw' : isLive('hermes') ? 'hermes' : null)
     if (!source) return res.status(409).json({ error: 'No connected agent — enable OpenClaw or Hermes in Settings.' })
     if (!isLive(source)) return res.status(409).json({ error: `${source} is not connected.` })
-    if (source !== 'openclaw') return res.status(400).json({ error: 'Auto-research currently supports OpenClaw only.' })
 
     const snap = { ...item, researchStatus: 'pending', researchRequestedAt: new Date().toISOString(), researchError: '' }
     dbSave(snap)

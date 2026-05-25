@@ -1,0 +1,294 @@
+// title: Evaluations persistence store
+// path: server/lib/evalStore.ts
+// purpose: SQLite-backed storage for the Evaluations feature — benchmark tasks,
+//          benchmark runs, manual scores, and model score snapshots. Scoped to
+//          Hermes + OpenClaw only. All records are real, user/agent-produced
+//          data; nothing here is seeded or fabricated. Lives in data/ which the
+//          tsx watcher ignores, so writes don't trigger server restarts.
+
+import { existsSync, mkdirSync } from 'fs'
+import { join } from 'path'
+import { randomUUID } from 'crypto'
+import { DatabaseSync } from 'node:sqlite'
+
+export type EvalPlatform = 'hermes' | 'openclaw'
+export const EVAL_PLATFORMS: EvalPlatform[] = ['hermes', 'openclaw']
+export function isEvalPlatform(v: any): v is EvalPlatform {
+  return v === 'hermes' || v === 'openclaw'
+}
+
+// ─── Entity shapes ────────────────────────────────────────────────────────────
+
+export interface BenchmarkTask {
+  id:           string
+  platform:     EvalPlatform
+  agent:        string        // '' = any agent on the platform
+  title:        string
+  prompt:       string
+  rubric:       string        // free-text scoring guidance for manual rubric scoring
+  expectedTools: string[]     // tools a good run is expected to use (optional)
+  notes:        string
+  createdAt:    string
+  updatedAt:    string
+}
+
+export interface BenchmarkRun {
+  id:          string
+  taskId:      string
+  platform:    EvalPlatform
+  agent:       string
+  model:       string
+  status:      string         // success | failure | partial | error | unresolved
+  outcome:     string         // mirrors derived-run outcome vocabulary
+  toolCalls:   number
+  wastedToolCalls: number
+  retries:     number
+  durationMs:  number
+  tokens:      number
+  cost:        number
+  rubricScore: number | null  // 0..100 manual rubric score (null = not scored)
+  notes:       string
+  ts:          string
+}
+
+export interface ManualScore {
+  id:        string
+  platform:  EvalPlatform
+  agent:     string
+  model:     string
+  runId:     string           // session key / run id this score applies to ('' = model-level)
+  score:     number           // 0..100
+  rubric:    Record<string, number> // optional per-dimension sub-scores
+  notes:     string
+  scoredBy:  string
+  ts:        string
+}
+
+export interface ModelScoreSnapshot {
+  id:             string
+  platform:       EvalPlatform
+  model:          string
+  windowDays:     number
+  overall:        number
+  subScores:      Record<string, number | null>
+  runCount:       number
+  evaluatedCount: number
+  ts:             string
+}
+
+// ─── DB setup ─────────────────────────────────────────────────────────────────
+
+const dataDir = join(process.cwd(), 'data')
+if (!existsSync(dataDir)) mkdirSync(dataDir, { recursive: true })
+
+const db = new DatabaseSync(join(dataDir, 'evaluations.db'))
+db.exec('PRAGMA journal_mode = WAL;')
+db.exec(`
+  CREATE TABLE IF NOT EXISTS benchmark_tasks (
+    id            TEXT PRIMARY KEY,
+    platform      TEXT NOT NULL,
+    agent         TEXT NOT NULL DEFAULT '',
+    title         TEXT NOT NULL,
+    prompt        TEXT NOT NULL DEFAULT '',
+    rubric        TEXT NOT NULL DEFAULT '',
+    expectedTools TEXT NOT NULL DEFAULT '[]',
+    notes         TEXT NOT NULL DEFAULT '',
+    createdAt     TEXT NOT NULL,
+    updatedAt     TEXT NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS benchmark_runs (
+    id              TEXT PRIMARY KEY,
+    taskId          TEXT NOT NULL,
+    platform        TEXT NOT NULL,
+    agent           TEXT NOT NULL DEFAULT '',
+    model           TEXT NOT NULL DEFAULT '',
+    status          TEXT NOT NULL DEFAULT 'unresolved',
+    outcome         TEXT NOT NULL DEFAULT 'unresolved',
+    toolCalls       INTEGER NOT NULL DEFAULT 0,
+    wastedToolCalls INTEGER NOT NULL DEFAULT 0,
+    retries         INTEGER NOT NULL DEFAULT 0,
+    durationMs      INTEGER NOT NULL DEFAULT 0,
+    tokens          INTEGER NOT NULL DEFAULT 0,
+    cost            REAL NOT NULL DEFAULT 0,
+    rubricScore     REAL,
+    notes           TEXT NOT NULL DEFAULT '',
+    ts              TEXT NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS manual_scores (
+    id        TEXT PRIMARY KEY,
+    platform  TEXT NOT NULL,
+    agent     TEXT NOT NULL DEFAULT '',
+    model     TEXT NOT NULL DEFAULT '',
+    runId     TEXT NOT NULL DEFAULT '',
+    score     REAL NOT NULL DEFAULT 0,
+    rubric    TEXT NOT NULL DEFAULT '{}',
+    notes     TEXT NOT NULL DEFAULT '',
+    scoredBy  TEXT NOT NULL DEFAULT 'manual',
+    ts        TEXT NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS model_score_snapshots (
+    id             TEXT PRIMARY KEY,
+    platform       TEXT NOT NULL,
+    model          TEXT NOT NULL,
+    windowDays     INTEGER NOT NULL DEFAULT 0,
+    overall        REAL NOT NULL DEFAULT 0,
+    subScores      TEXT NOT NULL DEFAULT '{}',
+    runCount       INTEGER NOT NULL DEFAULT 0,
+    evaluatedCount INTEGER NOT NULL DEFAULT 0,
+    ts             TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_bench_runs_task ON benchmark_runs(taskId);
+  CREATE INDEX IF NOT EXISTS idx_bench_runs_model ON benchmark_runs(platform, model);
+  CREATE INDEX IF NOT EXISTS idx_manual_model ON manual_scores(platform, model);
+  CREATE INDEX IF NOT EXISTS idx_snap_model ON model_score_snapshots(platform, model, ts DESC);
+`)
+
+function pj<T>(s: string, fb: T): T { try { return JSON.parse(s) as T } catch { return fb } }
+
+// ─── Benchmark tasks ──────────────────────────────────────────────────────────
+
+function taskFromRow(r: any): BenchmarkTask {
+  return {
+    id: String(r.id), platform: r.platform, agent: String(r.agent ?? ''),
+    title: String(r.title ?? ''), prompt: String(r.prompt ?? ''), rubric: String(r.rubric ?? ''),
+    expectedTools: pj(String(r.expectedTools ?? '[]'), []), notes: String(r.notes ?? ''),
+    createdAt: String(r.createdAt), updatedAt: String(r.updatedAt),
+  }
+}
+
+export function listBenchmarkTasks(platform?: EvalPlatform): BenchmarkTask[] {
+  const rows = platform
+    ? db.prepare('SELECT * FROM benchmark_tasks WHERE platform = ? ORDER BY createdAt DESC').all(platform)
+    : db.prepare('SELECT * FROM benchmark_tasks ORDER BY createdAt DESC').all()
+  return (rows as any[]).map(taskFromRow)
+}
+
+export function getBenchmarkTask(id: string): BenchmarkTask | null {
+  const r = db.prepare('SELECT * FROM benchmark_tasks WHERE id = ?').get(id)
+  return r ? taskFromRow(r) : null
+}
+
+export function createBenchmarkTask(input: {
+  platform: EvalPlatform; agent?: string; title: string; prompt: string
+  rubric?: string; expectedTools?: string[]; notes?: string
+}): BenchmarkTask {
+  const now = new Date().toISOString()
+  const task: BenchmarkTask = {
+    id: randomUUID(), platform: input.platform, agent: (input.agent ?? '').trim(),
+    title: input.title.trim(), prompt: input.prompt.trim(), rubric: (input.rubric ?? '').trim(),
+    expectedTools: (input.expectedTools ?? []).map(String).filter(Boolean), notes: (input.notes ?? '').trim(),
+    createdAt: now, updatedAt: now,
+  }
+  db.prepare(`INSERT INTO benchmark_tasks
+    (id,platform,agent,title,prompt,rubric,expectedTools,notes,createdAt,updatedAt)
+    VALUES (@id,@platform,@agent,@title,@prompt,@rubric,@expectedTools,@notes,@createdAt,@updatedAt)`)
+    .run({ ...task, expectedTools: JSON.stringify(task.expectedTools) })
+  return task
+}
+
+export function deleteBenchmarkTask(id: string): boolean {
+  const r = db.prepare('DELETE FROM benchmark_tasks WHERE id = ?').run(id)
+  db.prepare('DELETE FROM benchmark_runs WHERE taskId = ?').run(id)
+  return Number(r.changes) > 0
+}
+
+// ─── Benchmark runs ───────────────────────────────────────────────────────────
+
+function runFromRow(r: any): BenchmarkRun {
+  return {
+    id: String(r.id), taskId: String(r.taskId), platform: r.platform, agent: String(r.agent ?? ''),
+    model: String(r.model ?? ''), status: String(r.status ?? 'unresolved'), outcome: String(r.outcome ?? 'unresolved'),
+    toolCalls: Number(r.toolCalls ?? 0), wastedToolCalls: Number(r.wastedToolCalls ?? 0),
+    retries: Number(r.retries ?? 0), durationMs: Number(r.durationMs ?? 0),
+    tokens: Number(r.tokens ?? 0), cost: Number(r.cost ?? 0),
+    rubricScore: r.rubricScore == null ? null : Number(r.rubricScore),
+    notes: String(r.notes ?? ''), ts: String(r.ts),
+  }
+}
+
+export function listBenchmarkRuns(filter?: { platform?: EvalPlatform; model?: string; taskId?: string }): BenchmarkRun[] {
+  const where: string[] = []
+  const args: any[] = []
+  if (filter?.platform) { where.push('platform = ?'); args.push(filter.platform) }
+  if (filter?.model)    { where.push('model = ?');    args.push(filter.model) }
+  if (filter?.taskId)   { where.push('taskId = ?');   args.push(filter.taskId) }
+  const sql = `SELECT * FROM benchmark_runs ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY ts DESC`
+  return (db.prepare(sql).all(...args) as any[]).map(runFromRow)
+}
+
+export function createBenchmarkRun(input: Omit<BenchmarkRun, 'id' | 'ts'> & { ts?: string }): BenchmarkRun {
+  const run: BenchmarkRun = { id: randomUUID(), ts: input.ts ?? new Date().toISOString(), ...input }
+  db.prepare(`INSERT INTO benchmark_runs
+    (id,taskId,platform,agent,model,status,outcome,toolCalls,wastedToolCalls,retries,durationMs,tokens,cost,rubricScore,notes,ts)
+    VALUES (@id,@taskId,@platform,@agent,@model,@status,@outcome,@toolCalls,@wastedToolCalls,@retries,@durationMs,@tokens,@cost,@rubricScore,@notes,@ts)`)
+    .run(run as any)
+  return run
+}
+
+// ─── Manual scores ────────────────────────────────────────────────────────────
+
+function manualFromRow(r: any): ManualScore {
+  return {
+    id: String(r.id), platform: r.platform, agent: String(r.agent ?? ''), model: String(r.model ?? ''),
+    runId: String(r.runId ?? ''), score: Number(r.score ?? 0), rubric: pj(String(r.rubric ?? '{}'), {}),
+    notes: String(r.notes ?? ''), scoredBy: String(r.scoredBy ?? 'manual'), ts: String(r.ts),
+  }
+}
+
+export function listManualScores(filter?: { platform?: EvalPlatform; model?: string }): ManualScore[] {
+  const where: string[] = []
+  const args: any[] = []
+  if (filter?.platform) { where.push('platform = ?'); args.push(filter.platform) }
+  if (filter?.model)    { where.push('model = ?');    args.push(filter.model) }
+  const sql = `SELECT * FROM manual_scores ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY ts DESC`
+  return (db.prepare(sql).all(...args) as any[]).map(manualFromRow)
+}
+
+export function createManualScore(input: {
+  platform: EvalPlatform; agent?: string; model: string; runId?: string
+  score: number; rubric?: Record<string, number>; notes?: string; scoredBy?: string
+}): ManualScore {
+  const ms: ManualScore = {
+    id: randomUUID(), platform: input.platform, agent: (input.agent ?? '').trim(), model: input.model.trim(),
+    runId: (input.runId ?? '').trim(), score: Math.max(0, Math.min(100, Number(input.score) || 0)),
+    rubric: input.rubric ?? {}, notes: (input.notes ?? '').trim(), scoredBy: (input.scoredBy ?? 'manual').trim() || 'manual',
+    ts: new Date().toISOString(),
+  }
+  db.prepare(`INSERT INTO manual_scores
+    (id,platform,agent,model,runId,score,rubric,notes,scoredBy,ts)
+    VALUES (@id,@platform,@agent,@model,@runId,@score,@rubric,@notes,@scoredBy,@ts)`)
+    .run({ ...ms, rubric: JSON.stringify(ms.rubric) })
+  return ms
+}
+
+// ─── Model score snapshots ─────────────────────────────────────────────────────
+
+function snapFromRow(r: any): ModelScoreSnapshot {
+  return {
+    id: String(r.id), platform: r.platform, model: String(r.model ?? ''), windowDays: Number(r.windowDays ?? 0),
+    overall: Number(r.overall ?? 0), subScores: pj(String(r.subScores ?? '{}'), {}),
+    runCount: Number(r.runCount ?? 0), evaluatedCount: Number(r.evaluatedCount ?? 0), ts: String(r.ts),
+  }
+}
+
+export function listSnapshots(platform: EvalPlatform, model?: string): ModelScoreSnapshot[] {
+  const rows = model
+    ? db.prepare('SELECT * FROM model_score_snapshots WHERE platform = ? AND model = ? ORDER BY ts ASC').all(platform, model)
+    : db.prepare('SELECT * FROM model_score_snapshots WHERE platform = ? ORDER BY ts ASC').all(platform)
+  return (rows as any[]).map(snapFromRow)
+}
+
+/** Most recent snapshot timestamp for a model (used to throttle snapshotting). */
+export function latestSnapshotTs(platform: EvalPlatform, model: string): string | null {
+  const r = db.prepare('SELECT ts FROM model_score_snapshots WHERE platform = ? AND model = ? ORDER BY ts DESC LIMIT 1').get(platform, model) as any
+  return r?.ts ?? null
+}
+
+export function saveSnapshot(input: Omit<ModelScoreSnapshot, 'id' | 'ts'> & { ts?: string }): ModelScoreSnapshot {
+  const snap: ModelScoreSnapshot = { id: randomUUID(), ts: input.ts ?? new Date().toISOString(), ...input }
+  db.prepare(`INSERT INTO model_score_snapshots
+    (id,platform,model,windowDays,overall,subScores,runCount,evaluatedCount,ts)
+    VALUES (@id,@platform,@model,@windowDays,@overall,@subScores,@runCount,@evaluatedCount,@ts)`)
+    .run({ ...snap, subScores: JSON.stringify(snap.subScores) })
+  return snap
+}

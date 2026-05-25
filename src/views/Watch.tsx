@@ -231,7 +231,18 @@ export function Watch() {
         // Skip "session ended / disconnected" from clearing an active status
         const isTerminal = e.kind === 'session' && /end|close/i.test(e.event)
         if (isTerminal) return
-        setLatestBySource(prev => ({ ...prev, [e.source]: e }))
+        // The generic "active run / working" filler streams every few seconds and
+        // would clobber a real tool/message on the card. While a richer event is
+        // still recent, let it stand instead of dropping back to "working".
+        const isFiller = e.kind === 'session' && /active/i.test(e.event)
+        setLatestBySource(prev => {
+          const cur = prev[e.source]
+          if (isFiller && cur && (cur.kind === 'tool' || cur.kind === 'message')
+              && Date.now() - new Date(cur.ts).getTime() < 45_000) {
+            return prev
+          }
+          return { ...prev, [e.source]: e }
+        })
       } catch { /* ignore */ }
     }
     es.onopen  = () => setConnected(true)
