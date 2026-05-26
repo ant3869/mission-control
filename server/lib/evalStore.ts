@@ -143,6 +143,13 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_snap_model ON model_score_snapshots(platform, model, ts DESC);
 `)
 
+// Any "running" benchmark_runs left over from a prior server run are orphaned
+// (their async runner is gone). Surface that honestly rather than letting them
+// spin forever.
+db.exec(`UPDATE benchmark_runs SET status = 'error', outcome = 'failure',
+  notes = 'Server restarted while this run was in flight — dispatch the task again.'
+  WHERE status = 'running'`)
+
 function pj<T>(s: string, fb: T): T { try { return JSON.parse(s) as T } catch { return fb } }
 
 // ─── Benchmark tasks ──────────────────────────────────────────────────────────
@@ -216,13 +223,28 @@ export function listBenchmarkRuns(filter?: { platform?: EvalPlatform; model?: st
   return (db.prepare(sql).all(...args) as any[]).map(runFromRow)
 }
 
-export function createBenchmarkRun(input: Omit<BenchmarkRun, 'id' | 'ts'> & { ts?: string }): BenchmarkRun {
-  const run: BenchmarkRun = { id: randomUUID(), ts: input.ts ?? new Date().toISOString(), ...input }
+export function createBenchmarkRun(input: Omit<BenchmarkRun, 'id' | 'ts'> & { id?: string; ts?: string }): BenchmarkRun {
+  const run: BenchmarkRun = { id: input.id ?? randomUUID(), ts: input.ts ?? new Date().toISOString(), ...input } as BenchmarkRun
   db.prepare(`INSERT INTO benchmark_runs
     (id,taskId,platform,agent,model,status,outcome,toolCalls,wastedToolCalls,retries,durationMs,tokens,cost,rubricScore,notes,ts)
     VALUES (@id,@taskId,@platform,@agent,@model,@status,@outcome,@toolCalls,@wastedToolCalls,@retries,@durationMs,@tokens,@cost,@rubricScore,@notes,@ts)`)
     .run(run as any)
   return run
+}
+
+/** Patch an existing benchmark_run row. Used to flip a "running" placeholder
+ *  to its final outcome once execution finishes (or errors). */
+export function updateBenchmarkRun(id: string, patch: Partial<Omit<BenchmarkRun, 'id'>>): BenchmarkRun | null {
+  const cur = db.prepare('SELECT * FROM benchmark_runs WHERE id = ?').get(id) as any
+  if (!cur) return null
+  const merged = { ...cur, ...patch, id }
+  db.prepare(`UPDATE benchmark_runs SET
+    taskId=@taskId, platform=@platform, agent=@agent, model=@model,
+    status=@status, outcome=@outcome, toolCalls=@toolCalls, wastedToolCalls=@wastedToolCalls,
+    retries=@retries, durationMs=@durationMs, tokens=@tokens, cost=@cost,
+    rubricScore=@rubricScore, notes=@notes, ts=@ts
+    WHERE id=@id`).run(merged)
+  return runFromRow(merged)
 }
 
 // ─── Manual scores ────────────────────────────────────────────────────────────

@@ -402,6 +402,11 @@ export interface ConnectorInfo {
   enabled:         boolean
   hasToken:        boolean
   tokenHint:       string
+  // Hermes-only: separate OpenAI-compat API server (POST /v1/chat/completions).
+  // The dashboard at baseUrl returns 405 for /v1, so chat must go here.
+  apiBaseUrl?:     string
+  hasApiToken?:    boolean
+  apiTokenHint?:   string
   status:          ConnectorStatus
   reachable:       boolean
   version:         string | null
@@ -417,6 +422,18 @@ export interface ConnectorsResponse {
   fetchedAt:  string
 }
 
+export interface ConnectorApiServerProbe {
+  ok:         boolean
+  baseUrl:    string
+  hasToken:   boolean
+  reachable:  boolean
+  latencyMs:  number
+  modelCount: number | null
+  models:     string[]
+  error:      string | null
+  triedPaths: Array<{ path: string; status: number | null; ok: boolean; error?: string }>
+}
+
 export interface ConnectorTestResult {
   ok:             boolean
   reachable:      boolean
@@ -426,9 +443,14 @@ export interface ConnectorTestResult {
   activeSessions: number | null
   latencyMs:      number
   error:          string | null
+  // Hermes only: independent probe of the OpenAI-compat API server.
+  apiServer?:     ConnectorApiServerProbe
 }
 
-export type ConnectorUpdateBody = { baseUrl?: string; token?: string; enabled?: boolean }
+export type ConnectorUpdateBody = {
+  baseUrl?: string; token?: string; enabled?: boolean
+  apiBaseUrl?: string; apiToken?: string
+}
 
 export const settings = {
   connectors: ()                                          => get<ConnectorsResponse>('/settings/connectors'),
@@ -1042,3 +1064,379 @@ export interface WatchEvent {
 
 // EventSource URL (not a fetch — opened with `new EventSource(...)`)
 export const WATCH_STREAM_URL = '/api/watch/stream'
+
+// ─── Evaluations (Hermes + OpenClaw only) ──────────────────────────────────────
+
+export type EvalPlatform = 'hermes' | 'openclaw'
+export type RunOutcome   = 'success' | 'recovered' | 'partial' | 'stalled' | 'failure' | 'unresolved'
+
+export interface EvaluationRun {
+  id:              string
+  platform:        EvalPlatform
+  agent:           string
+  model:           string
+  modelLabel:      string
+  startedAt:       string | null
+  lastActiveAt:    string | null
+  durationMs:      number
+  tokens:          number
+  cost:            number
+  outcome:         RunOutcome
+  hadError:        boolean
+  recovered:       boolean
+  toolCalls:       number
+  repeatedToolCalls: number
+  oscillations:    number
+  noProgressTools: number
+  wastedToolCalls: number
+  toolSequence:    string[]
+  transcriptAvailable: boolean
+  heuristic:       true
+}
+
+export interface EvalSubScore { key: string; label: string; value: number | null; weight: number; detail: string }
+
+export interface ModelScorecard {
+  platform:       EvalPlatform
+  model:          string
+  modelLabel:     string
+  runCount:       number
+  evaluatedCount: number
+  outcomes:       Record<RunOutcome, number>
+  successRate:    number | null
+  failureRate:    number | null
+  partialRate:    number | null
+  stalledRate:    number | null
+  repeatRate:     number | null
+  loopRuns:       number
+  toolCalls:      number
+  wastedToolCalls: number
+  wasteRate:      number | null
+  avgToolsPerSuccess: number | null
+  avgToolsPerFailure: number | null
+  recoveryRate:   number | null
+  avgDurationMs:  number
+  avgTokens:      number
+  avgCost:        number
+  historicalScore: number | null
+  benchmarkScore:  number | null
+  benchmarkRuns:   number
+  manualScore:     number | null
+  manualScores:    number
+  consistencyScore: number | null
+  confidence:     number
+  previousOverall: number | null
+  overall:        number
+  subScores:      EvalSubScore[]
+}
+
+export interface AgentModelCell {
+  agent: string; model: string; modelLabel: string
+  runCount: number; evaluatedCount: number
+  successRate: number | null; wasteRate: number | null; recoveryRate: number | null; overall: number | null
+}
+
+export interface EvalTrendPoint {
+  date: string; runs: number; evaluated: number
+  successRate: number | null; wasteRate: number | null
+}
+
+export interface EvalFactor { key: string; label: string; value: number | null }
+
+export interface PlatformEvalOverview {
+  platform:   EvalPlatform
+  reachable:  boolean
+  error:      string | null
+  fetchedAt:  string
+  summary: {
+    runCount: number; evaluatedCount: number; modelCount: number; agentCount: number
+    successRate: number | null; failureRate: number | null; wasteRate: number | null
+    recoveryRate: number | null; topModel: string | null; topModelScore: number | null
+  }
+  leaderboard:    ModelScorecard[]
+  agentModelMatrix: { agents: string[]; models: string[]; cells: AgentModelCell[] }
+  trend:          EvalTrendPoint[]
+  factorBreakdown: EvalFactor[]
+  representativeFailures: EvaluationRun[]
+  loopRuns:       EvaluationRun[]
+  wastefulRuns:   EvaluationRun[]
+  recentRuns:     EvaluationRun[]
+}
+
+export interface BenchmarkTask {
+  id: string; platform: EvalPlatform; agent: string
+  title: string; prompt: string; rubric: string
+  expectedTools: string[]; notes: string
+  createdAt: string; updatedAt: string
+}
+
+export interface BenchmarkRun {
+  id: string; taskId: string; platform: EvalPlatform; agent: string; model: string
+  status: string; outcome: string
+  toolCalls: number; wastedToolCalls: number; retries: number
+  durationMs: number; tokens: number; cost: number
+  rubricScore: number | null; notes: string; ts: string
+}
+
+export interface ManualScoreRecord {
+  id: string; platform: EvalPlatform; agent: string; model: string; runId: string
+  score: number; rubric: Record<string, number>; notes: string; scoredBy: string; ts: string
+}
+
+export interface ModelSnapshot {
+  id: string; platform: EvalPlatform; model: string; windowDays: number
+  overall: number; subScores: Record<string, number | null>
+  runCount: number; evaluatedCount: number; ts: string
+}
+
+export interface EvalModelsResponse {
+  models: ModelScorecard[]
+  platforms: Array<{ platform: EvalPlatform; reachable: boolean; error: string | null; modelCount: number }>
+  fetchedAt: string
+}
+
+export interface EvalAgentRow {
+  platform: EvalPlatform; agent: string
+  runCount: number; evaluatedCount: number
+  successRate: number | null; modelCount: number; topModel: string | null
+}
+
+export interface AgentModelMatrixResponse {
+  matrices: Array<{ platform: EvalPlatform; reachable: boolean; error: string | null; agents: string[]; models: string[]; cells: AgentModelCell[] }>
+  fetchedAt: string
+}
+
+export interface EvalModelDrilldown {
+  model: string; modelLabel: string
+  results: Array<{
+    platform: EvalPlatform; reachable: boolean; error: string | null
+    scorecard?: ModelScorecard; runs?: EvaluationRun[]; benchmarkRuns?: BenchmarkRun[]
+    manualScores?: ManualScoreRecord[]; snapshots?: ModelSnapshot[]
+  }>
+  fetchedAt: string
+}
+
+export interface EvalAgentDrilldown {
+  agent: string
+  results: Array<{
+    platform: EvalPlatform; reachable: boolean; error: string | null
+    agent?: string; scorecards?: ModelScorecard[]; runs?: EvaluationRun[]
+  }>
+  fetchedAt: string
+}
+
+export interface ScoringMethodology {
+  overview: string
+  outcomes: Array<{ key: string; label: string; detail: string; score: number | null }>
+  subScores: Array<{ key: string; label: string; weight: number }>
+  weights: Record<string, number>
+  composition: string[]
+  config: Record<string, any>
+  fetchedAt: string
+}
+
+export type BenchmarkTaskBody = {
+  platform: EvalPlatform; agent?: string; title: string; prompt: string
+  rubric?: string; expectedTools?: string[]; notes?: string
+}
+
+export type BenchmarkRunBody = { taskId: string; platform?: EvalPlatform; agent?: string; model?: string }
+
+export type ManualScoreBody = {
+  platform: EvalPlatform; agent?: string; model: string; runId?: string
+  score: number; rubric?: Record<string, number>; notes?: string; scoredBy?: string
+}
+
+// ─── Memory benchmarks (subset of Evaluations) ─────────────────────────────────
+
+export type MemoryKind = 'recall' | 'multihop' | 'temporal' | 'conflict' | 'applied' | 'negative'
+export type MemoryProviderType = 'workspace-files' | 'session-history' | 'vector-db' | 'mem0' | 'wiki' | 'obsidian' | 'other'
+
+export interface MemoryProviderInfo {
+  name:       string
+  label:      string
+  type:       MemoryProviderType
+  platform:   EvalPlatform
+  baseline:   boolean
+  configured: boolean
+  itemCount:  number | null
+  notes:      string
+}
+
+export interface MemoryHit {
+  provider: string
+  source:   string
+  score:    number
+  ts:       string | null
+  excerpt:  string
+  matchedFacts: string[]
+}
+
+export interface MemoryBenchmarkTask {
+  id:             string
+  platform:       EvalPlatform
+  agent:          string
+  title:          string
+  kind:           MemoryKind
+  query:          string
+  expectedFacts:  string[]
+  forbiddenFacts: string[]
+  providers:      string[]
+  newerHints:     string[]
+  rubric:         string
+  notes:          string
+  createdAt:      string
+  updatedAt:      string
+}
+
+export interface MemoryBenchmarkRun {
+  id:             string
+  taskId:         string
+  platform:       EvalPlatform
+  agent:          string
+  model:          string
+  status:         string
+  providersUsed:  string[]
+  hits:           MemoryHit[]
+  expectedFound:  number
+  expectedTotal:  number
+  forbiddenFound: number
+  irrelevantHits: number
+  agentAnswer:    string | null
+  answerHasExpected: number
+  answerHasForbidden: number
+  retrievalAccuracy:  number | null
+  usageAccuracy:      number | null
+  freshnessScore:     number | null
+  conflictResolution: number | null
+  falseRecallPenalty: number
+  latencyScore:       number | null
+  coverageScore:      number | null
+  composite:          number
+  latencyMs:          number
+  notes:              string
+  ts:                 string
+}
+
+export interface MemoryScorecard {
+  scope:     string
+  label:     string
+  runCount:  number
+  composite: number
+  subScores: Record<string, number | null>
+  falseRecallPenalty: number
+  confidence: number
+  consistency: number | null
+  trend:      Array<{ ts: string; composite: number }>
+}
+
+export interface ProviderComparison {
+  provider:   string
+  type:       MemoryProviderType
+  baseline:   boolean
+  runs:       number
+  retrievalAccuracy: number | null
+  freshnessScore:    number | null
+  falsePositives:    number | null
+  avgLatencyMs:      number
+}
+
+export interface MemoryOverview {
+  platform:   EvalPlatform
+  reachable:  boolean
+  error:      string | null
+  fetchedAt:  string
+  providers:  MemoryProviderInfo[]
+  summary: {
+    runCount: number
+    avgComposite: number | null
+    avgRetrieval: number | null
+    avgUsage: number | null
+    avgFalseRecall: number | null
+    bestModel: { scope: string; composite: number } | null
+    bestProvider: { scope: string; composite: number } | null
+  }
+  modelLeaderboard:    MemoryScorecard[]
+  providerLeaderboard: MemoryScorecard[]
+  agentLeaderboard:    MemoryScorecard[]
+  providerComparison:  ProviderComparison[]
+  recentRuns:          MemoryBenchmarkRun[]
+}
+
+export interface MemoryScoringMethodology {
+  overview: string
+  kinds: Array<{ key: MemoryKind; label: string; detail: string }>
+  subScores: Array<{ key: string; label: string; weight: number }>
+  weights: Record<string, number>
+  composition: string[]
+  config: Record<string, any>
+  fetchedAt: string
+}
+
+export type MemoryTaskBody = {
+  platform:      EvalPlatform
+  agent?:        string
+  title:         string
+  kind?:         MemoryKind
+  query:         string
+  expectedFacts?:  string[]
+  forbiddenFacts?: string[]
+  providers?:    string[]
+  newerHints?:   string[]
+  rubric?:       string
+  notes?:        string
+}
+
+export const memoryEvaluations = {
+  providers:    (platform?: EvalPlatform) =>
+    get<{ providers: MemoryProviderInfo[]; fetchedAt: string }>('/evaluations/memory/providers', platform ? { platform } : undefined),
+  overview:     (platform: EvalPlatform) =>
+    get<{ overview: MemoryOverview }>('/evaluations/memory/overview', { platform }).then(r => r.overview),
+  tasks:        (platform?: EvalPlatform) =>
+    get<{ tasks: MemoryBenchmarkTask[]; fetchedAt: string }>('/evaluations/memory/tasks', platform ? { platform } : undefined),
+  taskDetail:   (id: string) =>
+    get<{ task: MemoryBenchmarkTask; runs: MemoryBenchmarkRun[] }>(`/evaluations/memory/tasks/${encodeURIComponent(id)}`),
+  createTask:   (body: MemoryTaskBody) =>
+    post<{ task: MemoryBenchmarkTask }>('/evaluations/memory/tasks', body),
+  deleteTask:   (id: string) =>
+    del<{ ok: boolean }>(`/evaluations/memory/tasks/${encodeURIComponent(id)}`),
+  runs:         (params?: { platform?: EvalPlatform; taskId?: string; model?: string; provider?: string }) => {
+    const clean: Record<string, string | number> = {}
+    for (const [k, v] of Object.entries(params ?? {})) if (v !== undefined && v !== '') clean[k] = v as string | number
+    return get<{ runs: MemoryBenchmarkRun[]; fetchedAt: string }>('/evaluations/memory/runs', Object.keys(clean).length ? clean : undefined)
+  },
+  run:          (body: { taskId: string; model?: string; agent?: string }) =>
+    post<{ ok: boolean; status: string; taskId: string }>('/evaluations/memory/run', body),
+  methodology:  () => get<MemoryScoringMethodology>('/evaluations/memory/scoring-methodology'),
+}
+
+export const evaluations = {
+  overview:   (platform: EvalPlatform) =>
+    get<{ overview: PlatformEvalOverview }>(`/evaluations/${platform}/overview`).then(r => r.overview),
+  models:     () => get<EvalModelsResponse>('/evaluations/models'),
+  agents:     () => get<{ agents: EvalAgentRow[]; fetchedAt: string }>('/evaluations/agents'),
+  matrix:     (platform?: EvalPlatform) =>
+    get<AgentModelMatrixResponse>('/evaluations/agent-model-matrix', platform ? { platform } : undefined),
+  model:      (name: string, platform?: EvalPlatform) =>
+    get<EvalModelDrilldown>(`/evaluations/model/${encodeURIComponent(name)}`, platform ? { platform } : undefined),
+  agent:      (name: string, platform?: EvalPlatform) =>
+    get<EvalAgentDrilldown>(`/evaluations/agent/${encodeURIComponent(name)}`, platform ? { platform } : undefined),
+  runs:       (params?: { platform?: EvalPlatform; model?: string; agent?: string; outcome?: RunOutcome; limit?: number }) => {
+    const clean: Record<string, string | number> = {}
+    for (const [k, v] of Object.entries(params ?? {})) if (v !== undefined && v !== '') clean[k] = v as string | number
+    return get<{ runs: EvaluationRun[]; total: number; fetchedAt: string }>('/evaluations/runs', Object.keys(clean).length ? clean : undefined)
+  },
+  benchmarks: (platform?: EvalPlatform) =>
+    get<{ tasks: BenchmarkTask[]; runs: BenchmarkRun[]; fetchedAt: string }>('/evaluations/benchmarks', platform ? { platform } : undefined),
+  benchmarkTask:   (id: string) =>
+    get<{ task: BenchmarkTask; runs: BenchmarkRun[] }>(`/evaluations/benchmarks/tasks/${encodeURIComponent(id)}`),
+  createTask:      (body: BenchmarkTaskBody) =>
+    post<{ task: BenchmarkTask }>('/evaluations/benchmarks/tasks', body),
+  deleteTask:      (id: string) =>
+    del<{ ok: boolean }>(`/evaluations/benchmarks/tasks/${encodeURIComponent(id)}`),
+  runBenchmark:    (body: BenchmarkRunBody) =>
+    post<{ ok: boolean; status: string; taskId: string; platform: EvalPlatform }>('/evaluations/benchmarks/run', body),
+  manualScore:     (body: ManualScoreBody) =>
+    post<{ manualScore: ManualScoreRecord }>('/evaluations/manual-score', body),
+  methodology:     () => get<ScoringMethodology>('/evaluations/scoring-methodology'),
+}

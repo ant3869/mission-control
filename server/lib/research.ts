@@ -8,7 +8,7 @@
 import { randomUUID } from 'crypto'
 import type { AgentSource } from './agentEvents.js'
 import { ensureConnected, request as ocRequest } from './openclawLive.js'
-import { postWithBody, fetchSessionMessages } from './gateway.js'
+import { hermesChat } from './hermesApiServer.js'
 
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
 
@@ -101,36 +101,16 @@ async function researchOpenClaw(item: { id: string; name: string; manufacturer?:
   throw new Error('agent did not return structured data within ~3 minutes')
 }
 
-/** Research via Hermes: POST a prompt to the Hermes REST API, poll session history for the JSON reply. */
+/** Research via Hermes: POST to the API SERVER's OpenAI-compat chat-completion
+ *  endpoint (Bearer-auth). The Hermes operator dashboard at 9119/9121 is a
+ *  separate service and does NOT accept chat requests — see hermesApiServer.ts. */
 async function researchHermes(item: { id: string; name: string; manufacturer?: string; model?: string; category?: string; notes?: string; tags?: string[] }): Promise<ResearchResult> {
   const prompt = buildPrompt(item)
-  const sessionId = `dashboard-research-${item.id.slice(0, 8)}-${Date.now()}`
-
-  // Try common Hermes REST endpoints for sending a chat message.
-  const chatBody = { message: prompt, session_id: sessionId, sessionId, conversationId: sessionId, role: 'user', content: prompt }
-  const paths = [
-    `/api/chat/message`,
-    `/api/chat`,
-    `/api/sessions/${encodeURIComponent(sessionId)}/messages`,
-    `/api/messages`,
-  ]
-  let sent = false
-  for (const path of paths) {
-    const r = await postWithBody('hermes', path, chatBody, 10_000)
-    if (r.ok) { sent = true; break }
-  }
-  if (!sent) throw new Error('Hermes chat API unavailable — no supported REST endpoint found')
-
-  // Poll Hermes session for the agent's structured reply (~1-3 min).
-  for (let i = 0; i < 36; i++) {
-    await sleep(5000)
-    const h = await fetchSessionMessages('hermes', sessionId, true).catch(() => null)
-    const msgs: any[] = h?.data ?? []
-    const lastAssistant = [...msgs].reverse().find(m => String(m.role ?? m.type) === 'assistant')
-    const json = extractJson(extractText(lastAssistant?.content ?? lastAssistant?.message ?? lastAssistant?.text))
-    if (json && (json.summary || json.specs || json.model)) return json as ResearchResult
-  }
-  throw new Error('Hermes agent did not return structured data within ~3 minutes')
+  const r = await hermesChat(prompt, { timeoutMs: 180_000 })
+  if (!r.ok) throw new Error(`Hermes API server rejected the request (${r.triedUrl}): ${r.error ?? 'unknown'}`)
+  const json = extractJson(r.answer)
+  if (json && (json.summary || json.specs || json.model)) return json as ResearchResult
+  throw new Error('Hermes returned an answer but no parseable JSON spec sheet.')
 }
 
 export async function researchItem(item: { id: string; name: string; manufacturer?: string; model?: string; category?: string; notes?: string; tags?: string[] }, source: AgentSource): Promise<ResearchResult> {

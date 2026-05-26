@@ -47,23 +47,35 @@ function ConnectorCard({ info, onSaved }: { info: ConnectorInfo; onSaved: () => 
   const [baseUrl, setBaseUrl] = useState(info.baseUrl)
   const [token, setToken]     = useState('')
   const [enabled, setEnabled] = useState(info.enabled)
+  // Hermes-only: separate API server URL + Bearer key. Other connectors leave
+  // these unused.
+  const [apiBaseUrl, setApiBaseUrl] = useState(info.apiBaseUrl ?? '')
+  const [apiToken, setApiToken]     = useState('')
   const [saving, setSaving]   = useState(false)
   const [testing, setTesting] = useState(false)
   const [msg, setMsg]         = useState<{ ok: boolean; text: string } | null>(null)
+  const [apiProbe, setApiProbe] = useState<{ ok: boolean; reachable: boolean; latencyMs: number; modelCount: number | null; error: string | null; baseUrl: string; models?: string[] } | null>(null)
 
   // Keep local form synced when parent reloads (but don't clobber an in-progress edit of token)
   useEffect(() => {
     setBaseUrl(info.baseUrl)
     setEnabled(info.enabled)
-  }, [info.baseUrl, info.enabled])
+    setApiBaseUrl(info.apiBaseUrl ?? '')
+  }, [info.baseUrl, info.enabled, info.apiBaseUrl])
 
+  const isHermes = info.id === 'hermes'
   const dirty = baseUrl !== info.baseUrl || enabled !== info.enabled || token.trim() !== ''
+    || (isHermes && (apiBaseUrl !== (info.apiBaseUrl ?? '') || apiToken.trim() !== ''))
 
   const persist = async () => {
-    const body: { baseUrl: string; enabled: boolean; token?: string } = { baseUrl, enabled }
+    const body: { baseUrl: string; enabled: boolean; token?: string; apiBaseUrl?: string; apiToken?: string } = { baseUrl, enabled }
     if (token.trim()) body.token = token.trim()
+    if (isHermes) {
+      if (apiBaseUrl !== (info.apiBaseUrl ?? '')) body.apiBaseUrl = apiBaseUrl
+      if (apiToken.trim()) body.apiToken = apiToken.trim()
+    }
     await settingsApi.update(info.id, body)
-    setToken('')
+    setToken(''); setApiToken('')
   }
 
   const save = async () => {
@@ -83,17 +95,29 @@ function ConnectorCard({ info, onSaved }: { info: ConnectorInfo; onSaved: () => 
   const test = async () => {
     setTesting(true)
     setMsg(null)
+    setApiProbe(null)
     try {
       // Test the *current* form values — save any unsaved edits first so the
       // server probes what you actually typed, not the stored config.
       if (dirty) await persist()
       const r = await settingsApi.test(info.id)
-      setMsg({
-        ok: r.ok,
-        text: r.ok
-          ? `Reachable · ${r.version ?? 'gateway'}${r.activeSessions != null ? ` · ${r.activeSessions} active sessions` : ''} · ${r.latencyMs}ms`
-          : `Unreachable — ${r.error ?? 'no response'}`,
-      })
+      // Surface the API-server probe separately so the user sees that the
+      // dashboard *and* the chat API server both work (or which one doesn't).
+      if (r.apiServer) {
+        setApiProbe({
+          ok: r.apiServer.ok,
+          reachable: r.apiServer.reachable,
+          latencyMs: r.apiServer.latencyMs,
+          modelCount: r.apiServer.modelCount,
+          error: r.apiServer.error,
+          baseUrl: r.apiServer.baseUrl,
+          models: r.apiServer.models,
+        })
+      }
+      const dashLine = r.reachable
+        ? `Dashboard reachable · ${r.version ?? 'gateway'}${r.activeSessions != null ? ` · ${r.activeSessions} active sessions` : ''} · ${r.latencyMs}ms`
+        : `Dashboard unreachable — ${r.error ?? 'no response'}`
+      setMsg({ ok: r.ok, text: dashLine })
       onSaved()
     } catch (err: any) {
       setMsg({ ok: false, text: err.message ?? 'Test failed' })
@@ -148,7 +172,10 @@ function ConnectorCard({ info, onSaved }: { info: ConnectorInfo; onSaved: () => 
       {/* Form */}
       <div className="grid grid-cols-1 gap-3">
         <label className="flex flex-col gap-1">
-          <span className="text-xxs font-medium text-text-muted">Gateway base URL</span>
+          <span className="text-xxs font-medium text-text-muted">
+            {isHermes ? 'Dashboard base URL' : 'Gateway base URL'}
+            {isHermes && <span className="ml-1 opacity-60">(status / sessions / logs — NOT chat)</span>}
+          </span>
           <input
             value={baseUrl}
             onChange={e => setBaseUrl(e.target.value)}
@@ -159,7 +186,7 @@ function ConnectorCard({ info, onSaved }: { info: ConnectorInfo; onSaved: () => 
         </label>
         <label className="flex flex-col gap-1">
           <span className="text-xxs font-medium text-text-muted flex items-center gap-1">
-            <KeyRound size={10} /> Session / gateway token
+            <KeyRound size={10} /> {isHermes ? 'Dashboard session token' : 'Session / gateway token'}
             {info.hasToken && <span className="text-text-muted opacity-60">· stored {info.tokenHint}</span>}
           </span>
           <input
@@ -172,6 +199,65 @@ function ConnectorCard({ info, onSaved }: { info: ConnectorInfo; onSaved: () => 
             className="w-full px-3 py-2 rounded-lg bg-base border border-border text-xs font-mono text-text-primary placeholder:text-text-muted outline-none focus:border-accent-blue/50"
           />
         </label>
+
+        {isHermes && (
+          <>
+            <div className="mt-1 px-3 py-2 rounded-md bg-amber-950/15 border border-amber-900/20 text-xxs text-amber-300/90 leading-snug">
+              Hermes runs its operator dashboard on one port and a separate
+              <span className="font-mono"> OpenAI-compat API server </span>
+              on another. The dashboard URL above is for status / sessions / logs only — chat dispatch (POST /v1/chat/completions) must hit the API server below.
+            </div>
+            <label className="flex flex-col gap-1">
+              <span className="text-xxs font-medium text-text-muted">API server base URL <span className="opacity-60">(POST /v1/chat/completions, GET /v1/models)</span></span>
+              <input
+                value={apiBaseUrl}
+                onChange={e => setApiBaseUrl(e.target.value)}
+                placeholder="http://127.0.0.1:8642/v1"
+                spellCheck={false}
+                className="w-full px-3 py-2 rounded-lg bg-base border border-border text-xs font-mono text-text-primary placeholder:text-text-muted outline-none focus:border-accent-blue/50"
+              />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-xxs font-medium text-text-muted flex items-center gap-1">
+                <KeyRound size={10} /> API server key (Bearer)
+                {info.hasApiToken && <span className="text-text-muted opacity-60">· stored {info.apiTokenHint}</span>}
+              </span>
+              <input
+                type="password"
+                value={apiToken}
+                onChange={e => setApiToken(e.target.value)}
+                placeholder={info.hasApiToken ? 'Leave blank to keep current key' : 'Paste HERMES_API_KEY'}
+                spellCheck={false}
+                autoComplete="off"
+                className="w-full px-3 py-2 rounded-lg bg-base border border-border text-xs font-mono text-text-primary placeholder:text-text-muted outline-none focus:border-accent-blue/50"
+              />
+            </label>
+
+            {apiProbe && (
+              <div className={clsx(
+                'flex items-start gap-2 text-xxs px-3 py-2 rounded-lg border',
+                apiProbe.ok
+                  ? 'bg-green-950/20 border-green-900/30 text-green-300'
+                  : 'bg-red-950/20 border-red-900/30 text-red-300',
+              )}>
+                {apiProbe.ok
+                  ? <CheckCircle2 size={11} className="shrink-0 mt-0.5" />
+                  : <AlertCircle size={11} className="shrink-0 mt-0.5" />}
+                <div className="min-w-0">
+                  <p className="font-mono truncate">{apiProbe.baseUrl}/models</p>
+                  <p className="opacity-80">
+                    {apiProbe.ok
+                      ? `API server reachable · ${apiProbe.modelCount ?? '?'} model${apiProbe.modelCount === 1 ? '' : 's'} · ${apiProbe.latencyMs}ms`
+                      : `${apiProbe.error ?? (apiProbe.reachable ? 'auth failed' : 'unreachable')} · ${apiProbe.latencyMs}ms`}
+                  </p>
+                  {apiProbe.models && apiProbe.models.length > 0 && (
+                    <p className="opacity-70 font-mono truncate mt-0.5">{apiProbe.models.slice(0, 4).join(', ')}{apiProbe.models.length > 4 ? '…' : ''}</p>
+                  )}
+                </div>
+              </div>
+            )}
+          </>
+        )}
       </div>
 
       {/* Actions */}

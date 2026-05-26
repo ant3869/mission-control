@@ -26,6 +26,7 @@ import { flowRouter }     from './routes/flow.js'
 import { flowmapRouter }  from './routes/flowmap.js'
 import { alertsRouter }   from './routes/alerts.js'
 import { securityRouter } from './routes/security.js'
+import { evaluationsRouter } from './routes/evaluations.js'
 
 const app = express()
 const PORT = process.env.API_PORT ?? 3001
@@ -58,6 +59,7 @@ app.use('/api/flow',     flowRouter)
 app.use('/api/flowmap',  flowmapRouter)
 app.use('/api/alerts',   alertsRouter)
 app.use('/api/security', securityRouter)
+app.use('/api/evaluations', evaluationsRouter)
 
 app.get('/api/health', (_req, res) => res.json({ ok: true, ts: new Date().toISOString() }))
 

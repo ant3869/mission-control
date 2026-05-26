@@ -6,6 +6,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.6.0] — 2026-05-26
+
+### Added
+
+- **Evaluations view** — agent performance evaluation hub with a model scorecard leaderboard, agent-model matrix, trend chart, benchmark task runner, memory benchmark panel, and scoring methodology reference. Accessible from the sidebar (Target icon).
+- **`/api/evaluations`** — full evaluation REST API: benchmark task CRUD, live task execution dispatched to the Hermes API server, manual scoring, model and agent scorecards, agent-model matrix, trend data, and scoring methodology.
+- **`hermesApiServer`** (`server/lib/hermesApiServer.ts`) — OpenAI-compatible Hermes chat client (`hermesChat`, `hermesApiHealth`). Separates the Hermes chat API (Bearer-auth, `/v1/chat/completions`) from the dashboard (session/log REST API), eliminating the previous approach of polling dashboard endpoints that do not accept chat.
+- **Memory benchmark engine** (`memoryEvalEngine` / `memoryEvalStore`) — evaluates agent memory retrieval across six task kinds: recall, multihop, temporal, conflict, applied, and negative. Produces composite scores covering retrieval accuracy, freshness, conflict resolution, false recall penalty, and latency.
+- **Hermes API server configuration in Settings** — the Hermes connector panel now exposes separate fields for the OpenAI-compat API server URL and API key (distinct from the dashboard URL and session token). The Test button probes both layers and reports their health independently.
+
+### Changed
+
+- `saveConnector` / `redactConnector` extended to persist and surface `apiBaseUrl` and `apiToken` for the Hermes API server, with the same masking rules applied to the key.
+- Settings `PUT /connectors/:id` now accepts `apiBaseUrl` and `apiToken` body fields.
+- Settings `POST /connectors/:id/test` for Hermes now calls `hermesApiHealth` and includes an `apiServer` probe object in its response; the top-level `ok` requires both the dashboard and the API server to be healthy.
+- `ConnectorInfo` API type extended with `apiBaseUrl`, `hasApiToken`, and `apiTokenHint` fields.
+- Inventory research via Hermes now uses `hermesChat` (API server) instead of polling dashboard REST paths.
+
+### Fixed
+
+- Inventory research via Hermes now calls the API server (`POST /v1/chat/completions`) instead of attempting to POST to dashboard REST paths that reject chat messages. Eliminates "no supported REST endpoint found" errors on Hermes research.
+- Orphaned `running` benchmark_runs (left over from a previous server process) are set to `error` at startup so they do not spin forever in the UI.
+- `updateBenchmarkRun` patch function added to `evalStore` — allows flipping a running placeholder row to its final outcome after async execution completes.
+
+---
+
 ## [0.5.0] — 2026-05-25
 
 ### Added

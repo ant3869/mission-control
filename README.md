@@ -41,6 +41,7 @@ Built with **React 18 + TypeScript + Tailwind CSS** on the frontend and an **Exp
 | **Radar** | Anthropic API usage analytics. See daily token and cost trends, input/output/cache token mix, cost anomaly cards, per-model cost share, and an hour-of-day heatmap showing when your agents are busiest. |
 | **Security** | Connector security posture at a glance. Each connector shows token health (ok / missing / disabled / auth_error / unreachable), reachability latency, recent auth error count, and an overall risk level badge. Run live diagnostics probes from this page. |
 | **Alerts** | Create and manage alert rules for your agent platforms. Five condition types: error rate, loop detected, session stalled, token spike, and no activity. Set severity (info / warning / critical), thresholds, time windows, and source scope. See all currently fired alerts in one panel. |
+| **Evaluations** | Agent performance evaluation hub. Model scorecard leaderboard, agent-model matrix, session trend chart, benchmark task runner (dispatched to the Hermes API server), memory benchmark panel (recall / multihop / temporal / conflict / applied / negative), and a scoring methodology reference. |
 
 ### Knowledge & Content
 

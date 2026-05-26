@@ -36,6 +36,7 @@ export type View =
   | 'watch'
   | 'inventory'
   | 'flowmap'
+  | 'evaluations'
 
 export type TaskColor =
   | 'red'
