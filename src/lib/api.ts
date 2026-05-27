@@ -616,6 +616,63 @@ export const inventory = {
   researchAll: () => post<{ queued: number; openclaw: number; hermes: number; skipped: number }>('/inventory/research-all', {}),
 }
 
+// ─── Inventory Project Ideas ───────────────────────────────────────────────────
+
+export type ProjectIdeaStatus = 'new' | 'liked' | 'rejected' | 'snoozed' | 'completed'
+
+export interface ProjectIdea {
+  id:              string
+  title:           string
+  description:     string
+  whyFit:          string
+  haveParts:       string[]
+  missingParts:    string[]
+  difficulty:      string    // easy | medium | hard | expert
+  timeEstimate:    string
+  costEstimate:    string
+  confidence:      number    // 0-100
+  coolness:        number    // 0-100
+  requiredTools:   string[]
+  relatedItemIds:  string[]
+  nextStep:        string
+  category:        string
+  status:          ProjectIdeaStatus
+  rejectionReason: string
+  generationRunId: string
+  createdAt:       string
+  updatedAt:       string
+}
+
+export interface ProjectGenRun {
+  id:          string
+  status:      'pending' | 'done' | 'failed'
+  source:      string
+  itemCount:   number
+  newIdeas:    number
+  error:       string
+  startedAt:   string
+  completedAt: string
+}
+
+export interface ProjectIdeasResponse {
+  ideas:      ProjectIdea[]
+  run:        ProjectGenRun | null
+  fetchedAt:  string
+}
+
+export const projectIdeas = {
+  list:     (status?: ProjectIdeaStatus) =>
+    get<ProjectIdeasResponse>('/inventory/project-ideas', status ? { status } : undefined),
+  genStatus: () =>
+    get<{ run: ProjectGenRun | null; fetchedAt: string }>('/inventory/project-ideas/gen-status'),
+  generate: (source?: 'openclaw' | 'hermes') =>
+    post<{ ok: boolean; run: ProjectGenRun }>('/inventory/project-ideas/generate', source ? { source } : {}),
+  update:   (id: string, body: { status?: ProjectIdeaStatus; rejectionReason?: string }) =>
+    patch<{ idea: ProjectIdea }>(`/inventory/project-ideas/${id}`, body),
+  remove:   (id: string) =>
+    del<{ ok: boolean }>(`/inventory/project-ideas/${id}`),
+}
+
 // ─── Memory ───────────────────────────────────────────────────────────────────
 
 export type MemoryEntryType = 'user' | 'feedback' | 'project' | 'reference' | 'other'
@@ -1167,6 +1224,7 @@ export interface BenchmarkTask {
   id: string; platform: EvalPlatform; agent: string
   title: string; prompt: string; rubric: string
   expectedTools: string[]; notes: string
+  builtIn: boolean; builtInSlug: string
   createdAt: string; updatedAt: string
 }
 
@@ -1175,7 +1233,14 @@ export interface BenchmarkRun {
   status: string; outcome: string
   toolCalls: number; wastedToolCalls: number; retries: number
   durationMs: number; tokens: number; cost: number
-  rubricScore: number | null; notes: string; ts: string
+  rubricScore: number | null; notes: string
+  // Inspectable detail captured on every completed run.
+  answer: string
+  toolSequence: string[]
+  repeatedToolCalls: number
+  oscillations: number
+  noProgressTools: number
+  ts: string
 }
 
 export interface ManualScoreRecord {
@@ -1232,6 +1297,11 @@ export interface ScoringMethodology {
   weights: Record<string, number>
   composition: string[]
   config: Record<string, any>
+  // Built-in benchmark slugs that have a deterministic auto-grader registered.
+  // The UI uses this to render an "auto-graded" pill on those tasks so users
+  // can tell which tasks produce a real rubricScore on dispatch vs which need
+  // a manual rubric pass.
+  autoGradedBuiltinSlugs?: string[]
   fetchedAt: string
 }
 
@@ -1285,6 +1355,8 @@ export interface MemoryBenchmarkTask {
   newerHints:     string[]
   rubric:         string
   notes:          string
+  builtIn:        boolean
+  builtInSlug:    string
   createdAt:      string
   updatedAt:      string
 }
@@ -1315,6 +1387,11 @@ export interface MemoryBenchmarkRun {
   composite:          number
   latencyMs:          number
   notes:              string
+  // Negative-control telemetry — surfaced so the UI can show whether a
+  // negative-kind run was scored as a correct refusal (denial detected) vs a
+  // fabrication, and the human-readable scoring decision.
+  denialDetected:     boolean
+  scoringNote:        string
   ts:                 string
 }
 

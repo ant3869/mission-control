@@ -19,9 +19,16 @@ import {
   scoreColor, scoreBg, HeuristicTag,
 } from './shared'
 
-interface Props { platform: EvalPlatform }
+interface Props {
+  platform: EvalPlatform
+  /** Hide the internal toolbar (title + Refresh + New). The parent supplies
+   *  one unified toolbar across both platform panels. */
+  compact?: boolean
+  /** Increment to force a reload from outside (parent Refresh button). */
+  refreshSignal?: number
+}
 
-export function MemoryPanel({ platform }: Props) {
+export function MemoryPanel({ platform, compact, refreshSignal }: Props) {
   const [overview, setOverview] = useState<MemoryOverview | null>(null)
   const [tasks, setTasks]       = useState<MemoryBenchmarkTask[]>([])
   const [loading, setLoading]   = useState(false)
@@ -42,7 +49,7 @@ export function MemoryPanel({ platform }: Props) {
       setError(e instanceof ApiError ? e.message : 'Failed to load memory benchmarks')
     } finally { setLoading(false) }
   }
-  useEffect(() => { load() /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [platform])
+  useEffect(() => { load() /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [platform, refreshSignal])
 
   // Poll while any run is in flight.
   useEffect(() => {
@@ -58,7 +65,7 @@ export function MemoryPanel({ platform }: Props) {
   }, [overview?.recentRuns])
 
   if (error && !overview) return <ErrorBanner message={error} />
-  if (!overview) return <div className="text-xs text-text-muted">Loading memory benchmarks…</div>
+  if (!overview) return <div className="text-xs text-text-muted">Loading {platform} memory benchmarks…</div>
   if (!overview.reachable) {
     return (
       <>
@@ -70,29 +77,43 @@ export function MemoryPanel({ platform }: Props) {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-3 flex-wrap">
-        <Brain size={14} className="text-violet-400" />
-        <h3 className="text-sm font-semibold text-text-primary">Memory Benchmarks</h3>
-        <PlatformBadge platform={platform} />
-        <HeuristicTag tip="Retrieval correctness is measured by case-insensitive substring matches of declared expectedFacts inside provider results. Honest but heuristic — see Methodology." />
-        <span className="text-[10px] text-text-muted">
-          {overview.providers.length} provider{overview.providers.length === 1 ? '' : 's'} · {overview.summary.runCount} run{overview.summary.runCount === 1 ? '' : 's'}
-        </span>
-        <button onClick={() => setShowNew(v => !v)}
-          className="ml-auto flex items-center gap-1.5 px-2.5 py-1 text-xs bg-violet-500/20 hover:bg-violet-500/30 text-violet-200 border border-violet-500/30 rounded">
-          <Plus size={12} /> New memory task
-        </button>
-        <button onClick={load} disabled={loading}
-          className="flex items-center gap-1.5 px-2.5 py-1 text-xs bg-white/5 hover:bg-white/10 border border-white/10 rounded">
-          <RefreshCw size={12} className={clsx(loading && 'animate-spin')} /> Refresh
-        </button>
-      </div>
+      {!compact && (
+        <div className="flex items-center gap-3 flex-wrap">
+          <Brain size={14} className="text-violet-400" />
+          <h3 className="text-sm font-semibold text-text-primary">Memory Benchmarks</h3>
+          <PlatformBadge platform={platform} />
+          <HeuristicTag tip="Retrieval correctness is measured by case-insensitive substring matches of declared expectedFacts inside provider results. Honest but heuristic — see Methodology." />
+          <span className="text-[10px] text-text-muted">
+            {overview.providers.length} provider{overview.providers.length === 1 ? '' : 's'} · {overview.summary.runCount} run{overview.summary.runCount === 1 ? '' : 's'}
+          </span>
+          <button onClick={() => setShowNew(v => !v)}
+            className="ml-auto flex items-center gap-1.5 px-2.5 py-1 text-xs bg-violet-500/20 hover:bg-violet-500/30 text-violet-200 border border-violet-500/30 rounded">
+            <Plus size={12} /> New memory task
+          </button>
+          <button onClick={load} disabled={loading}
+            className="flex items-center gap-1.5 px-2.5 py-1 text-xs bg-white/5 hover:bg-white/10 border border-white/10 rounded">
+            <RefreshCw size={12} className={clsx(loading && 'animate-spin')} /> Refresh
+          </button>
+        </div>
+      )}
+
+      {/* Per-panel compact header — just the platform badge + counts. The
+          parent toolbar handles refresh + new-task in compact mode. */}
+      {compact && (
+        <div className="flex items-center gap-2 text-[11px]">
+          <PlatformBadge platform={platform} />
+          <span className="text-text-muted">
+            {overview.providers.length} provider{overview.providers.length === 1 ? '' : 's'} · {overview.summary.runCount} run{overview.summary.runCount === 1 ? '' : 's'}
+          </span>
+          {loading && <RefreshCw size={11} className="text-text-muted animate-spin" />}
+        </div>
+      )}
 
       {error && <ErrorBanner message={error} />}
 
       <ProvidersStrip providers={overview.providers} />
 
-      {showNew && (
+      {showNew && !compact && (
         <NewMemoryTaskForm
           platform={platform}
           providers={overview.providers}
@@ -185,6 +206,11 @@ function ProvidersStrip({ providers }: { providers: MemoryProviderInfo[] }) {
 
 function SummaryStrip({ overview }: { overview: MemoryOverview }) {
   const s = overview.summary
+  // Hide the "unknown" model bucket here — runs from pure-retrieval tasks have
+  // no model attribution, so claiming a "best model" of "unknown" is misleading.
+  const bestModelLabel = s.bestModel
+    ? (s.bestModel.scope === 'unknown' || !s.bestModel.scope.trim() ? '(retrieval only)' : s.bestModel.scope)
+    : '—'
   return (
     <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
       <Stat label="Runs" value={String(s.runCount)} />
@@ -192,7 +218,7 @@ function SummaryStrip({ overview }: { overview: MemoryOverview }) {
       <Stat label="Retrieval" value={s.avgRetrieval != null ? `${s.avgRetrieval}%` : '—'} color={scoreColor(s.avgRetrieval)} />
       <Stat label="Usage" value={s.avgUsage != null ? `${s.avgUsage}%` : '—'} color={scoreColor(s.avgUsage)} />
       <Stat label="False recall" value={s.avgFalseRecall != null ? `${s.avgFalseRecall}` : '—'} color={s.avgFalseRecall != null && s.avgFalseRecall > 15 ? 'text-accent-red' : undefined} />
-      <Stat label="Best model" value={s.bestModel?.scope ?? '—'} sub={s.bestModel ? `${s.bestModel.composite}` : 'no runs yet'} />
+      <Stat label="Best model" value={bestModelLabel} sub={s.bestModel ? `${s.bestModel.composite}` : 'no runs yet'} />
     </div>
   )
 }
@@ -209,9 +235,16 @@ function Stat({ label, value, sub, color }: { label: string; value: string; sub?
 
 // ─── Scorecard table (used for both model & provider leaderboards) ────────────
 
+function displayScope(label: string): string {
+  // Runs from pure-retrieval tasks (recall / temporal — no applied dispatch)
+  // are not attributed to a model. The engine groups them under "unknown";
+  // render that honestly as "(no model)" so it doesn't look like a real model.
+  return label === 'unknown' || !label.trim() ? '(no model)' : label
+}
+
 function ScorecardTable({ title, cards }: { title: string; cards: MemoryScorecard[] }) {
   return (
-    <div className="bg-bg-secondary border border-white/10 rounded-xl overflow-hidden">
+    <div className="bg-bg-secondary border border-white/10 rounded-xl overflow-hidden flex flex-col">
       <div className="flex items-center gap-2 px-4 py-2.5 border-b border-white/10">
         <h4 className="text-xs font-semibold uppercase tracking-wider text-text-muted">{title}</h4>
         <span className="ml-auto text-[10px] text-text-muted">{cards.length}</span>
@@ -219,38 +252,47 @@ function ScorecardTable({ title, cards }: { title: string; cards: MemoryScorecar
       {cards.length === 0 ? (
         <EmptyState title="No runs yet" />
       ) : (
-        <table className="w-full text-xs">
-          <thead className="bg-white/[0.02] text-text-muted">
-            <tr className="text-left">
-              <th className="px-3 py-1.5 font-medium">Scope</th>
-              <th className="px-2 py-1.5 font-medium text-right">Composite</th>
-              <th className="px-2 py-1.5 font-medium text-right">Retrieval</th>
-              <th className="px-2 py-1.5 font-medium text-right">Usage</th>
-              <th className="px-2 py-1.5 font-medium text-right">Fresh</th>
-              <th className="px-2 py-1.5 font-medium text-right">False</th>
-              <th className="px-2 py-1.5 font-medium text-right">Runs</th>
-              <th className="px-2 py-1.5 font-medium text-right">Conf</th>
-            </tr>
-          </thead>
-          <tbody>
-            {cards.map(c => (
-              <tr key={c.scope} className="border-t border-white/5">
-                <td className="px-3 py-1.5 text-text-primary truncate max-w-[200px]" title={c.scope}>{c.label}</td>
-                <td className="px-2 py-1.5 text-right">
-                  <span className={clsx('inline-flex items-center justify-center min-w-[36px] px-1.5 py-0.5 rounded font-semibold tabular-nums', scoreBg(c.composite), scoreColor(c.composite))}>
-                    {c.composite}
-                  </span>
-                </td>
-                <td className="px-2 py-1.5 text-right tabular-nums">{fmtPct(c.subScores.retrievalAccuracy)}</td>
-                <td className="px-2 py-1.5 text-right tabular-nums">{fmtPct(c.subScores.usageAccuracy)}</td>
-                <td className="px-2 py-1.5 text-right tabular-nums">{fmtPct(c.subScores.freshnessScore)}</td>
-                <td className={clsx('px-2 py-1.5 text-right tabular-nums', c.falseRecallPenalty > 15 && 'text-red-300')}>{c.falseRecallPenalty.toFixed(1)}</td>
-                <td className="px-2 py-1.5 text-right tabular-nums text-text-muted">{c.runCount}</td>
-                <td className="px-2 py-1.5 text-right tabular-nums text-text-muted">{Math.round(c.confidence)}%</td>
+        // overflow-x-auto so narrow side-by-side columns scroll instead of clipping.
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead className="bg-white/[0.02] text-text-muted">
+              <tr className="text-left">
+                <th className="px-3 py-1.5 font-medium whitespace-nowrap">Scope</th>
+                <th className="px-2 py-1.5 font-medium text-right whitespace-nowrap">Comp</th>
+                <th className="px-2 py-1.5 font-medium text-right whitespace-nowrap">Retr</th>
+                <th className="px-2 py-1.5 font-medium text-right whitespace-nowrap">Use</th>
+                <th className="px-2 py-1.5 font-medium text-right whitespace-nowrap">Fresh</th>
+                <th className="px-2 py-1.5 font-medium text-right whitespace-nowrap">False</th>
+                <th className="px-2 py-1.5 font-medium text-right whitespace-nowrap">Runs</th>
+                <th className="px-2 py-1.5 font-medium text-right whitespace-nowrap">Conf</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {cards.map(c => {
+                const display = displayScope(c.label)
+                const muted = display === '(no model)'
+                return (
+                  <tr key={c.scope} className="border-t border-white/5">
+                    <td className="px-3 py-1.5 max-w-[260px]">
+                      <span className={clsx('block truncate', muted ? 'text-text-muted italic' : 'text-text-primary')} title={c.scope}>{display}</span>
+                    </td>
+                    <td className="px-2 py-1.5 text-right whitespace-nowrap">
+                      <span className={clsx('inline-flex items-center justify-center min-w-[36px] px-1.5 py-0.5 rounded font-semibold tabular-nums', scoreBg(c.composite), scoreColor(c.composite))}>
+                        {c.composite}
+                      </span>
+                    </td>
+                    <td className="px-2 py-1.5 text-right tabular-nums whitespace-nowrap">{fmtPct(c.subScores.retrievalAccuracy)}</td>
+                    <td className="px-2 py-1.5 text-right tabular-nums whitespace-nowrap">{fmtPct(c.subScores.usageAccuracy)}</td>
+                    <td className="px-2 py-1.5 text-right tabular-nums whitespace-nowrap">{fmtPct(c.subScores.freshnessScore)}</td>
+                    <td className={clsx('px-2 py-1.5 text-right tabular-nums whitespace-nowrap', c.falseRecallPenalty > 15 && 'text-red-300')}>{c.falseRecallPenalty.toFixed(1)}</td>
+                    <td className="px-2 py-1.5 text-right tabular-nums whitespace-nowrap text-text-muted">{c.runCount}</td>
+                    <td className="px-2 py-1.5 text-right tabular-nums whitespace-nowrap text-text-muted">{Math.round(c.confidence)}%</td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
       )}
     </div>
   )
@@ -270,41 +312,45 @@ function ProviderComparisonTable({ rows }: { rows: ProviderComparison[] }) {
         <h4 className="text-xs font-semibold uppercase tracking-wider text-text-muted">Memory provider comparison</h4>
         <HeuristicTag tip="Baseline (native) vs external providers, ranked by retrieval accuracy. Latency and false-positive counts are derived from real benchmark runs against each provider." />
       </div>
-      <table className="w-full text-xs">
-        <thead className="bg-white/[0.02] text-text-muted">
-          <tr className="text-left">
-            <th className="px-3 py-1.5 font-medium">Provider</th>
-            <th className="px-2 py-1.5 font-medium">Type</th>
-            <th className="px-2 py-1.5 font-medium">Kind</th>
-            <th className="px-2 py-1.5 font-medium text-right">Retrieval</th>
-            <th className="px-2 py-1.5 font-medium text-right">Freshness</th>
-            <th className="px-2 py-1.5 font-medium text-right">False positives</th>
-            <th className="px-2 py-1.5 font-medium text-right">Avg latency</th>
-            <th className="px-2 py-1.5 font-medium text-right">Runs</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map(r => (
-            <tr key={r.provider} className="border-t border-white/5">
-              <td className="px-3 py-1.5 text-text-primary truncate max-w-[260px]" title={r.provider}>{r.provider}</td>
-              <td className="px-2 py-1.5 text-text-muted font-mono text-[10px]">{r.type}</td>
-              <td className="px-2 py-1.5">
-                <span className={clsx('text-[10px] px-1.5 py-0.5 rounded uppercase tracking-wide',
-                  r.baseline ? 'bg-emerald-500/15 text-emerald-300' : 'bg-cyan-500/15 text-cyan-300')}>
-                  {r.baseline ? 'baseline' : 'external'}
-                </span>
-              </td>
-              <td className="px-2 py-1.5 text-right tabular-nums">{fmtPct(r.retrievalAccuracy)}</td>
-              <td className="px-2 py-1.5 text-right tabular-nums">{fmtPct(r.freshnessScore)}</td>
-              <td className={clsx('px-2 py-1.5 text-right tabular-nums', r.falsePositives != null && r.falsePositives > 1 && 'text-red-300')}>
-                {r.falsePositives == null ? '—' : r.falsePositives.toFixed(1)}
-              </td>
-              <td className="px-2 py-1.5 text-right tabular-nums text-text-muted">{r.avgLatencyMs}ms</td>
-              <td className="px-2 py-1.5 text-right tabular-nums text-text-muted">{r.runs}</td>
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs">
+          <thead className="bg-white/[0.02] text-text-muted">
+            <tr className="text-left">
+              <th className="px-3 py-1.5 font-medium whitespace-nowrap">Provider</th>
+              <th className="px-2 py-1.5 font-medium whitespace-nowrap">Type</th>
+              <th className="px-2 py-1.5 font-medium whitespace-nowrap">Kind</th>
+              <th className="px-2 py-1.5 font-medium text-right whitespace-nowrap">Retrieval</th>
+              <th className="px-2 py-1.5 font-medium text-right whitespace-nowrap">Fresh</th>
+              <th className="px-2 py-1.5 font-medium text-right whitespace-nowrap">False pos</th>
+              <th className="px-2 py-1.5 font-medium text-right whitespace-nowrap">Latency</th>
+              <th className="px-2 py-1.5 font-medium text-right whitespace-nowrap">Runs</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {rows.map(r => (
+              <tr key={r.provider} className="border-t border-white/5">
+                <td className="px-3 py-1.5 max-w-[280px]">
+                  <span className="block truncate text-text-primary" title={r.provider}>{r.provider}</span>
+                </td>
+                <td className="px-2 py-1.5 text-text-muted font-mono text-[10px] whitespace-nowrap">{r.type}</td>
+                <td className="px-2 py-1.5 whitespace-nowrap">
+                  <span className={clsx('text-[10px] px-1.5 py-0.5 rounded uppercase tracking-wide',
+                    r.baseline ? 'bg-emerald-500/15 text-emerald-300' : 'bg-cyan-500/15 text-cyan-300')}>
+                    {r.baseline ? 'baseline' : 'external'}
+                  </span>
+                </td>
+                <td className="px-2 py-1.5 text-right tabular-nums whitespace-nowrap">{fmtPct(r.retrievalAccuracy)}</td>
+                <td className="px-2 py-1.5 text-right tabular-nums whitespace-nowrap">{fmtPct(r.freshnessScore)}</td>
+                <td className={clsx('px-2 py-1.5 text-right tabular-nums whitespace-nowrap', r.falsePositives != null && r.falsePositives > 1 && 'text-red-300')}>
+                  {r.falsePositives == null ? '—' : r.falsePositives.toFixed(1)}
+                </td>
+                <td className="px-2 py-1.5 text-right tabular-nums text-text-muted whitespace-nowrap">{r.avgLatencyMs}ms</td>
+                <td className="px-2 py-1.5 text-right tabular-nums text-text-muted whitespace-nowrap">{r.runs}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   )
 }
@@ -349,6 +395,12 @@ function MemoryTaskCard({ task, runs, providers, expanded, onToggle, onReload }:
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-violet-500/15 text-violet-200">{task.kind}</span>
+            {task.builtIn && (
+              <span title="Built-in task — ships with the dashboard. Can't be deleted."
+                className="text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded bg-cyan-500/15 text-cyan-200 border border-cyan-500/30">
+                Built-in
+              </span>
+            )}
             <h5 className="text-sm font-semibold text-text-primary">{task.title}</h5>
             {task.agent && <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-white/5 text-text-muted">{task.agent}</span>}
           </div>
@@ -384,7 +436,12 @@ function MemoryTaskCard({ task, runs, providers, expanded, onToggle, onReload }:
               {busy ? 'Dispatching…' : running ? 'Running…' : 'Run benchmark'}
             </button>
             {providers.length === 0 && <span className="text-[10px] text-amber-300 flex items-center gap-1"><AlertCircle size={11} /> no providers detected</span>}
-            <button onClick={remove} className="ml-auto text-text-muted hover:text-red-300" title="Delete task"><Trash2 size={13} /></button>
+            {!task.builtIn && (
+              <button onClick={remove} className="ml-auto text-text-muted hover:text-red-300" title="Delete task"><Trash2 size={13} /></button>
+            )}
+            {task.builtIn && (
+              <span className="ml-auto text-[10px] text-text-muted italic" title="Built-in tasks can't be deleted">built-in · protected</span>
+            )}
           </div>
 
           {runs.length > 0 && (
@@ -428,6 +485,15 @@ function MemoryRunRow({ run }: { run: MemoryBenchmarkRun }) {
         <span className={clsx('w-24 truncate font-mono', running ? 'text-violet-300' : 'text-text-muted')}>
           {running ? 'running' : run.status}
         </span>
+        {/* Refusal-detected pill — only relevant on negative-control runs.
+            Surfaces the engine's denial heuristic so users can tell whether
+            a "success" was a correct refusal vs a clean retrieval. */}
+        {run.denialDetected && !running && (
+          <span title={run.scoringNote || 'agent refuted the premise — false-recall penalty suppressed'}
+            className="text-[9px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 flex-shrink-0">
+            refused ✓
+          </span>
+        )}
         <span className="text-text-primary truncate flex-1 min-w-0">{run.model || '(unknown model)'}</span>
         <span className="text-text-muted tabular-nums w-14 text-right" title="composite">{running ? '—' : run.composite}</span>
         <span className="text-text-muted tabular-nums w-14 text-right" title="retrieval">{run.retrievalAccuracy == null ? '—' : `${run.retrievalAccuracy}%`}</span>
@@ -506,6 +572,15 @@ function MemoryRunDetail({ run }: { run: MemoryBenchmarkRun }) {
         </div>
       )}
 
+      {run.scoringNote && (
+        <div>
+          <p className="text-[10px] uppercase tracking-wider text-text-muted mb-1">Scoring decision</p>
+          <p className={clsx('text-[11px] leading-snug', run.denialDetected ? 'text-emerald-300' : 'text-amber-300')}>
+            {run.scoringNote}
+          </p>
+        </div>
+      )}
+
       {run.notes && (
         <div>
           <p className="text-[10px] uppercase tracking-wider text-text-muted mb-1">Notes</p>
@@ -529,7 +604,7 @@ function DetailCell({ label, value, bad }: { label: string; value: string; bad?:
 
 const KINDS: MemoryKind[] = ['recall', 'multihop', 'temporal', 'conflict', 'applied', 'negative']
 
-function NewMemoryTaskForm({ platform, providers, onClose, onCreated }: {
+export function NewMemoryTaskForm({ platform, providers, onClose, onCreated }: {
   platform: EvalPlatform; providers: MemoryProviderInfo[]; onClose: () => void; onCreated: () => void
 }) {
   const [title, setTitle]     = useState('')

@@ -28,6 +28,8 @@ export interface MemoryBenchmarkTask {
   newerHints:     string[]       // strings whose match should be preferred (temporal)
   rubric:         string
   notes:          string
+  builtIn:        boolean        // true = ships with the dashboard; UI protects from delete
+  builtInSlug:    string         // catalog slug; '' for user-created tasks
   createdAt:      string
   updatedAt:      string
 }
@@ -69,6 +71,10 @@ export interface MemoryBenchmarkRun {
   composite:          number      // final 0..100
   latencyMs:          number
   notes:              string
+  // Negative-control diagnostics — surfaced so the UI can show *why* a run
+  // passed or failed the false-recall rubric instead of just the composite.
+  denialDetected:     boolean     // true when the agent explicitly refused/refuted on a negative-kind run
+  scoringNote:        string      // short, kind-specific explanation (e.g. "refusal detected — penalty suppressed")
   ts:                 string
 }
 
@@ -132,6 +138,8 @@ db.exec(`
     composite          REAL NOT NULL DEFAULT 0,
     latencyMs          INTEGER NOT NULL DEFAULT 0,
     notes              TEXT NOT NULL DEFAULT '',
+    denialDetected     INTEGER NOT NULL DEFAULT 0,
+    scoringNote        TEXT NOT NULL DEFAULT '',
     ts                 TEXT NOT NULL
   );
   CREATE TABLE IF NOT EXISTS memory_score_snapshots (
@@ -153,6 +161,17 @@ db.exec(`UPDATE memory_benchmark_runs SET status = 'error',
   notes = 'Server restarted while this memory benchmark was in flight — dispatch the task again.'
   WHERE status = 'running'`)
 
+// Idempotent migrations for the built-in catalog columns.
+function tryAddMemColumn(table: string, column: string, decl: string) {
+  try { db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${decl}`) } catch { /* exists */ }
+}
+tryAddMemColumn('memory_benchmark_tasks', 'builtIn',     'INTEGER NOT NULL DEFAULT 0')
+tryAddMemColumn('memory_benchmark_tasks', 'builtInSlug', "TEXT NOT NULL DEFAULT ''")
+// Negative-control telemetry columns — added for runs persisted by older
+// engine versions which didn't capture denial detection / scoring notes.
+tryAddMemColumn('memory_benchmark_runs',  'denialDetected', 'INTEGER NOT NULL DEFAULT 0')
+tryAddMemColumn('memory_benchmark_runs',  'scoringNote',    "TEXT NOT NULL DEFAULT ''")
+
 const pj = <T,>(s: string, fb: T): T => { try { return JSON.parse(s) as T } catch { return fb } }
 
 // ─── Tasks ────────────────────────────────────────────────────────────────────
@@ -167,6 +186,7 @@ function taskFromRow(r: any): MemoryBenchmarkTask {
     providers: pj(String(r.providers ?? '[]'), []),
     newerHints: pj(String(r.newerHints ?? '[]'), []),
     rubric: String(r.rubric ?? ''), notes: String(r.notes ?? ''),
+    builtIn: Boolean(r.builtIn), builtInSlug: String(r.builtInSlug ?? ''),
     createdAt: String(r.createdAt), updatedAt: String(r.updatedAt),
   }
 }
@@ -184,13 +204,14 @@ export function getMemoryTask(id: string): MemoryBenchmarkTask | null {
 }
 
 export function createMemoryTask(input: {
-  platform: EvalPlatform; agent?: string; title: string; kind?: MemoryKind
+  id?: string; platform: EvalPlatform; agent?: string; title: string; kind?: MemoryKind
   query: string; expectedFacts?: string[]; forbiddenFacts?: string[]
   providers?: string[]; newerHints?: string[]; rubric?: string; notes?: string
+  builtIn?: boolean; builtInSlug?: string
 }): MemoryBenchmarkTask {
   const now = new Date().toISOString()
   const task: MemoryBenchmarkTask = {
-    id: randomUUID(),
+    id: input.id ?? randomUUID(),
     platform: input.platform, agent: (input.agent ?? '').trim(),
     title: input.title.trim(), kind: input.kind ?? 'recall',
     query: input.query.trim(),
@@ -199,25 +220,60 @@ export function createMemoryTask(input: {
     providers: (input.providers ?? []).map(String).map(s => s.trim()).filter(Boolean),
     newerHints: (input.newerHints ?? []).map(String).map(s => s.trim()).filter(Boolean),
     rubric: (input.rubric ?? '').trim(), notes: (input.notes ?? '').trim(),
+    builtIn: !!input.builtIn, builtInSlug: (input.builtInSlug ?? '').trim(),
     createdAt: now, updatedAt: now,
   }
   db.prepare(`INSERT INTO memory_benchmark_tasks
-    (id,platform,agent,title,kind,query,expectedFacts,forbiddenFacts,providers,newerHints,rubric,notes,createdAt,updatedAt)
-    VALUES (@id,@platform,@agent,@title,@kind,@query,@expectedFacts,@forbiddenFacts,@providers,@newerHints,@rubric,@notes,@createdAt,@updatedAt)`)
+    (id,platform,agent,title,kind,query,expectedFacts,forbiddenFacts,providers,newerHints,rubric,notes,builtIn,builtInSlug,createdAt,updatedAt)
+    VALUES (@id,@platform,@agent,@title,@kind,@query,@expectedFacts,@forbiddenFacts,@providers,@newerHints,@rubric,@notes,@builtIn,@builtInSlug,@createdAt,@updatedAt)`)
     .run({
       ...task,
       expectedFacts: JSON.stringify(task.expectedFacts),
       forbiddenFacts: JSON.stringify(task.forbiddenFacts),
       providers: JSON.stringify(task.providers),
       newerHints: JSON.stringify(task.newerHints),
+      builtIn: task.builtIn ? 1 : 0,
     })
   return task
 }
 
-export function deleteMemoryTask(id: string): boolean {
-  const r = db.prepare('DELETE FROM memory_benchmark_tasks WHERE id = ?').run(id)
+export function deleteMemoryTask(id: string): { ok: boolean; reason?: string } {
+  const row = db.prepare('SELECT builtIn FROM memory_benchmark_tasks WHERE id = ?').get(id) as any
+  if (!row) return { ok: false, reason: 'not-found' }
+  if (Number(row.builtIn) === 1) return { ok: false, reason: 'builtin' }
+  db.prepare('DELETE FROM memory_benchmark_tasks WHERE id = ?').run(id)
   db.prepare('DELETE FROM memory_benchmark_runs WHERE taskId = ?').run(id)
-  return Number(r.changes) > 0
+  return { ok: true }
+}
+
+/** Install (insert if missing) every built-in memory task for every platform.
+ *  Same idempotent semantics as the benchmark catalog. */
+export function installBuiltinMemoryTasks(
+  catalog: ReadonlyArray<{
+    slug: string; title: string; kind: MemoryKind; query: string
+    expectedFacts: string[]; forbiddenFacts: string[]; newerHints: string[]
+    rubric: string; notes: string
+  }>,
+  platforms: ReadonlyArray<EvalPlatform>,
+  idFor: (slug: string, platform: EvalPlatform) => string,
+): { installed: number; skipped: number } {
+  if (process.env.SKIP_EVAL_SEEDS) return { installed: 0, skipped: 0 }
+  let installed = 0, skipped = 0
+  const exists = db.prepare('SELECT 1 FROM memory_benchmark_tasks WHERE id = ?')
+  for (const platform of platforms) {
+    for (const entry of catalog) {
+      const id = idFor(entry.slug, platform)
+      if (exists.get(id)) { skipped++; continue }
+      createMemoryTask({
+        id, platform, title: entry.title, kind: entry.kind, query: entry.query,
+        expectedFacts: entry.expectedFacts, forbiddenFacts: entry.forbiddenFacts,
+        newerHints: entry.newerHints, rubric: entry.rubric, notes: entry.notes,
+        builtIn: true, builtInSlug: entry.slug,
+      })
+      installed++
+    }
+  }
+  return { installed, skipped }
 }
 
 // ─── Runs ─────────────────────────────────────────────────────────────────────
@@ -244,7 +300,10 @@ function runFromRow(r: any): MemoryBenchmarkRun {
     latencyScore:       r.latencyScore       == null ? null : Number(r.latencyScore),
     coverageScore:      r.coverageScore      == null ? null : Number(r.coverageScore),
     composite: Number(r.composite ?? 0), latencyMs: Number(r.latencyMs ?? 0),
-    notes: String(r.notes ?? ''), ts: String(r.ts),
+    notes: String(r.notes ?? ''),
+    denialDetected: Boolean(Number(r.denialDetected ?? 0)),
+    scoringNote: String(r.scoringNote ?? ''),
+    ts: String(r.ts),
   }
 }
 
@@ -261,21 +320,28 @@ export function listMemoryRuns(filter?: { platform?: EvalPlatform; taskId?: stri
 }
 
 export function createMemoryRun(input: Omit<MemoryBenchmarkRun, 'id' | 'ts'> & { id?: string; ts?: string }): MemoryBenchmarkRun {
-  const run: MemoryBenchmarkRun = { id: input.id ?? randomUUID(), ts: input.ts ?? new Date().toISOString(), ...input } as MemoryBenchmarkRun
+  const run: MemoryBenchmarkRun = {
+    id: input.id ?? randomUUID(),
+    ts: input.ts ?? new Date().toISOString(),
+    denialDetected: false,
+    scoringNote: '',
+    ...input,
+  } as MemoryBenchmarkRun
   db.prepare(`INSERT INTO memory_benchmark_runs
     (id,taskId,platform,agent,model,status,providersUsed,hits,expectedFound,expectedTotal,forbiddenFound,irrelevantHits,
      agentAnswer,answerHasExpected,answerHasForbidden,
      retrievalAccuracy,usageAccuracy,freshnessScore,conflictResolution,falseRecallPenalty,latencyScore,coverageScore,
-     composite,latencyMs,notes,ts)
+     composite,latencyMs,notes,denialDetected,scoringNote,ts)
     VALUES
     (@id,@taskId,@platform,@agent,@model,@status,@providersUsed,@hits,@expectedFound,@expectedTotal,@forbiddenFound,@irrelevantHits,
      @agentAnswer,@answerHasExpected,@answerHasForbidden,
      @retrievalAccuracy,@usageAccuracy,@freshnessScore,@conflictResolution,@falseRecallPenalty,@latencyScore,@coverageScore,
-     @composite,@latencyMs,@notes,@ts)`)
+     @composite,@latencyMs,@notes,@denialDetected,@scoringNote,@ts)`)
     .run({
       ...run,
       providersUsed: JSON.stringify(run.providersUsed),
       hits: JSON.stringify(run.hits),
+      denialDetected: run.denialDetected ? 1 : 0,
     } as any)
   return run
 }
@@ -296,11 +362,13 @@ export function updateMemoryRun(id: string, patch: Partial<Omit<MemoryBenchmarkR
     retrievalAccuracy=@retrievalAccuracy, usageAccuracy=@usageAccuracy, freshnessScore=@freshnessScore,
     conflictResolution=@conflictResolution, falseRecallPenalty=@falseRecallPenalty,
     latencyScore=@latencyScore, coverageScore=@coverageScore,
-    composite=@composite, latencyMs=@latencyMs, notes=@notes, ts=@ts
+    composite=@composite, latencyMs=@latencyMs, notes=@notes,
+    denialDetected=@denialDetected, scoringNote=@scoringNote, ts=@ts
     WHERE id=@id`).run({
       ...merged,
       providersUsed: JSON.stringify(merged.providersUsed ?? []),
       hits: JSON.stringify(merged.hits ?? []),
+      denialDetected: merged.denialDetected ? 1 : 0,
     } as any)
   return merged as MemoryBenchmarkRun
 }
@@ -329,4 +397,12 @@ export function saveMemorySnapshot(input: Omit<MemoryScoreSnapshot, 'id' | 'ts'>
     VALUES (@id,@platform,@scope,@composite,@subScores,@runCount,@ts)`)
     .run({ ...snap, subScores: JSON.stringify(snap.subScores) })
   return snap
+}
+
+// ─── Install the curated built-in memory catalog on module load ────────────────
+{
+  import('./builtinEvalTasks.js').then(({ BUILTIN_MEMORIES, BUILTIN_BENCHMARK_PLATFORMS, builtinMemoryId }) => {
+    const r = installBuiltinMemoryTasks(BUILTIN_MEMORIES, BUILTIN_BENCHMARK_PLATFORMS, builtinMemoryId)
+    if (r.installed > 0) console.log(`[Evaluations] installed ${r.installed} built-in memory task${r.installed === 1 ? '' : 's'} (skipped ${r.skipped} already-present)`)
+  }).catch(err => console.error('[Evaluations] built-in memory install failed:', err))
 }

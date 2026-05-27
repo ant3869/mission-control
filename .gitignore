@@ -42,6 +42,7 @@ data/connectors.json
 data/tasks.json
 
 # ─── Local agent knowledge docs (non-sensitive but repo-local) ───────────────
+CLAUDE.md
 *_GAP_MAP_FOR_AGENT.md
 CLAWMETRY_GAP_MAP_FOR_AGENT.md
 

@@ -114,6 +114,17 @@ function agentFromKey(platform: EvalPlatform, key: string): string {
   return platform === 'openclaw' ? 'main' : 'hermes'
 }
 
+// Sessions created by this dashboard's own benchmark / memory-eval / research
+// dispatches. Their transcripts echo the test prompt back into session history;
+// counting them as "real memory" or as "real agent activity" would let tests
+// score themselves and inflate organic leaderboards with self-traffic. Excluded
+// from both retrieval (memoryEvalEngine) and run derivation (above).
+const SELF_DISPATCH_KEY_RE = /(dashboard-(memory|benchmark|research)|:dashboard-(memory|benchmark|research):)/i
+export function isSelfDispatchSession(key: string | null | undefined): boolean {
+  if (!key) return false
+  return SELF_DISPATCH_KEY_RE.test(key)
+}
+
 const stdev = (xs: number[]): number => {
   if (xs.length < 2) return 0
   const mean = xs.reduce((s, x) => s + x, 0) / xs.length
@@ -145,8 +156,20 @@ interface ParsedMsg {
   ts:            number
 }
 
-const ERR_RE = /\b(error|failed|failure|exception|traceback|cannot|could not|unable to|timed out|timeout)\b/i
-const NEG_ERR_RE = /\bno (errors?|failures?|issues?)\b/i
+// Tool-result error scan: keep broad — these strings appear inside structural
+// tool_result content where they reliably indicate something went wrong.
+const TOOL_ERR_RE = /\b(error|failed|failure|exception|traceback|cannot|could not|unable to|timed out|timeout)\b/i
+const NEG_ERR_RE  = /\bno (errors?|failures?|issues?)\b/i
+
+// Assistant-text error scan: deliberately STRICT. The previous regex
+// (`/\b(error|failed|cannot|exception|…)\b/i`) generated heavy false
+// positives — an assistant explaining "Python exceptions" or saying "I cannot
+// recall that fact" got flagged as having an error, which inflated failure
+// and reliability sub-scores. The structural signal is the tool_result error
+// flag; the assistant's prose only adds noise. We now only flag explicit
+// self-reports of failure ("I was unable to complete", "the operation
+// failed", "I could not finish").
+const ASSISTANT_FAILURE_RE = /\b(i (was|am) unable to (complete|finish|do)|i (could not|couldn'?t) (complete|finish|fulfill)|the (request|operation|task) (failed|could not be completed)|aborting (this )?(task|request)|i (have to|must) (give up|stop))\b/i
 
 function parseMessage(m: any): ParsedMsg {
   const role = String(m?.role ?? '').toLowerCase()
@@ -165,7 +188,7 @@ function parseMessage(m: any): ParsedMsg {
         isToolResult = true
         if (b.is_error || b.isError) resultError = true
         const rc = typeof b.content === 'string' ? b.content : Array.isArray(b.content) ? b.content.map((x: any) => x?.text ?? '').join(' ') : ''
-        if (rc && ERR_RE.test(rc) && !NEG_ERR_RE.test(rc)) resultError = true
+        if (rc && TOOL_ERR_RE.test(rc) && !NEG_ERR_RE.test(rc)) resultError = true
       } else if (t === 'text') {
         text += String(b.text ?? '')
       }
@@ -209,12 +232,19 @@ export function deriveFromTranscript(messages: any[], statusHint: string): Deriv
   const seq: Array<{ name: string; sig: string }> = []
   let noProgress = 0
   let hadError = false
-  let lastErrorIdx = -1
+  let lastErrorIdx = -1            // position in `seq` (tool-call timeline) when the last error happened
+  let lastAssistantTextIdx = -1    // position in `seq` when the most recent assistant final-text turn ended
 
   parsed.forEach((p) => {
     for (const c of p.toolCalls) seq.push(c)
     if (p.resultError) { noProgress++; hadError = true; lastErrorIdx = seq.length }
-    if (!p.isToolResult && p.text && ERR_RE.test(p.text) && !NEG_ERR_RE.test(p.text)) hadError = true
+    // Only assistant text counts toward "the agent produced a clean reply
+    // here". User / tool messages don't. We restrict the error-text scan to
+    // explicit self-reported failures (see ASSISTANT_FAILURE_RE comment).
+    if (p.role === 'assistant' && !p.isToolResult && p.text) {
+      lastAssistantTextIdx = seq.length
+      if (ASSISTANT_FAILURE_RE.test(p.text)) hadError = true
+    }
   })
 
   // Repeats: consecutive identical (name+sig).
@@ -232,11 +262,14 @@ export function deriveFromTranscript(messages: any[], statusHint: string): Deriv
   if (statusErr) hadError = true
   const statusRunning = /running|active|in[-_ ]?progress/i.test(statusHint)
 
-  // Final assistant text after the last tool error → recovered.
-  const lastAssistant = [...parsed].reverse().find(p => p.role === 'assistant' && p.text)
-  const lastAssistantIdxInSeqTerms = lastAssistant ? seq.length : -1
-  const endedClean = !!lastAssistant
-  const recovered = hadError && endedClean && (lastErrorIdx === -1 || lastAssistantIdxInSeqTerms >= lastErrorIdx)
+  // Recovery requires an assistant final reply AFTER the last error position
+  // — not just an assistant message that happens to exist somewhere in the
+  // transcript. (The previous implementation set
+  // `lastAssistantIdxInSeqTerms = seq.length` unconditionally whenever any
+  // assistant message existed, which silently turned every error-followed-by-
+  // a-stale-reply into a "recovered" run and inflated recovery rate.)
+  const endedClean = lastAssistantTextIdx >= 0
+  const recovered = hadError && endedClean && (lastErrorIdx === -1 || lastAssistantTextIdx >= lastErrorIdx)
 
   let outcome: RunOutcome
   if (parsed.length === 0) {
@@ -302,7 +335,10 @@ export async function getEvalRuns(platform: EvalPlatform, force = false): Promis
   }
 
   const candidates = metrics.sessionList
-    .filter(s => !s.isHeartbeat && cleanModel(s.model))
+    // Exclude this dashboard's own dispatch sessions (benchmark/memory/research).
+    // They're artifacts of evaluation, not real agent activity; counting them
+    // as evaluable runs would inflate leaderboards with self-traffic.
+    .filter(s => !s.isHeartbeat && cleanModel(s.model) && !isSelfDispatchSession(s.key))
     .slice(0, RUN_CAP)
 
   // Pull transcripts (one batched WS round-trip for OpenClaw; REST per session for Hermes).

@@ -8,11 +8,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { clsx } from 'clsx'
 import {
-  Target, RefreshCw, AlertCircle, Activity, TrendingUp, Beaker, BookOpen, Layers, Trophy, Brain,
+  Target, RefreshCw, AlertCircle, Activity, TrendingUp, Beaker, BookOpen, Layers, Trophy, Brain, Plus, X,
 } from 'lucide-react'
 import {
-  evaluations, ApiError,
+  evaluations, memoryEvaluations, ApiError,
   type EvalPlatform, type PlatformEvalOverview, type ModelScorecard, type EvaluationRun, type ModelSnapshot,
+  type MemoryProviderInfo, type BenchmarkTask, type BenchmarkRun,
 } from '../lib/api'
 import {
   ModelLeaderboard, ScoreBreakdown, PlatformFactorBar, MiniSummaryStat,
@@ -20,8 +21,9 @@ import {
 import { AgentModelMatrix } from '../components/evaluations/Matrix'
 import { ScoreTrendChart } from '../components/evaluations/TrendChart'
 import { RunList } from '../components/evaluations/Drilldown'
-import { BenchmarksPanel } from '../components/evaluations/BenchmarksPanel'
-import { MemoryPanel } from '../components/evaluations/MemoryPanel'
+import { BenchmarksPanel, NewBenchmarkTaskForm } from '../components/evaluations/BenchmarksPanel'
+import { BenchmarkComparison } from '../components/evaluations/BenchmarkComparison'
+import { MemoryPanel, NewMemoryTaskForm } from '../components/evaluations/MemoryPanel'
 import { MethodologyPanel } from '../components/evaluations/Methodology'
 import {
   EmptyState, NotConnected, ErrorBanner, PlatformBadge, fmtPct, HeuristicTag,
@@ -60,18 +62,8 @@ export function Evaluations() {
         {(tab === 'openclaw' || tab === 'hermes') && (
           <PlatformTab platform={tab} key={tab} />
         )}
-        {tab === 'benchmarks' && (
-          <div className="px-6 grid grid-cols-1 xl:grid-cols-2 gap-6">
-            <BenchmarksPanel platform="openclaw" reachable={true} />
-            <BenchmarksPanel platform="hermes" reachable={true} />
-          </div>
-        )}
-        {tab === 'memory' && (
-          <div className="px-6 grid grid-cols-1 xl:grid-cols-2 gap-6">
-            <MemoryPanel platform="openclaw" />
-            <MemoryPanel platform="hermes" />
-          </div>
-        )}
+        {tab === 'benchmarks'  && <BenchmarksTab />}
+        {tab === 'memory'      && <MemoryTab />}
         {tab === 'methodology' && <div className="px-6">
           <MethodologyPanel />
         </div>}
@@ -93,6 +85,194 @@ function TabBtn({ t, active, setActive, icon, children }: { t: Tab; active: Tab;
       {icon}
       {children}
     </button>
+  )
+}
+
+// ─── Unified tab toolbar ──────────────────────────────────────────────────────
+// One Refresh + one "New task" (with platform picker) shared by both panels in
+// the Memory and Benchmarks tabs, instead of duplicate controls per platform.
+
+function UnifiedToolbar({
+  icon, title, hint, refreshing, onRefresh, onNew,
+}: {
+  icon: React.ReactNode
+  title: string
+  hint: string
+  refreshing: boolean
+  onRefresh: () => void
+  onNew: () => void
+}) {
+  return (
+    <div className="flex items-center gap-3 flex-wrap">
+      {icon}
+      <h3 className="text-sm font-semibold text-text-primary">{title}</h3>
+      <HeuristicTag tip={hint} />
+      <div className="ml-auto flex items-center gap-2">
+        <button
+          onClick={onNew}
+          className="flex items-center gap-1.5 px-2.5 py-1 text-xs bg-violet-500/20 hover:bg-violet-500/30 text-violet-200 border border-violet-500/30 rounded"
+        >
+          <Plus size={12} /> New task
+        </button>
+        <button
+          onClick={onRefresh}
+          disabled={refreshing}
+          className="flex items-center gap-1.5 px-2.5 py-1 text-xs bg-white/5 hover:bg-white/10 border border-white/10 rounded"
+        >
+          <RefreshCw size={12} className={clsx(refreshing && 'animate-spin')} /> Refresh both
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// Platform picker shown above the new-task form so a single button can launch
+// the right form for either platform.
+function PlatformPicker({ value, onChange }: { value: EvalPlatform; onChange: (p: EvalPlatform) => void }) {
+  return (
+    <div className="flex items-center gap-1 p-1 bg-white/5 border border-white/10 rounded">
+      {(['openclaw', 'hermes'] as EvalPlatform[]).map(p => (
+        <button
+          key={p}
+          onClick={() => onChange(p)}
+          className={clsx(
+            'px-3 py-1 text-xs rounded transition-colors capitalize',
+            value === p ? 'bg-violet-500/25 text-violet-100' : 'text-text-muted hover:text-text-primary',
+          )}
+        >
+          {p}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+// ─── Benchmarks tab ───────────────────────────────────────────────────────────
+
+function BenchmarksTab() {
+  const [refreshSignal, setRefreshSignal] = useState(0)
+  const [refreshing, setRefreshing]       = useState(false)
+  const [showNew, setShowNew]             = useState(false)
+  const [newPlatform, setNewPlatform]     = useState<EvalPlatform>('openclaw')
+  // Pull tasks + runs for both platforms so the comparison table can show
+  // model-vs-model scores across the whole catalog, not just one platform.
+  // The per-platform BenchmarksPanel below has its own load — slight
+  // duplication, but it lets the comparison view stay independent of how
+  // either panel renders its task cards.
+  const [allTasks, setAllTasks] = useState<BenchmarkTask[]>([])
+  const [allRuns,  setAllRuns]  = useState<BenchmarkRun[]>([])
+
+  useEffect(() => {
+    let cancelled = false
+    Promise.all([
+      evaluations.benchmarks('openclaw').catch(() => ({ tasks: [], runs: [] } as any)),
+      evaluations.benchmarks('hermes').catch(() => ({ tasks: [], runs: [] } as any)),
+    ]).then(([oc, hr]) => {
+      if (cancelled) return
+      setAllTasks([...(oc.tasks ?? []), ...(hr.tasks ?? [])])
+      setAllRuns([...(oc.runs ?? []), ...(hr.runs ?? [])])
+    })
+    return () => { cancelled = true }
+  }, [refreshSignal])
+
+  const refresh = () => {
+    setRefreshing(true)
+    setRefreshSignal(n => n + 1)
+    setTimeout(() => setRefreshing(false), 600)
+  }
+  const onCreated = () => { setShowNew(false); refresh() }
+
+  return (
+    <div className="px-6 space-y-4">
+      <UnifiedToolbar
+        icon={<Beaker size={14} className="text-violet-400" />}
+        title="Benchmarks"
+        hint="Each row is a real chat dispatch to the connected agent — answer, tool sequence and per-run stats are captured for both successes and failures. Built-in tasks auto-grade their rubricScore."
+        refreshing={refreshing}
+        onRefresh={refresh}
+        onNew={() => setShowNew(true)}
+      />
+
+      {showNew && (
+        <div className="space-y-2">
+          <div className="flex items-center gap-3">
+            <span className="text-[10px] uppercase tracking-wider text-text-muted">Target platform</span>
+            <PlatformPicker value={newPlatform} onChange={setNewPlatform} />
+            <button onClick={() => setShowNew(false)} className="ml-auto text-text-muted hover:text-text-primary text-xs flex items-center gap-1">
+              <X size={11} /> close
+            </button>
+          </div>
+          <NewBenchmarkTaskForm platform={newPlatform} onClose={() => setShowNew(false)} onCreated={onCreated} />
+        </div>
+      )}
+
+      {/* Cross-model comparison renders only when at least one model has a
+          scored run — empty state would be misleading, so we hide it. */}
+      <BenchmarkComparison tasks={allTasks} runs={allRuns} />
+
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+        <BenchmarksPanel platform="openclaw" reachable compact refreshSignal={refreshSignal} />
+        <BenchmarksPanel platform="hermes"   reachable compact refreshSignal={refreshSignal} />
+      </div>
+    </div>
+  )
+}
+
+// ─── Memory tab ───────────────────────────────────────────────────────────────
+
+function MemoryTab() {
+  const [refreshSignal, setRefreshSignal] = useState(0)
+  const [refreshing, setRefreshing]       = useState(false)
+  const [showNew, setShowNew]             = useState(false)
+  const [newPlatform, setNewPlatform]     = useState<EvalPlatform>('openclaw')
+  const [providers, setProviders]         = useState<MemoryProviderInfo[]>([])
+
+  // Pull the detected providers for the picker's selected platform so the
+  // form's "Provider scope" chips show the right options.
+  useEffect(() => {
+    let cancelled = false
+    memoryEvaluations.providers(newPlatform)
+      .then(r => { if (!cancelled) setProviders(r.providers) })
+      .catch(() => { if (!cancelled) setProviders([]) })
+    return () => { cancelled = true }
+  }, [newPlatform, refreshSignal])
+
+  const refresh = () => {
+    setRefreshing(true)
+    setRefreshSignal(n => n + 1)
+    setTimeout(() => setRefreshing(false), 600)
+  }
+  const onCreated = () => { setShowNew(false); refresh() }
+
+  return (
+    <div className="px-6 space-y-4">
+      <UnifiedToolbar
+        icon={<Brain size={14} className="text-violet-400" />}
+        title="Memory Benchmarks"
+        hint="Retrieval correctness is measured by case-insensitive substring matches of declared expectedFacts inside provider results. Honest but heuristic — see Scoring Methodology."
+        refreshing={refreshing}
+        onRefresh={refresh}
+        onNew={() => setShowNew(true)}
+      />
+
+      {showNew && (
+        <div className="space-y-2">
+          <div className="flex items-center gap-3">
+            <span className="text-[10px] uppercase tracking-wider text-text-muted">Target platform</span>
+            <PlatformPicker value={newPlatform} onChange={setNewPlatform} />
+            <button onClick={() => setShowNew(false)} className="ml-auto text-text-muted hover:text-text-primary text-xs flex items-center gap-1">
+              <X size={11} /> close
+            </button>
+          </div>
+          <NewMemoryTaskForm platform={newPlatform} providers={providers} onClose={() => setShowNew(false)} onCreated={onCreated} />
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+        <MemoryPanel platform="openclaw" compact refreshSignal={refreshSignal} />
+        <MemoryPanel platform="hermes"   compact refreshSignal={refreshSignal} />
+      </div>
+    </div>
   )
 }
 

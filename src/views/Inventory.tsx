@@ -6,6 +6,7 @@ import {
   CheckCircle2, Zap, LockKeyhole, ChevronDown, ChevronRight,
 } from 'lucide-react'
 import { inventory as invApi, type InventoryItem, type InventoryStats, type InventoryBody } from '../lib/api'
+import { ProjectBacklog } from '../components/inventory/ProjectBacklog'
 
 // ─── Category & condition metadata ────────────────────────────────────────────
 
@@ -446,6 +447,7 @@ export function Inventory() {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [editing, setEditing]       = useState<InventoryItem | null | 'new'>(null)
   const [researchingAll, setResearchingAll] = useState(false)
+  const [view, setView]                     = useState<'catalog' | 'backlog'>('catalog')
   const { toast, show: showToast }  = useToast()
 
   const load = useCallback(async () => {
@@ -588,7 +590,20 @@ export function Inventory() {
                 {researchingAll ? `Researching ${pendingCount}…` : `Research All (${unresearchedCount})`}
               </button>
             )}
-            <button onClick={() => setEditing('new')} className="flex items-center gap-1.5 px-3 py-1.5 rounded border border-accent-blue/40 bg-accent-blue/15 text-accent-blue hover:bg-accent-blue/25 text-xs font-medium"><Plus size={13} /> Add item</button>
+            <button
+              onClick={() => setView(v => v === 'backlog' ? 'catalog' : 'backlog')}
+              className={clsx(
+                'flex items-center gap-1.5 px-3 py-1.5 rounded border text-xs font-medium',
+                view === 'backlog'
+                  ? 'border-violet-700/50 bg-violet-900/40 text-violet-200'
+                  : 'border-violet-800/30 bg-violet-950/20 text-violet-300 hover:bg-violet-950/40',
+              )}
+            >
+              <Sparkles size={13} /> Build Ideas
+            </button>
+            {view === 'catalog' && (
+              <button onClick={() => setEditing('new')} className="flex items-center gap-1.5 px-3 py-1.5 rounded border border-accent-blue/40 bg-accent-blue/15 text-accent-blue hover:bg-accent-blue/25 text-xs font-medium"><Plus size={13} /> Add item</button>
+            )}
           </div>
         </div>
 
@@ -634,7 +649,9 @@ export function Inventory() {
 
         {/* ── Scrollable item list ── */}
         <div className="flex-1 min-h-0 overflow-y-auto px-6 pb-6">
-          {loading ? (
+          {view === 'backlog' ? (
+            <div className="py-4"><ProjectBacklog /></div>
+          ) : loading ? (
             <div className="space-y-1 pt-1">{Array.from({ length: 6 }).map((_, i) => <div key={i} className="h-12 rounded-lg bg-card border border-border animate-pulse" />)}</div>
           ) : filtered.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-40 gap-2 text-center">

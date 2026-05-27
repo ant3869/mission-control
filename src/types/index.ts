@@ -11,30 +11,21 @@ export type NavItem = {
 }
 
 export type View =
-  | 'tasks'
-  | 'agents'
+  | 'tasks'       // Tasks + Approvals
+  | 'watch'       // Watch + Agents
+  | 'docs'        // Docs + Notes
+  | 'projects'    // Projects + Pipeline
+  | 'ops'         // Radar + System + ModelOps
+  | 'workspace'   // People + Office + Factory
   | 'content'
-  | 'approvals'
   | 'council'
   | 'calendar'
-  | 'projects'
   | 'memory'
-  | 'docs'
-  | 'people'
-  | 'office'
-  | 'team'
-  | 'system'
-  | 'radar'
-  | 'modelops'
-  | 'factory'
-  | 'pipeline'
+  | 'inventory'
   | 'feedback'
-  | 'notes'
   | 'settings'
   | 'openclaw'
   | 'hermes'
-  | 'watch'
-  | 'inventory'
   | 'flowmap'
   | 'evaluations'
 

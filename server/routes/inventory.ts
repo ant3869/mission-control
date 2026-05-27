@@ -12,6 +12,7 @@ import { randomUUID } from 'crypto'
 import { DatabaseSync } from 'node:sqlite'
 import { isLive } from '../lib/connectors.js'
 import { researchItem } from '../lib/research.js'
+import { suggestProjects, dedupeIdeas, type ProjectBacklogContext } from '../lib/projectSuggestions.js'
 
 export const inventoryRouter = Router()
 
@@ -89,9 +90,48 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_items_updated  ON items(updatedAt DESC);
 `)
 
+db.exec(`
+  CREATE TABLE IF NOT EXISTS project_ideas (
+    id              TEXT PRIMARY KEY,
+    title           TEXT NOT NULL DEFAULT '',
+    description     TEXT NOT NULL DEFAULT '',
+    whyFit          TEXT NOT NULL DEFAULT '',
+    haveParts       TEXT NOT NULL DEFAULT '[]',
+    missingParts    TEXT NOT NULL DEFAULT '[]',
+    difficulty      TEXT NOT NULL DEFAULT 'medium',
+    timeEstimate    TEXT NOT NULL DEFAULT '',
+    costEstimate    TEXT NOT NULL DEFAULT '',
+    confidence      INTEGER NOT NULL DEFAULT 50,
+    coolness        INTEGER NOT NULL DEFAULT 50,
+    requiredTools   TEXT NOT NULL DEFAULT '[]',
+    relatedItemIds  TEXT NOT NULL DEFAULT '[]',
+    nextStep        TEXT NOT NULL DEFAULT '',
+    category        TEXT NOT NULL DEFAULT 'other',
+    status          TEXT NOT NULL DEFAULT 'new',
+    rejectionReason TEXT NOT NULL DEFAULT '',
+    generationRunId TEXT NOT NULL DEFAULT '',
+    createdAt       TEXT NOT NULL,
+    updatedAt       TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_ideas_status  ON project_ideas(status);
+  CREATE INDEX IF NOT EXISTS idx_ideas_created ON project_ideas(createdAt DESC);
+
+  CREATE TABLE IF NOT EXISTS project_gen_runs (
+    id          TEXT PRIMARY KEY,
+    status      TEXT NOT NULL DEFAULT 'pending',
+    source      TEXT NOT NULL DEFAULT '',
+    itemCount   INTEGER NOT NULL DEFAULT 0,
+    newIdeas    INTEGER NOT NULL DEFAULT 0,
+    error       TEXT NOT NULL DEFAULT '',
+    startedAt   TEXT NOT NULL,
+    completedAt TEXT NOT NULL DEFAULT ''
+  );
+`)
+
 // On every startup/hot-reload, any items left in 'pending' from a previous run
 // are orphaned (their promises are gone). Reset them so research can be retried.
 db.exec(`UPDATE items SET researchStatus = 'idle', researchError = 'Reset: server restarted while research was in progress' WHERE researchStatus = 'pending'`)
+db.exec(`UPDATE project_gen_runs SET status = 'failed', error = 'Reset: server restarted while generation was pending', completedAt = datetime('now') WHERE status = 'pending'`)
 
 const COLS = [
   'id','name','category','quantity','location','condition','estimatedValue',
@@ -313,6 +353,260 @@ inventoryRouter.get('/context', (_req, res) => {
   }
   res.type('text/plain').send(out)
 })
+
+// ─── Project Ideas — types ───────────────────────────────────────────────────
+
+interface StoredIdea {
+  id:              string
+  title:           string
+  description:     string
+  whyFit:          string
+  haveParts:       string[]
+  missingParts:    string[]
+  difficulty:      string
+  timeEstimate:    string
+  costEstimate:    string
+  confidence:      number
+  coolness:        number
+  requiredTools:   string[]
+  relatedItemIds:  string[]
+  nextStep:        string
+  category:        string
+  status:          string   // new|liked|rejected|snoozed|completed
+  rejectionReason: string
+  generationRunId: string
+  createdAt:       string
+  updatedAt:       string
+}
+
+interface StoredGenRun {
+  id:          string
+  status:      string   // pending|done|failed
+  source:      string
+  itemCount:   number
+  newIdeas:    number
+  error:       string
+  startedAt:   string
+  completedAt: string
+}
+
+const IDEA_STATUSES = ['new', 'liked', 'rejected', 'snoozed', 'completed'] as const
+
+const IDEA_COLS = [
+  'id','title','description','whyFit','haveParts','missingParts','difficulty',
+  'timeEstimate','costEstimate','confidence','coolness','requiredTools','relatedItemIds',
+  'nextStep','category','status','rejectionReason','generationRunId','createdAt','updatedAt',
+]
+
+function fromIdeaRow(r: any): StoredIdea {
+  return {
+    id: String(r.id), title: String(r.title ?? ''), description: String(r.description ?? ''),
+    whyFit: String(r.whyFit ?? ''),
+    haveParts: pj(String(r.haveParts ?? '[]'), []), missingParts: pj(String(r.missingParts ?? '[]'), []),
+    difficulty: String(r.difficulty ?? 'medium'), timeEstimate: String(r.timeEstimate ?? ''),
+    costEstimate: String(r.costEstimate ?? ''), confidence: Number(r.confidence ?? 50),
+    coolness: Number(r.coolness ?? 50), requiredTools: pj(String(r.requiredTools ?? '[]'), []),
+    relatedItemIds: pj(String(r.relatedItemIds ?? '[]'), []), nextStep: String(r.nextStep ?? ''),
+    category: String(r.category ?? 'other'), status: String(r.status ?? 'new'),
+    rejectionReason: String(r.rejectionReason ?? ''), generationRunId: String(r.generationRunId ?? ''),
+    createdAt: String(r.createdAt), updatedAt: String(r.updatedAt),
+  }
+}
+
+function ideaToRow(i: StoredIdea): Record<string, any> {
+  return {
+    id: i.id, title: i.title, description: i.description, whyFit: i.whyFit,
+    haveParts: JSON.stringify(i.haveParts), missingParts: JSON.stringify(i.missingParts),
+    difficulty: i.difficulty, timeEstimate: i.timeEstimate, costEstimate: i.costEstimate,
+    confidence: i.confidence, coolness: i.coolness,
+    requiredTools: JSON.stringify(i.requiredTools), relatedItemIds: JSON.stringify(i.relatedItemIds),
+    nextStep: i.nextStep, category: i.category, status: i.status,
+    rejectionReason: i.rejectionReason, generationRunId: i.generationRunId,
+    createdAt: i.createdAt, updatedAt: i.updatedAt,
+  }
+}
+
+function saveIdea(i: StoredIdea): void {
+  db.prepare(`INSERT OR REPLACE INTO project_ideas (${IDEA_COLS.join(',')}) VALUES (${IDEA_COLS.map(k => `@${k}`).join(',')})`).run(ideaToRow(i))
+}
+function loadIdeas(status?: string): StoredIdea[] {
+  const rows = status
+    ? (db.prepare('SELECT * FROM project_ideas WHERE status = ? ORDER BY createdAt DESC').all(status) as any[])
+    : (db.prepare('SELECT * FROM project_ideas ORDER BY createdAt DESC').all() as any[])
+  return rows.map(fromIdeaRow)
+}
+function loadIdea(id: string): StoredIdea | null {
+  const r = db.prepare('SELECT * FROM project_ideas WHERE id = ?').get(id) as any
+  return r ? fromIdeaRow(r) : null
+}
+function deleteIdea(id: string): void { db.prepare('DELETE FROM project_ideas WHERE id = ?').run(id) }
+
+function fromRunRow(r: any): StoredGenRun {
+  return {
+    id: String(r.id), status: String(r.status ?? 'pending'), source: String(r.source ?? ''),
+    itemCount: Number(r.itemCount ?? 0), newIdeas: Number(r.newIdeas ?? 0),
+    error: String(r.error ?? ''), startedAt: String(r.startedAt), completedAt: String(r.completedAt ?? ''),
+  }
+}
+function saveRun(r: StoredGenRun): void {
+  db.prepare('INSERT OR REPLACE INTO project_gen_runs (id,status,source,itemCount,newIdeas,error,startedAt,completedAt) VALUES (@id,@status,@source,@itemCount,@newIdeas,@error,@startedAt,@completedAt)').run(r)
+}
+function latestRun(): StoredGenRun | null {
+  const r = db.prepare('SELECT * FROM project_gen_runs ORDER BY startedAt DESC LIMIT 1').get() as any
+  return r ? fromRunRow(r) : null
+}
+
+// ─── Project Ideas — routes ───────────────────────────────────────────────────
+
+// List ideas (optional ?status=new|liked|rejected|snoozed|completed)
+inventoryRouter.get('/project-ideas', (req, res) => {
+  try {
+    const st = typeof req.query.status === 'string' ? req.query.status : undefined
+    const ideas = loadIdeas(st && IDEA_STATUSES.includes(st as any) ? st : undefined)
+    const run = latestRun()
+    res.json({ ideas, run, fetchedAt: new Date().toISOString() })
+  } catch (err: any) { res.status(500).json({ error: err.message }) }
+})
+
+// Status of the latest generation run
+inventoryRouter.get('/project-ideas/gen-status', (_req, res) => {
+  try {
+    res.json({ run: latestRun(), fetchedAt: new Date().toISOString() })
+  } catch (err: any) { res.status(500).json({ error: err.message }) }
+})
+
+// Trigger an async generation run
+inventoryRouter.post('/project-ideas/generate', (req, res) => {
+  try {
+    const ocLive = isLive('openclaw')
+    const hmLive = isLive('hermes')
+    if (!ocLive && !hmLive) {
+      return res.status(409).json({ error: 'No connected agent — enable OpenClaw or Hermes in Settings.' })
+    }
+    const existing = latestRun()
+    if (existing && existing.status === 'pending') {
+      return res.status(409).json({ error: 'Generation is already in progress.', run: existing })
+    }
+    const source = (req.body?.source === 'hermes' && hmLive) ? 'hermes' : ocLive ? 'openclaw' : 'hermes'
+    const allItems = loadItems()
+
+    // Load full backlog before generation so the agent knows what to avoid
+    const allIdeas = loadIdeas()
+    const rejectedIdeas = allIdeas.filter(i => i.status === 'rejected')
+    const likedIdeas    = allIdeas.filter(i => i.status === 'liked')
+    const snoozedIdeas  = allIdeas.filter(i => i.status === 'snoozed')
+    const existingIdeas = allIdeas.filter(i => i.status !== 'rejected')
+    const rejectedWithReason = rejectedIdeas.filter(i => i.rejectionReason.trim().length > 0).length
+    console.log(`[ProjectIdeas] Starting generation — context: ${rejectedIdeas.length} rejected (${rejectedWithReason} with reasons), ${likedIdeas.length} liked, ${snoozedIdeas.length} snoozed, ${existingIdeas.length} existing`)
+
+    const ctx: ProjectBacklogContext = {
+      rejected: rejectedIdeas.map(i => ({ title: i.title, description: i.description, category: i.category, rejectionReason: i.rejectionReason, haveParts: i.haveParts })),
+      liked:    likedIdeas.map(i => ({ title: i.title, description: i.description, category: i.category, haveParts: i.haveParts })),
+      snoozed:  snoozedIdeas.map(i => ({ title: i.title, description: i.description, category: i.category })),
+      existing: existingIdeas.map(i => ({ title: i.title, description: i.description, category: i.category, status: i.status })),
+    }
+
+    const run: StoredGenRun = {
+      id: randomUUID(), status: 'pending', source,
+      itemCount: allItems.length, newIdeas: 0, error: '',
+      startedAt: new Date().toISOString(), completedAt: '',
+    }
+    saveRun(run)
+    const summaries = allItems.map(it => ({
+      id: it.id, name: it.name, category: it.category, quantity: it.quantity,
+      condition: it.condition, manufacturer: it.manufacturer, model: it.model,
+      summary: it.summary, specs: it.specs, tags: it.tags, notes: it.notes, status: it.status,
+    }))
+    suggestProjects(summaries, source as any, ctx).then(rawIdeas => {
+      const { kept, filtered } = dedupeIdeas(rawIdeas, ctx)
+
+      // ── Dedupe decision report ──────────────────────────────────────────────
+      const sep = '─'.repeat(60)
+      console.log(`[ProjectIdeas] ${sep}`)
+      console.log(`[ProjectIdeas]  Dedupe report — ${rawIdeas.length} idea${rawIdeas.length !== 1 ? 's' : ''} from agent`)
+      console.log(`[ProjectIdeas] ${sep}`)
+      for (const k of kept) {
+        console.log(`[ProjectIdeas]  ✓ KEPT   "${k.title}"`)
+        console.log(`[ProjectIdeas]           category: ${k.category}  |  concepts: ${k.conceptFamily}`)
+      }
+      for (const f of filtered) {
+        console.log(`[ProjectIdeas]  ✗ DROP   "${f.title}"`)
+        console.log(`[ProjectIdeas]           concepts: ${f.conceptFamily}`)
+        console.log(`[ProjectIdeas]           reason:   ${f.reason}`)
+        if (f.matchedConceptFamily) {
+          console.log(`[ProjectIdeas]           matched:  ${f.matchedConceptFamily}`)
+        }
+        if (f.matchedRejectionNote) {
+          console.log(`[ProjectIdeas]           feedback: "${f.matchedRejectionNote}"`)
+        }
+      }
+      console.log(`[ProjectIdeas] ${sep}`)
+      console.log(`[ProjectIdeas]  Saved ${kept.length}  |  Dropped ${filtered.length}  |  Context: ${ctx.rejected.length} rejected, ${ctx.liked.length} liked`)
+      console.log(`[ProjectIdeas] ${sep}`)
+      // ───────────────────────────────────────────────────────────────────────
+      const now = new Date().toISOString()
+      for (const idea of kept) {
+        saveIdea({
+          id: randomUUID(),
+          title: String(idea.title ?? '').slice(0, 120),
+          description: String(idea.description ?? ''),
+          whyFit: String(idea.whyFit ?? ''),
+          haveParts: Array.isArray(idea.haveParts) ? idea.haveParts.map(String) : [],
+          missingParts: Array.isArray(idea.missingParts) ? idea.missingParts.map(String) : [],
+          difficulty: ['easy','medium','hard','expert'].includes(idea.difficulty) ? idea.difficulty : 'medium',
+          timeEstimate: String(idea.timeEstimate ?? ''),
+          costEstimate: String(idea.costEstimate ?? ''),
+          confidence: Math.max(0, Math.min(100, Number(idea.confidence) || 50)),
+          coolness: Math.max(0, Math.min(100, Number(idea.coolness) || 50)),
+          requiredTools: Array.isArray(idea.requiredTools) ? idea.requiredTools.map(String) : [],
+          relatedItemIds: Array.isArray(idea.relatedItemIds) ? idea.relatedItemIds.map(String) : [],
+          nextStep: String(idea.nextStep ?? ''),
+          category: String(idea.category ?? 'experimental'),
+          status: 'new',
+          rejectionReason: '',
+          generationRunId: run.id,
+          createdAt: now,
+          updatedAt: now,
+        })
+      }
+      saveRun({ ...run, status: 'done', newIdeas: kept.length, completedAt: new Date().toISOString() })
+    }).catch(err => {
+      saveRun({ ...run, status: 'failed', error: String(err?.message ?? err).slice(0, 300), completedAt: new Date().toISOString() })
+    })
+    res.json({ ok: true, run })
+  } catch (err: any) { res.status(500).json({ error: err.message }) }
+})
+
+// Update idea status / rejection reason
+inventoryRouter.patch('/project-ideas/:ideaId', (req, res) => {
+  try {
+    const idea = loadIdea(req.params.ideaId)
+    if (!idea) return res.status(404).json({ error: 'Project idea not found' })
+    const { status, rejectionReason } = req.body ?? {}
+    if (status !== undefined && !IDEA_STATUSES.includes(status as any)) {
+      return res.status(400).json({ error: `status must be one of: ${IDEA_STATUSES.join(', ')}` })
+    }
+    const updated: StoredIdea = {
+      ...idea,
+      status: typeof status === 'string' ? status : idea.status,
+      rejectionReason: typeof rejectionReason === 'string' ? rejectionReason : idea.rejectionReason,
+      updatedAt: new Date().toISOString(),
+    }
+    saveIdea(updated)
+    res.json({ idea: updated })
+  } catch (err: any) { res.status(500).json({ error: err.message }) }
+})
+
+// Delete a single idea
+inventoryRouter.delete('/project-ideas/:ideaId', (req, res) => {
+  try {
+    if (!loadIdea(req.params.ideaId)) return res.status(404).json({ error: 'Project idea not found' })
+    deleteIdea(req.params.ideaId)
+    res.json({ ok: true })
+  } catch (err: any) { res.status(500).json({ error: err.message }) }
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 inventoryRouter.get('/:id', (req, res) => {
   const item = loadItem(req.params.id)

@@ -77,6 +77,22 @@ export function MethodologyPanel() {
         </ul>
       </div>
 
+      {data.autoGradedBuiltinSlugs && data.autoGradedBuiltinSlugs.length > 0 && (
+        <div className="bg-bg-secondary border border-white/10 rounded-xl p-4">
+          <h3 className="text-xs font-semibold uppercase tracking-wider text-text-muted mb-2">Auto-graded built-in benchmarks</h3>
+          <p className="text-[11px] text-text-muted leading-relaxed mb-2">
+            These slugs have a deterministic server-side grader. Each dispatch produces a 0–100 rubricScore automatically (exact-match, JSON deep-equal, refusal-pattern, timezone parse, …). User-defined tasks fall through to manual scoring.
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {data.autoGradedBuiltinSlugs.map(slug => (
+              <span key={slug} className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-300 border border-emerald-500/30">
+                {slug}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="bg-bg-secondary border border-white/10 rounded-xl p-4">
         <h3 className="text-xs font-semibold uppercase tracking-wider text-text-muted mb-2">Raw configuration</h3>
         <pre className="text-[10px] text-text-muted font-mono whitespace-pre-wrap overflow-x-auto">{JSON.stringify(data.config, null, 2)}</pre>

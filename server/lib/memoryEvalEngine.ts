@@ -176,6 +176,11 @@ async function retrieveWorkspaceFiles(platform: EvalPlatform, q: RetrievalQuery)
   return out.slice(0, q.topK)
 }
 
+// Re-exported from evalEngine — see comment there. Used to filter the test's
+// own dispatch sessions out of retrieval so memory benchmarks measure real
+// memory, not the echo of their own past runs.
+import { isSelfDispatchSession } from './evalEngine.js'
+
 async function retrieveSessionHistory(platform: EvalPlatform, q: RetrievalQuery): Promise<MemoryHit[]> {
   const probe = [...q.expectedFacts, ...q.forbiddenFacts, ...q.newerHints]
   const provName = `session-history-${platform}`
@@ -183,7 +188,9 @@ async function retrieveSessionHistory(platform: EvalPlatform, q: RetrievalQuery)
 
   if (platform === 'openclaw') {
     const snap = await ocSnapshot().catch(() => null)
-    const sessions = (snap?.sessionsRaw ?? []).slice(0, 30)
+    const sessions = (snap?.sessionsRaw ?? [])
+      .filter((s: any) => !isSelfDispatchSession(String(s.key ?? s.id ?? '')))
+      .slice(0, 30)
     const keys = sessions.map((s: any) => String(s.key ?? s.id ?? '')).filter(Boolean)
     const histories = keys.length ? await ocHistories(keys, 60).catch(() => ({} as Record<string, any[]>)) : {}
     for (const s of sessions) {
@@ -205,7 +212,9 @@ async function retrieveSessionHistory(platform: EvalPlatform, q: RetrievalQuery)
     }
   } else {
     const sr = await fetchSessions('hermes')
-    const sessions = sr.ok && sr.data ? sr.data.slice(0, 20) : []
+    const sessions = (sr.ok && sr.data ? sr.data : [])
+      .filter((s: any) => !isSelfDispatchSession(String(s.id ?? '')))
+      .slice(0, 20)
     for (const s of sessions) {
       const id = String(s.id ?? '')
       if (!id) continue
@@ -347,6 +356,47 @@ function scoreLatency(ms: number): number {
   return clamp(100 * (1 - (ms - MEMORY_SCORING.latencyTargetMs) / span))
 }
 
+// ─── Denial / refusal-of-premise detector (for `negative`-kind tasks) ─────────
+//
+// Substring matching alone is too dumb for negative-control tasks: an answer
+// that *mentions* forbidden facts in order to *reject* the premise (e.g.
+// "you literally put her name in the question — you don't have an octopus")
+// would be penalized identically to one that *affirms* them ("yes, Marbles
+// prefers a pirate ship"). We scan the answer for explicit refusal phrasing
+// and, when present, suppress the false-recall penalty for that run.
+//
+// The pattern list is intentionally conservative — false negatives (missing
+// a real refusal) are recoverable by the user editing the rubric, while false
+// positives (treating a fabrication as a refusal) would silently hide a real
+// scoring failure.
+const DENIAL_PATTERNS: RegExp[] = [
+  /\bi (don'?t|do not) (have|recall|remember|know|see|find|own)\b/i,
+  /\byou (don'?t|do not) (have|own|actually|really)\b/i,
+  /\bi (don'?t|do not) have (that|any|the|a|an)\b/i,
+  /\bdoesn'?t (have|own|exist|appear|seem)\b/i,
+  /\b(is|are|was|were) (not|never) (real|true|a thing|something|stored|recorded)\b/i,
+  /\b(never|haven'?t) (had|owned|mentioned|told|said|seen|heard)\b/i,
+  /\bno (record|mention|knowledge|memory|information|note|trace|sign) of\b/i,
+  /\bas far as i (know|recall|can tell|remember)\b/i,
+  /\b(can|could)'?t (confirm|verify|recall|tell|find|locate)\b/i,
+  /\b(are you|is this) (testing|joking|kidding|serious|making|sure|trying|trolling)\b/i,
+  /\bliterally (put|told|gave|wrote|named|said|included)\b/i,
+  /\b(your|the) only (pet|cat|dog|animal|project|task|thing|sprint) (is|was)\b/i,
+  /\bin (your|the) (question|prompt|message|query|own words)\b/i,
+  /\bno such (thing|pet|animal|record|project|sprint)\b/i,
+  /\bthere'?s? no (record|mention|sign|trace|evidence|such)\b/i,
+  /\bdid you (just )?(make|invent|put|fabricate)\b/i,
+  /\bsecret (pet|cephalopod|cat|dog|project|sprint)\b/i,
+  /\bif .{0,40}\*?is\*? (real|actually|a thing)\b/i,
+  /\bnothing (about|in (my )?memory|in (the )?record)\b/i,
+  /\bi'?m not (aware|sure|tracking|finding|seeing)\b/i,
+]
+
+export function detectDenial(answer: string | null | undefined): boolean {
+  if (!answer) return false
+  return DENIAL_PATTERNS.some(p => p.test(answer))
+}
+
 export interface ComputeInput {
   task:           MemoryBenchmarkTask
   retrievals:     ProviderRetrieval[]
@@ -369,6 +419,12 @@ export interface ComputeResult {
   latencyScore: number | null
   coverageScore: number | null
   composite: number
+  /** For `negative`-kind runs: did the agent's answer refute the premise?
+   *  Used to suppress the false-recall penalty for correct refusals. */
+  denialDetected: boolean
+  /** Short, human-readable note about the scoring decision (e.g. "refusal
+   *  detected — false-recall penalty suppressed"). Appended to run notes. */
+  scoringNote: string
 }
 
 export function computeRunScores({ task, retrievals, appliedAnswer, totalLatencyMs }: ComputeInput): ComputeResult {
@@ -391,13 +447,34 @@ export function computeRunScores({ task, retrievals, appliedAnswer, totalLatency
   const answerHasForbiddenSet = appliedAnswer
     ? new Set(matchedSubstrings(appliedAnswer, task.forbiddenFacts)) : new Set<string>()
 
+  // For negative-control tasks, the agent's answer is judged on whether it
+  // *refuses* the premise. We detect that with the DENIAL_PATTERNS heuristic
+  // so a refutation that quotes the forbidden facts to reject them isn't
+  // mistaken for a fabrication.
+  const denialDetected = task.kind === 'negative' && detectDenial(appliedAnswer)
+  const scoringNoteParts: string[] = []
+  if (task.kind === 'negative' && appliedAnswer != null) {
+    scoringNoteParts.push(denialDetected
+      ? 'refusal detected — agent refuted the premise; false-recall penalty suppressed'
+      : 'no explicit refusal detected — forbidden-fact mentions counted as fabrication')
+  }
+
   // Retrieval accuracy = expectedFound / expectedTotal (null if no expectedFacts).
   const retrievalAccuracy = task.expectedFacts.length > 0
     ? r1((expectedFound.size / task.expectedFacts.length) * 100) : null
 
-  // Usage accuracy = expected facts present in agent answer (null when no answer).
-  const usageAccuracy = appliedAnswer != null && task.expectedFacts.length > 0
-    ? r1((answerHasExpectedSet.size / task.expectedFacts.length) * 100) : null
+  // Usage accuracy:
+  //  - For `negative` tasks the "usage" semantic is "did the agent correctly
+  //    refuse?" — so 100 when denial detected, 0 when not (and an answer exists).
+  //  - For other kinds, it's the standard expected-facts-in-answer ratio.
+  let usageAccuracy: number | null = null
+  if (appliedAnswer != null) {
+    if (task.kind === 'negative') {
+      usageAccuracy = denialDetected ? 100 : 0
+    } else if (task.expectedFacts.length > 0) {
+      usageAccuracy = r1((answerHasExpectedSet.size / task.expectedFacts.length) * 100)
+    }
+  }
 
   // Freshness: when newerHints are provided, reward top-ranked hits that
   // include them. Null when no newerHints declared.
@@ -422,20 +499,26 @@ export function computeRunScores({ task, retrievals, appliedAnswer, totalLatency
   }
 
   // False recall penalty:
-  //  - For kind='negative': the agent must NOT claim expectedFacts (which are
-  //    intentionally non-existent in memory). Penalty = % of expectedFacts the
-  //    agent fabricated in its answer.
-  //  - For all kinds: forbiddenFacts present in the answer also incur penalty.
+  //  - For kind='negative' WITHOUT a detected denial: count expectedFacts the
+  //    agent fabricated (rare since expectedFacts is usually empty here) +
+  //    forbiddenFacts repeated in the answer.
+  //  - For kind='negative' WITH a detected denial: skip both — quoting the
+  //    forbidden terms inside a refutation is correct behavior.
+  //  - For all other kinds: forbiddenFacts in the answer always incur penalty.
   let penalty = 0
   if (appliedAnswer != null) {
-    if (task.kind === 'negative' && task.expectedFacts.length > 0) {
+    const negativeWithoutDenial = task.kind === 'negative' && !denialDetected
+    if (negativeWithoutDenial && task.expectedFacts.length > 0) {
       penalty += (answerHasExpectedSet.size / task.expectedFacts.length) * 100
     }
-    if (task.forbiddenFacts.length > 0) {
+    const suppressForbiddenAnswerPenalty = task.kind === 'negative' && denialDetected
+    if (task.forbiddenFacts.length > 0 && !suppressForbiddenAnswerPenalty) {
       penalty += (answerHasForbiddenSet.size / task.forbiddenFacts.length) * 100
     }
   }
-  // Also penalise the retrieval layer for surfacing forbidden facts as top hits.
+  // Retrieval-layer false positives (forbidden facts surfaced as top hits)
+  // still apply even when the agent denied — the memory layer itself
+  // shouldn't be returning them.
   if (task.forbiddenFacts.length > 0 && forbiddenFoundSet.size > 0) {
     penalty += (forbiddenFoundSet.size / task.forbiddenFacts.length) * 25
   }
@@ -472,12 +555,41 @@ export function computeRunScores({ task, retrievals, appliedAnswer, totalLatency
     answerHasForbidden: answerHasForbiddenSet.size,
     retrievalAccuracy, usageAccuracy, freshnessScore, conflictResolution,
     falseRecallPenalty, latencyScore, coverageScore, composite,
+    denialDetected, scoringNote: scoringNoteParts.join(' · '),
   }
 }
 
 // ─── Dispatch ─────────────────────────────────────────────────────────────────
 
 const APPLIED_KINDS = new Set(['applied', 'conflict', 'multihop', 'negative'])
+
+/**
+ * Status rules for a completed memory run. Extracted from executeMemoryRun
+ * so the predicate is testable in isolation without standing up a live
+ * gateway. Returns the run.status value to persist:
+ *  - 'failure':    negative-kind run where the agent answered without
+ *                  refusing and either echoed forbidden facts or had usage=0;
+ *                  also any run with no signal at all.
+ *  - 'unresolved': applied-kind run where the agent returned an empty answer.
+ *  - 'success':    composite > 0 and nothing in the failure/unresolved branches.
+ */
+export function determineMemoryRunStatus(
+  task: Pick<MemoryBenchmarkTask, 'kind' | 'forbiddenFacts'>,
+  scored: Pick<ComputeResult, 'composite' | 'denialDetected' | 'answerHasForbidden' | 'usageAccuracy' | 'hits'>,
+  appliedAnswer: string | null,
+): 'success' | 'failure' | 'unresolved' {
+  const fabricatedNegative = task.kind === 'negative'
+    && appliedAnswer != null
+    && !scored.denialDetected
+    && (scored.answerHasForbidden > 0 || (task.forbiddenFacts.length === 0 && scored.usageAccuracy === 0))
+  const emptyApplied = APPLIED_KINDS.has(task.kind) && appliedAnswer != null && !appliedAnswer.trim()
+  const noSignal = scored.composite === 0 && appliedAnswer == null && scored.hits.length === 0
+
+  if (fabricatedNegative) return 'failure'
+  if (emptyApplied)       return 'unresolved'
+  if (noSignal)           return 'failure'
+  return scored.composite > 0 ? 'success' : 'unresolved'
+}
 
 /**
  * Synchronously persist a "running" placeholder row for a memory benchmark
@@ -496,6 +608,7 @@ export function prepareMemoryRun(task: MemoryBenchmarkTask, opts?: { model?: str
     retrievalAccuracy: null, usageAccuracy: null, freshnessScore: null, conflictResolution: null,
     falseRecallPenalty: 0, latencyScore: null, coverageScore: null,
     composite: 0, latencyMs: 0, notes: 'Memory benchmark in progress…',
+    denialDetected: false, scoringNote: '',
   })
 }
 
@@ -567,12 +680,16 @@ export async function executeMemoryRun(
   const scored = computeRunScores({ task, retrievals, appliedAnswer, totalLatencyMs })
 
   const provErrs = retrievals.filter(r => r.error).map(r => `${r.provider}: ${r.error}`).join('; ')
-  const noteParts = [appliedNotes, provErrs].filter(Boolean)
+  // scored.scoringNote captures kind-specific scoring decisions (e.g. refusal
+  // detected on a negative-control task) so the drilldown explains why the
+  // composite landed where it did instead of looking like an arbitrary number.
+  const noteParts = [scored.scoringNote, appliedNotes, provErrs].filter(Boolean)
+
+  const status = determineMemoryRunStatus(task, scored, appliedAnswer)
 
   const final: Partial<MemoryBenchmarkRun> = {
     model: (opts?.model && opts.model.trim()) || declaredModel,
-    status: scored.composite === 0 && appliedAnswer == null && scored.hits.length === 0 ? 'failure'
-            : scored.composite > 0 ? 'success' : 'unresolved',
+    status,
     providersUsed: retrievals.map(r => r.provider),
     hits: scored.hits,
     expectedFound: scored.expectedFound, expectedTotal: task.expectedFacts.length,
@@ -589,6 +706,10 @@ export async function executeMemoryRun(
     coverageScore: scored.coverageScore,
     composite: scored.composite, latencyMs: totalLatencyMs,
     notes: noteParts.join(' | ').slice(0, 1500),
+    // Persist negative-control telemetry separately from `notes` so the UI can
+    // render a refusal badge + reason without parsing free-text diagnostics.
+    denialDetected: scored.denialDetected,
+    scoringNote: scored.scoringNote,
     ts: new Date().toISOString(),
   }
   const updated = updateMemoryRun(placeholder.id, final)
@@ -785,7 +906,7 @@ export function memoryMethodology() {
       { key: 'temporal',  label: 'Temporal recall',      detail: 'Prefer the newest matching fact via newerHints.' },
       { key: 'conflict',  label: 'Conflict resolution',  detail: 'Expected fact is canonical; forbidden fact is stale/conflicting — agent must pick the canonical one.' },
       { key: 'applied',   label: 'Applied memory usage', detail: 'Send the query to the live agent; score whether expected facts appear in the answer.' },
-      { key: 'negative',  label: 'False-memory resistance', detail: 'Probe for facts NOT in memory; agent must not invent them. expectedFacts here are things the answer must NOT contain.' },
+      { key: 'negative',  label: 'False-memory resistance', detail: 'Probe for facts NOT in memory. Scoring is refusal-aware: the engine detects denial / refutation language and, when present, suppresses the false-recall penalty for forbidden-fact mentions inside the refutation. Quoting the premise to reject it is correct behavior, not fabrication.' },
     ],
     subScores: Object.entries(MEMORY_SUBSCORE_LABELS).map(([key, label]) => ({
       key, label, weight: MEMORY_SCORING.weights[key] ?? (key === 'falseRecallPenalty' ? -MEMORY_SCORING.falseRecallWeight : 0),
@@ -797,6 +918,7 @@ export function memoryMethodology() {
       `Latency: <= ${MEMORY_SCORING.latencyTargetMs}ms scores 100, >= ${MEMORY_SCORING.latencyDeadMs}ms scores 0.`,
       `Sample-size confidence: 1 − e^(−n/${MEMORY_SCORING.confidenceK}); composite is pulled toward the neutral prior of ${MEMORY_SCORING.prior} for low-volume scopes.`,
       'Retrieval is measured by case-insensitive substring matches of declared expectedFacts inside provider results — heuristic but verifiable and explicit.',
+      'Negative-control refusal handling: a heuristic scans the agent answer for denial / refutation language ("I don\'t have", "you don\'t have an X", "no record of", "literally put it in the question", etc.). When a refusal is detected, forbidden-fact mentions inside the refutation are NOT counted as false recall, and "Memory Usage" is treated as 100 (correct refusal). Without a refusal, forbidden facts in the answer apply the standard penalty. Every negative-kind run records which branch fired in its notes.',
     ],
     config: MEMORY_SCORING,
   }

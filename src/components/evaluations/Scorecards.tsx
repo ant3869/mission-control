@@ -28,6 +28,7 @@ export function ModelLeaderboard({ scorecards, selectedModel, onSelect }: Leader
             <tr className="text-left">
               <th className="px-4 py-2 font-medium">Model</th>
               <th className="px-2 py-2 font-medium text-right">Overall</th>
+              <th className="px-2 py-2 font-medium text-right" title="Average auto-graded benchmark rubric score (built-in tasks). Most reliable signal for comparing models.">Bench</th>
               <th className="px-2 py-2 font-medium text-right">Success</th>
               <th className="px-2 py-2 font-medium text-right">Failure</th>
               <th className="px-2 py-2 font-medium text-right">Recovery</th>
@@ -60,6 +61,13 @@ export function ModelLeaderboard({ scorecards, selectedModel, onSelect }: Leader
                     <span className={clsx('inline-flex items-center justify-center min-w-[42px] px-2 py-0.5 rounded-md font-semibold tabular-nums', scoreBg(c.overall), scoreColor(c.overall))}>
                       {c.overall}
                     </span>
+                  </td>
+                  <td className="px-2 py-2.5 text-right tabular-nums" title={c.benchmarkScore != null ? `${c.benchmarkRuns} benchmark run${c.benchmarkRuns === 1 ? '' : 's'} (auto-graded built-ins + any manual rubric scores averaged)` : 'no graded benchmark runs yet — dispatch a built-in task'}>
+                    {c.benchmarkScore == null
+                      ? <span className="text-text-muted">—</span>
+                      : <span className={clsx('inline-flex items-center justify-center min-w-[36px] px-1.5 py-0.5 rounded font-semibold', scoreBg(c.benchmarkScore), scoreColor(c.benchmarkScore))}>
+                          {Math.round(c.benchmarkScore)}
+                        </span>}
                   </td>
                   <td className={clsx('px-2 py-2.5 text-right tabular-nums', c.successRate != null && c.successRate < 60 && 'text-amber-300')}>{fmtPct(c.successRate)}</td>
                   <td className={clsx('px-2 py-2.5 text-right tabular-nums', c.failureRate != null && c.failureRate > 20 && 'text-red-300')}>{fmtPct(c.failureRate)}</td>

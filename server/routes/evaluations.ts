@@ -31,6 +31,7 @@ import {
 import {
   detectProviders, buildMemoryOverview, prepareMemoryRun, executeMemoryRun, memoryMethodology,
 } from '../lib/memoryEvalEngine.js'
+import { gradeBuiltinAnswer, listAutoGradedSlugs } from '../lib/benchmarkGraders.js'
 
 export const evaluationsRouter = Router()
 
@@ -216,9 +217,12 @@ evaluationsRouter.post('/benchmarks/tasks', (req, res) => {
 })
 
 evaluationsRouter.delete('/benchmarks/tasks/:id', (req, res) => {
-  const ok = deleteBenchmarkTask(req.params.id)
-  if (!ok) return res.status(404).json({ error: 'Task not found' })
-  res.json({ ok: true })
+  const r = deleteBenchmarkTask(req.params.id)
+  if (r.ok) return res.json({ ok: true })
+  if (r.reason === 'builtin') {
+    return res.status(409).json({ error: 'This is a built-in benchmark task. Built-ins ship with the dashboard and cannot be deleted — clone it instead.' })
+  }
+  return res.status(404).json({ error: 'Task not found' })
 })
 
 // Helpers for benchmark execution.
@@ -325,13 +329,57 @@ evaluationsRouter.post('/benchmarks/run', async (req, res) => {
           } catch { /* keep declared */ }
         }
 
+        // Pull the agent's final reply out of the (possibly mixed) message
+        // stream so the UI can show it in the drilldown for successful runs.
+        const finalAssistant = [...exec.messages].reverse().find(m => String(m?.role) === 'assistant')
+        const answer = extractText(finalAssistant?.content).trim()
+
+        // Automated grading for built-in benchmarks: each built-in slug has a
+        // deterministic grader (exact-match, JSON deep-equal, refusal pattern,
+        // …) so the rubricScore reflects real model performance instead of
+        // staying null until someone manually scores it. Without this, every
+        // dispatch was logged as `outcome=success` purely because the agent
+        // replied something — making the leaderboard meaningless for
+        // comparison.
+        let rubricScore: number | null = null
+        let gradeNote = ''
+        if (task.builtIn && task.builtInSlug && answer) {
+          const r = gradeBuiltinAnswer(task.builtInSlug, answer)
+          if (r) {
+            rubricScore = r.score
+            gradeNote = `auto-graded ${r.score}/100 · ${r.reason}`
+          }
+        }
+
+        // If the auto-grader judged a hard failure, override the
+        // transcript-derived outcome. A model that "replies cleanly" with the
+        // wrong answer should rank as a failure, not a success.
+        const gradedFailure = rubricScore != null && rubricScore < 50
+        const effectiveOutcome: RunOutcome = gradedFailure ? 'failure' : q.outcome
+        const effectiveStatus = effectiveOutcome === 'unresolved'
+          ? 'unresolved'
+          : effectiveOutcome === 'failure'
+            ? 'failure'
+            : 'success'
+
+        const noResponseNote = exec.status === 'no-response' ? 'Agent returned no response within ~4 minutes.' : ''
+        const combinedNotes = [noResponseNote, gradeNote].filter(Boolean).join(' | ')
+
         updateBenchmarkRun(pending.id, {
           model: resolvedModel || 'unknown',
-          status: q.outcome === 'unresolved' ? 'unresolved' : q.outcome === 'failure' ? 'failure' : 'success',
-          outcome: q.outcome,
+          status: effectiveStatus,
+          outcome: effectiveOutcome,
           toolCalls: q.toolCalls, wastedToolCalls: q.wastedToolCalls,
           retries: q.repeatedToolCalls + Math.floor(q.oscillations / 2),
-          durationMs: exec.durationMs, notes: exec.status === 'no-response' ? 'Agent returned no response within ~4 minutes.' : '',
+          durationMs: exec.durationMs,
+          rubricScore,
+          notes: combinedNotes,
+          // Inspectable detail for the drilldown — captured for every outcome.
+          answer,
+          toolSequence: q.toolSequence,
+          repeatedToolCalls: q.repeatedToolCalls,
+          oscillations: q.oscillations,
+          noProgressTools: q.noProgressTools,
           ts: new Date().toISOString(),
         })
       } catch (err: any) {
@@ -370,7 +418,7 @@ evaluationsRouter.post('/manual-score', (req, res) => {
 
 // Scoring methodology — transparent rules used to compute every score.
 evaluationsRouter.get('/scoring-methodology', (_req, res) => {
-  res.json({ ...methodology(), fetchedAt: new Date().toISOString() })
+  res.json({ ...methodology(), autoGradedBuiltinSlugs: listAutoGradedSlugs(), fetchedAt: new Date().toISOString() })
 })
 
 // ─── Memory benchmarking ──────────────────────────────────────────────────────
@@ -427,9 +475,12 @@ evaluationsRouter.post('/memory/tasks', (req, res) => {
 })
 
 evaluationsRouter.delete('/memory/tasks/:id', (req, res) => {
-  const ok = deleteMemoryTask(req.params.id)
-  if (!ok) return res.status(404).json({ error: 'Task not found' })
-  res.json({ ok: true })
+  const r = deleteMemoryTask(req.params.id)
+  if (r.ok) return res.json({ ok: true })
+  if (r.reason === 'builtin') {
+    return res.status(409).json({ error: 'This is a built-in memory task. Built-ins ship with the dashboard and cannot be deleted — clone it instead.' })
+  }
+  return res.status(404).json({ error: 'Task not found' })
 })
 
 evaluationsRouter.get('/memory/runs', (req, res) => {

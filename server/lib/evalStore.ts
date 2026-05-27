@@ -28,6 +28,8 @@ export interface BenchmarkTask {
   rubric:       string        // free-text scoring guidance for manual rubric scoring
   expectedTools: string[]     // tools a good run is expected to use (optional)
   notes:        string
+  builtIn:      boolean       // true = ships with the dashboard; UI protects from delete
+  builtInSlug:  string        // catalog slug; '' for user-created tasks
   createdAt:    string
   updatedAt:    string
 }
@@ -48,6 +50,13 @@ export interface BenchmarkRun {
   cost:        number
   rubricScore: number | null  // 0..100 manual rubric score (null = not scored)
   notes:       string
+  // Inspectable detail captured at completion so the UI can show the same
+  // drilldown for successful runs as it does for failed ones.
+  answer:      string         // final assistant text returned by the live agent
+  toolSequence: string[]      // ordered tool names from the run's transcript
+  repeatedToolCalls: number   // consecutive identical (name+arg) tool calls
+  oscillations: number        // A,B,A ping-pong patterns
+  noProgressTools: number     // tool calls whose result was an error
   ts:          string
 }
 
@@ -150,6 +159,18 @@ db.exec(`UPDATE benchmark_runs SET status = 'error', outcome = 'failure',
   notes = 'Server restarted while this run was in flight — dispatch the task again.'
   WHERE status = 'running'`)
 
+// Idempotent migration: add the drilldown columns if the table pre-dates them.
+function tryAddColumn(table: string, column: string, decl: string) {
+  try { db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${decl}`) } catch { /* column already exists */ }
+}
+tryAddColumn('benchmark_runs', 'answer',            "TEXT NOT NULL DEFAULT ''")
+tryAddColumn('benchmark_runs', 'toolSequence',      "TEXT NOT NULL DEFAULT '[]'")
+tryAddColumn('benchmark_runs', 'repeatedToolCalls', 'INTEGER NOT NULL DEFAULT 0')
+tryAddColumn('benchmark_runs', 'oscillations',      'INTEGER NOT NULL DEFAULT 0')
+tryAddColumn('benchmark_runs', 'noProgressTools',   'INTEGER NOT NULL DEFAULT 0')
+tryAddColumn('benchmark_tasks', 'builtIn',          'INTEGER NOT NULL DEFAULT 0')
+tryAddColumn('benchmark_tasks', 'builtInSlug',      "TEXT NOT NULL DEFAULT ''")
+
 function pj<T>(s: string, fb: T): T { try { return JSON.parse(s) as T } catch { return fb } }
 
 // ─── Benchmark tasks ──────────────────────────────────────────────────────────
@@ -159,6 +180,7 @@ function taskFromRow(r: any): BenchmarkTask {
     id: String(r.id), platform: r.platform, agent: String(r.agent ?? ''),
     title: String(r.title ?? ''), prompt: String(r.prompt ?? ''), rubric: String(r.rubric ?? ''),
     expectedTools: pj(String(r.expectedTools ?? '[]'), []), notes: String(r.notes ?? ''),
+    builtIn: Boolean(r.builtIn), builtInSlug: String(r.builtInSlug ?? ''),
     createdAt: String(r.createdAt), updatedAt: String(r.updatedAt),
   }
 }
@@ -176,27 +198,65 @@ export function getBenchmarkTask(id: string): BenchmarkTask | null {
 }
 
 export function createBenchmarkTask(input: {
-  platform: EvalPlatform; agent?: string; title: string; prompt: string
+  id?: string; platform: EvalPlatform; agent?: string; title: string; prompt: string
   rubric?: string; expectedTools?: string[]; notes?: string
+  builtIn?: boolean; builtInSlug?: string
 }): BenchmarkTask {
   const now = new Date().toISOString()
   const task: BenchmarkTask = {
-    id: randomUUID(), platform: input.platform, agent: (input.agent ?? '').trim(),
+    id: input.id ?? randomUUID(), platform: input.platform, agent: (input.agent ?? '').trim(),
     title: input.title.trim(), prompt: input.prompt.trim(), rubric: (input.rubric ?? '').trim(),
     expectedTools: (input.expectedTools ?? []).map(String).filter(Boolean), notes: (input.notes ?? '').trim(),
+    builtIn: !!input.builtIn, builtInSlug: (input.builtInSlug ?? '').trim(),
     createdAt: now, updatedAt: now,
   }
   db.prepare(`INSERT INTO benchmark_tasks
-    (id,platform,agent,title,prompt,rubric,expectedTools,notes,createdAt,updatedAt)
-    VALUES (@id,@platform,@agent,@title,@prompt,@rubric,@expectedTools,@notes,@createdAt,@updatedAt)`)
-    .run({ ...task, expectedTools: JSON.stringify(task.expectedTools) })
+    (id,platform,agent,title,prompt,rubric,expectedTools,notes,builtIn,builtInSlug,createdAt,updatedAt)
+    VALUES (@id,@platform,@agent,@title,@prompt,@rubric,@expectedTools,@notes,@builtIn,@builtInSlug,@createdAt,@updatedAt)`)
+    .run({
+      ...task,
+      expectedTools: JSON.stringify(task.expectedTools),
+      builtIn: task.builtIn ? 1 : 0,
+    })
   return task
 }
 
-export function deleteBenchmarkTask(id: string): boolean {
-  const r = db.prepare('DELETE FROM benchmark_tasks WHERE id = ?').run(id)
+export function deleteBenchmarkTask(id: string): { ok: boolean; reason?: string } {
+  // Built-in tasks ship with the dashboard and are reinstalled on every start.
+  // Refuse delete at the storage layer so curl / mis-clicks can't drop them.
+  const row = db.prepare('SELECT builtIn FROM benchmark_tasks WHERE id = ?').get(id) as any
+  if (!row) return { ok: false, reason: 'not-found' }
+  if (Number(row.builtIn) === 1) return { ok: false, reason: 'builtin' }
+  db.prepare('DELETE FROM benchmark_tasks WHERE id = ?').run(id)
   db.prepare('DELETE FROM benchmark_runs WHERE taskId = ?').run(id)
-  return Number(r.changes) > 0
+  return { ok: true }
+}
+
+/** Install (insert if missing) every built-in benchmark task for every
+ *  platform. Idempotent — built-ins are keyed by `builtin:<slug>:<platform>`
+ *  so a row is never duplicated and user-edited content is preserved on
+ *  restart. Skip with the SKIP_EVAL_SEEDS env var. */
+export function installBuiltinBenchmarkTasks(
+  catalog: ReadonlyArray<{ slug: string; title: string; prompt: string; rubric: string; expectedTools: string[]; notes: string }>,
+  platforms: ReadonlyArray<EvalPlatform>,
+  idFor: (slug: string, platform: EvalPlatform) => string,
+): { installed: number; skipped: number } {
+  if (process.env.SKIP_EVAL_SEEDS) return { installed: 0, skipped: 0 }
+  let installed = 0, skipped = 0
+  const exists = db.prepare('SELECT 1 FROM benchmark_tasks WHERE id = ?')
+  for (const platform of platforms) {
+    for (const entry of catalog) {
+      const id = idFor(entry.slug, platform)
+      if (exists.get(id)) { skipped++; continue }
+      createBenchmarkTask({
+        id, platform, title: entry.title, prompt: entry.prompt, rubric: entry.rubric,
+        expectedTools: entry.expectedTools, notes: entry.notes,
+        builtIn: true, builtInSlug: entry.slug,
+      })
+      installed++
+    }
+  }
+  return { installed, skipped }
 }
 
 // ─── Benchmark runs ───────────────────────────────────────────────────────────
@@ -209,7 +269,13 @@ function runFromRow(r: any): BenchmarkRun {
     retries: Number(r.retries ?? 0), durationMs: Number(r.durationMs ?? 0),
     tokens: Number(r.tokens ?? 0), cost: Number(r.cost ?? 0),
     rubricScore: r.rubricScore == null ? null : Number(r.rubricScore),
-    notes: String(r.notes ?? ''), ts: String(r.ts),
+    notes: String(r.notes ?? ''),
+    answer: String(r.answer ?? ''),
+    toolSequence: pj(String(r.toolSequence ?? '[]'), []),
+    repeatedToolCalls: Number(r.repeatedToolCalls ?? 0),
+    oscillations: Number(r.oscillations ?? 0),
+    noProgressTools: Number(r.noProgressTools ?? 0),
+    ts: String(r.ts),
   }
 }
 
@@ -223,12 +289,30 @@ export function listBenchmarkRuns(filter?: { platform?: EvalPlatform; model?: st
   return (db.prepare(sql).all(...args) as any[]).map(runFromRow)
 }
 
+function runToRow(run: BenchmarkRun): Record<string, any> {
+  return {
+    ...run,
+    toolSequence: JSON.stringify(run.toolSequence ?? []),
+    // Optional fields default to safe values for INSERT statements.
+    answer: run.answer ?? '',
+    repeatedToolCalls: run.repeatedToolCalls ?? 0,
+    oscillations: run.oscillations ?? 0,
+    noProgressTools: run.noProgressTools ?? 0,
+  }
+}
+
 export function createBenchmarkRun(input: Omit<BenchmarkRun, 'id' | 'ts'> & { id?: string; ts?: string }): BenchmarkRun {
-  const run: BenchmarkRun = { id: input.id ?? randomUUID(), ts: input.ts ?? new Date().toISOString(), ...input } as BenchmarkRun
+  const run: BenchmarkRun = {
+    id: input.id ?? randomUUID(), ts: input.ts ?? new Date().toISOString(),
+    answer: '', toolSequence: [], repeatedToolCalls: 0, oscillations: 0, noProgressTools: 0,
+    ...input,
+  } as BenchmarkRun
   db.prepare(`INSERT INTO benchmark_runs
-    (id,taskId,platform,agent,model,status,outcome,toolCalls,wastedToolCalls,retries,durationMs,tokens,cost,rubricScore,notes,ts)
-    VALUES (@id,@taskId,@platform,@agent,@model,@status,@outcome,@toolCalls,@wastedToolCalls,@retries,@durationMs,@tokens,@cost,@rubricScore,@notes,@ts)`)
-    .run(run as any)
+    (id,taskId,platform,agent,model,status,outcome,toolCalls,wastedToolCalls,retries,durationMs,tokens,cost,rubricScore,notes,
+     answer,toolSequence,repeatedToolCalls,oscillations,noProgressTools,ts)
+    VALUES (@id,@taskId,@platform,@agent,@model,@status,@outcome,@toolCalls,@wastedToolCalls,@retries,@durationMs,@tokens,@cost,@rubricScore,@notes,
+     @answer,@toolSequence,@repeatedToolCalls,@oscillations,@noProgressTools,@ts)`)
+    .run(runToRow(run))
   return run
 }
 
@@ -237,14 +321,17 @@ export function createBenchmarkRun(input: Omit<BenchmarkRun, 'id' | 'ts'> & { id
 export function updateBenchmarkRun(id: string, patch: Partial<Omit<BenchmarkRun, 'id'>>): BenchmarkRun | null {
   const cur = db.prepare('SELECT * FROM benchmark_runs WHERE id = ?').get(id) as any
   if (!cur) return null
-  const merged = { ...cur, ...patch, id }
+  const merged = { ...runFromRow(cur), ...patch, id } as BenchmarkRun
   db.prepare(`UPDATE benchmark_runs SET
     taskId=@taskId, platform=@platform, agent=@agent, model=@model,
     status=@status, outcome=@outcome, toolCalls=@toolCalls, wastedToolCalls=@wastedToolCalls,
     retries=@retries, durationMs=@durationMs, tokens=@tokens, cost=@cost,
-    rubricScore=@rubricScore, notes=@notes, ts=@ts
-    WHERE id=@id`).run(merged)
-  return runFromRow(merged)
+    rubricScore=@rubricScore, notes=@notes,
+    answer=@answer, toolSequence=@toolSequence, repeatedToolCalls=@repeatedToolCalls,
+    oscillations=@oscillations, noProgressTools=@noProgressTools,
+    ts=@ts
+    WHERE id=@id`).run(runToRow(merged))
+  return merged
 }
 
 // ─── Manual scores ────────────────────────────────────────────────────────────
@@ -313,4 +400,19 @@ export function saveSnapshot(input: Omit<ModelScoreSnapshot, 'id' | 'ts'> & { ts
     VALUES (@id,@platform,@model,@windowDays,@overall,@subScores,@runCount,@evaluatedCount,@ts)`)
     .run({ ...snap, subScores: JSON.stringify(snap.subScores) })
   return snap
+}
+
+// ─── Install the curated built-in benchmark catalog on module load ─────────────
+// Idempotent: each (slug, platform) pair maps to a deterministic ID, so an
+// existing row (including one the user has edited) is preserved. New entries
+// added to the catalog show up on next start; deletions in code do NOT remove
+// existing rows from the DB.
+{
+  // Dynamic import lives at module-load time but avoids the cycle of having
+  // the catalog file pull in evalStore.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  import('./builtinEvalTasks.js').then(({ BUILTIN_BENCHMARKS, BUILTIN_BENCHMARK_PLATFORMS, builtinBenchmarkId }) => {
+    const r = installBuiltinBenchmarkTasks(BUILTIN_BENCHMARKS, BUILTIN_BENCHMARK_PLATFORMS, builtinBenchmarkId)
+    if (r.installed > 0) console.log(`[Evaluations] installed ${r.installed} built-in benchmark task${r.installed === 1 ? '' : 's'} (skipped ${r.skipped} already-present)`)
+  }).catch(err => console.error('[Evaluations] built-in benchmark install failed:', err))
 }
