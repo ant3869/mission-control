@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.7.1] — 2026-06-06
+
+### Changed
+
+- **Harness Benchmarks · Compare** now defaults to **latest completed run** per model + provider + harness + task pack, so an older low run no longer drags down the current score. Added a **Compare by: Latest / Average / Best** toggle (Latest default) and a Task pack column; runs column shows used/available.
+- **Recent runs** are now cards showing model, task pack, score, relative time, ✓/✗ counts, and execution mode (`harness_direct`); the selected run is clearly highlighted.
+- **Model fetch failure** is now a compact connector-status line ("OpenClaw models: connected · N / unavailable") with the error in an expandable detail — no longer a prominent warning, and never blocks runs.
+- **Task detail drawer** clearly separates **Scored model output (judged · OpenClaw `<final>` unwrapped)** from **Raw harness output (full transcript · saved for debugging)**.
+
+### Added
+
+- **Run cleanup** — delete a single run, **Clear failed** (failed/cancelled runs), and **Clear all** history (with confirmation). New `POST /api/harness-bench/runs/clear`, `GET …/comparison?mode=`.
+
 ## [0.7.0] — 2026-06-06
 
 ### Added

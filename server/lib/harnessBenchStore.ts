@@ -188,32 +188,51 @@ export function listResults(runId: string): BenchmarkTaskResult[] {
 
 // ─── cross-run model comparison ────────────────────────────────────────────────
 
+export type CompareMode = 'latest' | 'average' | 'best'
+
 export interface ModelComparisonRow {
   harness: BenchmarkHarness; modelName: string; provider: string
-  runs: number; totalScore: number; maxScore: number; overallPct: number | null
+  taskPackId: string; taskPackName: string
+  runs: number          // total completed runs available in this group
+  runsUsed: number      // how many of them this row's score is computed from (mode-dependent)
+  totalScore: number; maxScore: number; overallPct: number | null
   passRate: number | null; avgLatencyMs: number | null; failureCount: number
   laneScores: Record<string, number | null>   // lane → percentage
   lastRunAt: string
 }
 
-export function modelComparison(): ModelComparisonRow[] {
-  const runs = listRuns(500).filter(r => r.status === 'completed' || r.status === 'failed' || r.status === 'cancelled')
+/**
+ * Cross-run comparison. Grouped by harness + model + provider + task pack.
+ * mode controls which run(s) within a group the score is computed from:
+ *   - 'latest'  (default): the single most recent completed run — so an old
+ *                low run never drags down the current score.
+ *   - 'average': all completed runs in the group (aggregate).
+ *   - 'best':    the single run with the highest overall percentage.
+ */
+export function modelComparison(mode: CompareMode = 'latest'): ModelComparisonRow[] {
+  const runs = listRuns(500).filter(r => r.status === 'completed')
   const byKey = new Map<string, BenchmarkRun[]>()
   for (const r of runs) {
-    const k = `${r.harness}|${r.modelName}|${r.provider}`
+    const k = `${r.harness}|${r.modelName}|${r.provider}|${r.taskPackId}`
     const arr = byKey.get(k) ?? []; arr.push(r); byKey.set(k, arr)
   }
   const out: ModelComparisonRow[] = []
-  for (const [k, rs] of byKey) {
-    const [harness, modelName, provider] = k.split('|')
-    const results = rs.flatMap(r => listResults(r.id))
+  for (const [, rs] of byKey) {
+    const sortedDesc = [...rs].sort((a, b) => b.startedAt.localeCompare(a.startedAt))
+    const pctOf = (r: BenchmarkRun) => (r.maxScore > 0 ? r.totalScore / r.maxScore : -1)
+    let chosen: BenchmarkRun[]
+    if (mode === 'average') chosen = rs
+    else if (mode === 'best') chosen = [[...rs].sort((a, b) => pctOf(b) - pctOf(a))[0]]
+    else chosen = [sortedDesc[0]] // latest
+
+    const ref = sortedDesc[0]
+    const results = chosen.flatMap(r => listResults(r.id))
     const scored = results.filter(x => x.status === 'passed' || x.status === 'failed')
     const totalScore = scored.reduce((s, x) => s + x.points, 0)
     const maxScore = scored.reduce((s, x) => s + x.maxPoints, 0)
     const passed = scored.filter(x => x.status === 'passed').length
     const lat = results.map(x => x.latencyMs).filter((n): n is number => typeof n === 'number')
     const failureCount = results.filter(x => x.status === 'failed' || x.status === 'error').length
-    // Per-lane percentage.
     const laneScores: Record<string, number | null> = {}
     const byLane = new Map<string, BenchmarkTaskResult[]>()
     for (const x of scored) { const a = byLane.get(x.lane) ?? []; a.push(x); byLane.set(x.lane, a) }
@@ -222,14 +241,29 @@ export function modelComparison(): ModelComparisonRow[] {
       laneScores[lane] = mp > 0 ? Math.round((xs.reduce((s, x) => s + x.points, 0) / mp) * 100) : null
     }
     out.push({
-      harness: harness as BenchmarkHarness, modelName, provider,
-      runs: rs.length, totalScore, maxScore,
+      harness: ref.harness, modelName: ref.modelName, provider: ref.provider,
+      taskPackId: ref.taskPackId, taskPackName: ref.taskPackName,
+      runs: rs.length, runsUsed: chosen.length,
+      totalScore, maxScore,
       overallPct: maxScore > 0 ? Math.round((totalScore / maxScore) * 100) : null,
       passRate: scored.length ? Math.round((passed / scored.length) * 100) : null,
       avgLatencyMs: lat.length ? Math.round(lat.reduce((s, n) => s + n, 0) / lat.length) : null,
       failureCount, laneScores,
-      lastRunAt: rs.map(r => r.startedAt).sort().slice(-1)[0] ?? '',
+      lastRunAt: sortedDesc[0]?.startedAt ?? '',
     })
   }
   return out.sort((a, b) => (b.overallPct ?? -1) - (a.overallPct ?? -1))
+}
+
+/** Bulk cleanup. scope 'failed' removes failed/cancelled runs; 'all' wipes history. */
+export function clearRuns(scope: 'failed' | 'all'): number {
+  if (scope === 'all') {
+    const n = (db.prepare('SELECT COUNT(*) AS c FROM bench_runs').get() as any)?.c ?? 0
+    db.exec('DELETE FROM bench_results; DELETE FROM bench_runs;')
+    return n
+  }
+  const rows = db.prepare("SELECT id FROM bench_runs WHERE status IN ('failed','cancelled')").all() as any[]
+  for (const r of rows) db.prepare('DELETE FROM bench_results WHERE run_id = ?').run(r.id)
+  const res = db.prepare("DELETE FROM bench_runs WHERE status IN ('failed','cancelled')").run()
+  return res.changes ?? 0
 }

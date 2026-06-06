@@ -14,7 +14,7 @@ import { packSummaries, getPack } from '../lib/harnessBenchPacks.js'
 import { LANES, FAILURE_TYPES, type BenchmarkHarness } from '../lib/harnessBenchTypes.js'
 import { startRun, rerunFailed, requestCancel } from '../lib/harnessBenchRunner.js'
 import {
-  listRuns, getRunWithResults, deleteRun, modelComparison,
+  listRuns, getRunWithResults, deleteRun, modelComparison, clearRuns, type CompareMode,
 } from '../lib/harnessBenchStore.js'
 
 export const harnessBenchRouter = Router()
@@ -125,8 +125,17 @@ harnessBenchRouter.delete('/runs/:id', (req, res) => {
   res.json({ ok: true })
 })
 
+// Bulk cleanup: POST /runs/clear { scope: 'failed' | 'all' }
+harnessBenchRouter.post('/runs/clear', (req, res) => {
+  const scope = req.body?.scope === 'all' ? 'all' : 'failed'
+  const removed = clearRuns(scope)
+  res.json({ ok: true, scope, removed })
+})
+
 // ─── cross-run model comparison ───────────────────────────────────────────────────
 
-harnessBenchRouter.get('/comparison', (_req, res) => {
-  res.json({ rows: modelComparison(), lanes: LANES, fetchedAt: new Date().toISOString() })
+harnessBenchRouter.get('/comparison', (req, res) => {
+  const m = String(req.query.mode ?? 'latest')
+  const mode: CompareMode = m === 'average' || m === 'best' ? m : 'latest'
+  res.json({ rows: modelComparison(mode), mode, lanes: LANES, fetchedAt: new Date().toISOString() })
 })

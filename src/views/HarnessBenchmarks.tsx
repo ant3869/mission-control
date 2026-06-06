@@ -10,6 +10,7 @@ import { clsx } from 'clsx'
 import {
   FlaskConical, Play, Square, RotateCcw, Download, X, Loader2, CheckCircle2,
   XCircle, AlertTriangle, Clock, Cpu, Filter, RefreshCw, ChevronRight, Server, Zap,
+  Trash2, Wifi, WifiOff,
 } from 'lucide-react'
 import {
   harnessBench as api,
@@ -141,12 +142,20 @@ function DetailDrawer({ result, laneLabel, onClose }: {
 
           <Section title="Prompt"><pre className="whitespace-pre-wrap break-words text-xxs text-text-secondary font-mono">{result.prompt || '—'}</pre></Section>
           <Section title="Expected behavior"><p className="text-xs text-text-secondary leading-relaxed">{result.expectedBehavior || '—'}</p></Section>
-          <Section title="Model response"><pre className="whitespace-pre-wrap break-words text-xxs text-text-primary font-mono bg-base rounded border border-border p-2.5 max-h-72 overflow-y-auto">{result.modelResponse || '(empty)'}</pre></Section>
+          <Section title="Scored model output  ·  judged">
+            <p className="text-xxs text-text-muted -mt-0.5 mb-1">The model is scored on this — OpenClaw’s <code className="text-accent-teal">&lt;final&gt;</code> wrapper is stripped so the wrapper isn’t penalized.</p>
+            <pre className="whitespace-pre-wrap break-words text-xxs text-text-primary font-mono bg-base rounded border border-green-900/30 p-2.5 max-h-72 overflow-y-auto">{result.modelResponse || '(empty)'}</pre>
+          </Section>
           {tool && <Section title="Parsed tool call"><pre className="whitespace-pre-wrap break-words text-xxs text-accent-teal font-mono bg-base rounded border border-border p-2.5">{tool}</pre></Section>}
           <Section title="Scoring detail"><p className="text-xs text-text-secondary leading-relaxed">{result.scoreReason || '—'}</p></Section>
           {result.errorMessage && <Section title="Error"><pre className="whitespace-pre-wrap break-words text-xxs text-red-300 font-mono bg-red-950/20 rounded border border-red-900/40 p-2.5">{result.errorMessage}</pre></Section>}
           {result.notes && <Section title="Notes"><p className="text-xs text-text-muted">{result.notes}</p></Section>}
-          {raw && <Section title="Raw harness output"><pre className="whitespace-pre-wrap break-words text-xxs text-text-muted font-mono bg-base rounded border border-border p-2.5 max-h-72 overflow-y-auto">{raw.slice(0, 8000)}</pre></Section>}
+          {raw && (
+            <Section title="Raw harness output  ·  full transcript">
+              <p className="text-xxs text-text-muted -mt-0.5 mb-1">Unmodified harness transcript, saved for debugging — NOT what scoring reads.</p>
+              <pre className="whitespace-pre-wrap break-words text-xxs text-text-muted font-mono bg-base rounded border border-border p-2.5 max-h-72 overflow-y-auto">{raw.slice(0, 8000)}</pre>
+            </Section>
+          )}
         </div>
       </div>
     </div>
@@ -176,6 +185,8 @@ export function HarnessBenchmarks() {
   const [harness, setHarness] = useState<BenchmarkHarness>('hermes')
   const [models, setModels] = useState<string[]>([])
   const [modelsErr, setModelsErr] = useState<string | null>(null)
+  const [modelsStatus, setModelsStatus] = useState<'loading' | 'connected' | 'failed'>('loading')
+  const [showModelsErr, setShowModelsErr] = useState(false)
   const [model, setModel] = useState('')
   const [packId, setPackId] = useState('quick-smoke-pack')
   const [showAdvanced, setShowAdvanced] = useState(false)
@@ -193,6 +204,7 @@ export function HarnessBenchmarks() {
 
   // comparison
   const [comparison, setComparison] = useState<HbComparisonRow[]>([])
+  const [compareMode, setCompareMode] = useState<'latest' | 'average' | 'best'>('latest')
 
   const laneLabel = useCallback((id: string) => lanes.find(l => l.id === id)?.label ?? id, [lanes])
 
@@ -213,10 +225,14 @@ export function HarnessBenchmarks() {
 
   // ── load models when harness changes ──
   useEffect(() => {
-    setModels([]); setModelsErr(null)
+    setModels([]); setModelsErr(null); setModelsStatus('loading')
     api.models(harness)
-      .then(r => { setModels(r.models); if (!r.reachable && r.error) setModelsErr(r.error) })
-      .catch(e => setModelsErr(e.message))
+      .then(r => {
+        setModels(r.models)
+        setModelsStatus(r.reachable ? 'connected' : 'failed')
+        if (!r.reachable && r.error) setModelsErr(r.error)
+      })
+      .catch(e => { setModelsErr(e.message); setModelsStatus('failed') })
     // default pack matching harness
     setPackId(prev => {
       const p = packs.find(x => x.id === prev)
@@ -239,7 +255,7 @@ export function HarnessBenchmarks() {
           setTimeout(tick, POLL_MS)
         } else {
           refreshRuns()
-          if (tab === 'compare') api.comparison().then(c => setComparison(c.rows)).catch(() => {})
+          if (tab === 'compare') api.comparison(compareMode).then(c => setComparison(c.rows)).catch(() => {})
         }
       } catch { if (!stop) setTimeout(tick, POLL_MS) }
     }
@@ -249,8 +265,8 @@ export function HarnessBenchmarks() {
 
   // ── comparison load ──
   useEffect(() => {
-    if (tab === 'compare') api.comparison().then(c => setComparison(c.rows)).catch(e => setError(e.message))
-  }, [tab])
+    if (tab === 'compare') api.comparison(compareMode).then(c => setComparison(c.rows)).catch(e => setError(e.message))
+  }, [tab, compareMode])
 
   const harnessLive = harnesses.find(h => h.id === harness)?.live ?? false
   const canRun = (harnessLive || !!endpoint.trim()) && !!packId && !starting && (!run || run.status !== 'running')
@@ -278,6 +294,24 @@ export function HarnessBenchmarks() {
   const openRun = async (id: string) => {
     setActiveRunId(id); setLaneFilter(null); setDetail(null)
     try { setRun((await api.run(id)).run) } catch (e: any) { setError(e.message) }
+  }
+  const deleteRunById = async (id: string) => {
+    if (!window.confirm('Delete this benchmark run? This cannot be undone.')) return
+    try { await api.remove(id) } catch (e: any) { setError(e.message) }
+    if (activeRunId === id) { setActiveRunId(null); setRun(null) }
+    refreshRuns()
+  }
+  const clearRuns = async (scope: 'failed' | 'all') => {
+    const msg = scope === 'all'
+      ? 'Clear ALL benchmark history? Every run and result will be permanently deleted.'
+      : 'Clear all failed/cancelled runs?'
+    if (!window.confirm(msg)) return
+    try {
+      const r = await api.clear(scope)
+      if (scope === 'all' || (run && (run.status === 'failed' || run.status === 'cancelled'))) { setActiveRunId(null); setRun(null) }
+      refreshRuns()
+      setError(r.removed === 0 ? `Nothing to clear (${scope}).` : null)
+    } catch (e: any) { setError(e.message) }
   }
 
   const results = run?.results ?? []
@@ -340,6 +374,11 @@ export function HarnessBenchmarks() {
                 <datalist id="hb-models">
                   {models.map(m => <option key={m} value={m} />)}
                 </datalist>
+                <ConnectorStatus
+                  harnessLabel={harnesses.find(h => h.id === harness)?.label ?? harness}
+                  status={modelsStatus} count={models.length}
+                  error={modelsErr} expanded={showModelsErr} onToggle={() => setShowModelsErr(v => !v)}
+                />
               </Field>
 
               {/* Pack */}
@@ -399,29 +438,35 @@ export function HarnessBenchmarks() {
               )}
             </div>
 
-            {modelsErr && <p className="text-xxs text-amber-400">Models: {modelsErr} — you can still type a model id manually.</p>}
             {!harnessLive && !endpoint.trim() && (
-              <p className="text-xxs text-amber-400 flex items-center gap-1.5">
-                <AlertTriangle size={11} /> {harness} is not connected. Enable it in Settings, or set an endpoint override above.
+              <p className="text-xxs text-text-muted flex items-center gap-1.5">
+                <AlertTriangle size={11} className="text-amber-400" /> {harness} not connected — enable it in Settings, or set an endpoint override. Manual model entry still works.
               </p>
             )}
             {error && <p className="text-xxs text-red-400">{error}</p>}
           </div>
 
-          {/* Past runs strip */}
+          {/* Past runs */}
           {runsList.length > 0 && (
-            <div className="px-6 py-2 border-b border-border flex items-center gap-2 overflow-x-auto">
-              <span className="text-xxs text-text-muted shrink-0 flex items-center gap-1"><Clock size={11} /> Recent:</span>
-              {runsList.slice(0, 12).map(r => (
-                <button key={r.id} onClick={() => openRun(r.id)}
-                  className={clsx('shrink-0 flex items-center gap-1.5 px-2 py-1 rounded border text-xxs transition-colors',
-                    run?.id === r.id ? 'border-accent-blue bg-card-hover text-text-primary' : 'border-border bg-card text-text-muted hover:text-text-secondary')}>
-                  <span className={clsx('w-1.5 h-1.5 rounded-full', r.status === 'completed' ? 'bg-green-500' : r.status === 'running' ? 'bg-blue-500 animate-pulse' : r.status === 'failed' ? 'bg-red-500' : 'bg-amber-400')} />
-                  {r.harness}/{r.modelName.slice(0, 18)} · {r.taskPackName}
-                  {r.maxScore > 0 && <span className="tabular-nums">{Math.round((r.totalScore / r.maxScore) * 100)}%</span>}
-                </button>
-              ))}
-              <button onClick={refreshRuns} className="shrink-0 p-1 rounded hover:bg-card text-text-muted hover:text-text-secondary"><RefreshCw size={11} /></button>
+            <div className="px-6 py-3 border-b border-border flex flex-col gap-2">
+              <div className="flex items-center gap-2">
+                <span className="text-xxs uppercase tracking-wide text-text-muted font-medium flex items-center gap-1"><Clock size={11} /> Recent runs</span>
+                <span className="text-xxs text-text-muted">({runsList.length})</span>
+                <button onClick={refreshRuns} title="Refresh" className="p-1 rounded hover:bg-card text-text-muted hover:text-text-secondary"><RefreshCw size={11} /></button>
+                <div className="ml-auto flex items-center gap-2">
+                  <button onClick={() => clearRuns('failed')} className="flex items-center gap-1 px-2 py-1 rounded border border-border bg-card hover:bg-card-hover text-xxs text-text-muted hover:text-text-secondary">
+                    <Trash2 size={10} /> Clear failed
+                  </button>
+                  <button onClick={() => clearRuns('all')} className="flex items-center gap-1 px-2 py-1 rounded border border-red-900/40 bg-red-950/20 hover:bg-red-950/40 text-xxs text-red-300">
+                    <Trash2 size={10} /> Clear all
+                  </button>
+                </div>
+              </div>
+              <div className="flex items-stretch gap-2 overflow-x-auto pb-1">
+                {runsList.slice(0, 16).map(r => (
+                  <RunChip key={r.id} run={r} selected={run?.id === r.id} onOpen={() => openRun(r.id)} onDelete={() => deleteRunById(r.id)} />
+                ))}
+              </div>
             </div>
           )}
 
@@ -438,6 +483,12 @@ export function HarnessBenchmarks() {
                   <span className="px-2 py-0.5 rounded border border-accent-teal/40 bg-accent-teal/10 text-accent-teal text-xxs font-mono">{run.mode}</span>
                   <span className="text-xxs text-text-muted">{run.completedCount}/{run.taskCount} tasks · {relTime(run.startedAt)}</span>
                   {run.error && <span className="text-xxs text-red-400 truncate max-w-md" title={run.error}>· {run.error}</span>}
+                  {!isRunning && (
+                    <button onClick={() => deleteRunById(run.id)} title="Delete this run"
+                      className="ml-auto flex items-center gap-1 px-2 py-0.5 rounded border border-border bg-card hover:bg-red-950/30 hover:border-red-900/40 text-xxs text-text-muted hover:text-red-300 transition-colors">
+                      <Trash2 size={10} /> Delete
+                    </button>
+                  )}
                 </div>
                 <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
                   <Stat label="Harness" value={<span className="flex items-center gap-1"><Server size={12} className="text-text-muted" />{run.harness}</span>} />
@@ -516,7 +567,7 @@ export function HarnessBenchmarks() {
           )}
         </div>
       ) : (
-        <ComparisonTab rows={comparison} lanes={lanes} />
+        <ComparisonTab rows={comparison} lanes={lanes} mode={compareMode} onMode={setCompareMode} />
       )}
 
       {detail && <DetailDrawer result={detail} laneLabel={laneLabel} onClose={() => setDetail(null)} />}
@@ -526,52 +577,82 @@ export function HarnessBenchmarks() {
 
 // ─── compare tab ──────────────────────────────────────────────────────────────
 
-function ComparisonTab({ rows, lanes }: { rows: HbComparisonRow[]; lanes: HbLaneMeta[] }) {
-  if (rows.length === 0) {
-    return (
-      <div className="flex-1 flex flex-col items-center justify-center gap-2 text-center">
-        <Zap size={26} className="text-text-muted" />
-        <p className="text-sm text-text-secondary">No completed runs to compare yet.</p>
-        <p className="text-xs text-text-muted">Run a benchmark on the Benchmark tab — results aggregate here by harness + model.</p>
-      </div>
-    )
-  }
+function ComparisonTab({ rows, lanes, mode, onMode }: {
+  rows: HbComparisonRow[]; lanes: HbLaneMeta[]
+  mode: 'latest' | 'average' | 'best'; onMode: (m: 'latest' | 'average' | 'best') => void
+}) {
+  const modeBlurb = mode === 'latest'
+    ? 'Each row uses the most recent completed run per model + task pack — older runs don’t drag the score down.'
+    : mode === 'average'
+      ? 'Each row averages ALL completed runs per model + task pack.'
+      : 'Each row uses each model’s single best run per task pack.'
+  const ModeToggle = (
+    <div className="flex items-center gap-1 p-0.5 rounded-lg border border-border bg-card">
+      {(['latest', 'average', 'best'] as const).map(m => (
+        <button key={m} onClick={() => onMode(m)}
+          className={clsx('px-2.5 py-1 rounded text-xxs font-medium capitalize transition-colors',
+            mode === m ? 'bg-card-hover text-text-primary' : 'text-text-muted hover:text-text-secondary')}>
+          {m}
+        </button>
+      ))}
+    </div>
+  )
   return (
     <div className="flex-1 overflow-auto p-6">
-      <div className="rounded-xl border border-border overflow-hidden">
-        <table className="w-full text-xs">
-          <thead>
-            <tr className="border-b border-border bg-surface text-text-muted">
-              <th className="text-left font-medium px-3 py-2">Model</th>
-              <th className="text-left font-medium px-3 py-2">Harness</th>
-              <th className="text-right font-medium px-3 py-2">Overall</th>
-              <th className="text-right font-medium px-3 py-2">Pass</th>
-              <th className="text-right font-medium px-3 py-2">Latency</th>
-              <th className="text-right font-medium px-3 py-2">Fails</th>
-              <th className="text-right font-medium px-3 py-2">Runs</th>
-              {lanes.map(l => <th key={l.id} className="text-right font-medium px-2 py-2 whitespace-nowrap" title={l.label}>{l.short}</th>)}
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((r, i) => (
-              <tr key={`${r.harness}-${r.modelName}-${i}`} className="border-b border-border-subtle hover:bg-card-hover">
-                <td className="px-3 py-2 text-text-primary font-medium">{r.modelName}</td>
-                <td className="px-3 py-2 text-text-muted">{r.harness}</td>
-                <td className={clsx('px-3 py-2 text-right font-bold tabular-nums', (r.overallPct ?? 0) >= 80 ? 'text-green-400' : (r.overallPct ?? 0) >= 50 ? 'text-amber-400' : 'text-red-400')}>{r.overallPct == null ? '—' : `${r.overallPct}%`}</td>
-                <td className="px-3 py-2 text-right tabular-nums text-text-secondary">{r.passRate == null ? '—' : `${r.passRate}%`}</td>
-                <td className="px-3 py-2 text-right tabular-nums text-text-muted">{fmtLatency(r.avgLatencyMs)}</td>
-                <td className={clsx('px-3 py-2 text-right tabular-nums', r.failureCount ? 'text-red-400' : 'text-text-muted')}>{r.failureCount}</td>
-                <td className="px-3 py-2 text-right tabular-nums text-text-muted">{r.runs}</td>
-                {lanes.map(l => {
-                  const v = r.laneScores[l.id]
-                  return <td key={l.id} className={clsx('px-2 py-2 text-right tabular-nums', v == null ? 'text-text-muted/40' : v >= 80 ? 'text-green-400' : v >= 50 ? 'text-amber-400' : 'text-red-400')}>{v == null ? '·' : v}</td>
-                })}
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <div className="flex items-center justify-between mb-3 gap-3 flex-wrap">
+        <div>
+          <span className="text-xs font-semibold text-text-secondary">Model comparison</span>
+          <p className="text-xxs text-text-muted mt-0.5">{modeBlurb}</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-xxs uppercase tracking-wide text-text-muted">Compare by</span>
+          {ModeToggle}
+        </div>
       </div>
-      <p className="text-xxs text-text-muted mt-2">Aggregated across all completed runs per harness + model. Lane columns are pass-weighted percentages; “·” = no scored task in that lane yet.</p>
+      {rows.length === 0 ? (
+        <div className="flex flex-col items-center justify-center gap-2 text-center py-24">
+          <Zap size={26} className="text-text-muted" />
+          <p className="text-sm text-text-secondary">No completed runs to compare yet.</p>
+          <p className="text-xs text-text-muted">Run a benchmark on the Benchmark tab — results show up here per model + task pack.</p>
+        </div>
+      ) : (
+        <>
+          <div className="rounded-xl border border-border overflow-hidden">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b border-border bg-surface text-text-muted">
+                  <th className="text-left font-medium px-3 py-2">Model</th>
+                  <th className="text-left font-medium px-3 py-2">Task pack</th>
+                  <th className="text-right font-medium px-3 py-2">Overall</th>
+                  <th className="text-right font-medium px-3 py-2">Pass</th>
+                  <th className="text-right font-medium px-3 py-2">Latency</th>
+                  <th className="text-right font-medium px-3 py-2">Fails</th>
+                  <th className="text-right font-medium px-3 py-2" title="runs used / runs available">Runs</th>
+                  {lanes.map(l => <th key={l.id} className="text-right font-medium px-2 py-2 whitespace-nowrap" title={l.label}>{l.short}</th>)}
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r, i) => (
+                  <tr key={`${r.harness}-${r.modelName}-${r.taskPackId}-${i}`} className="border-b border-border-subtle hover:bg-card-hover">
+                    <td className="px-3 py-2 text-text-primary font-medium">{r.modelName}<span className="text-text-muted font-normal"> · {r.harness}</span></td>
+                    <td className="px-3 py-2 text-text-muted">{r.taskPackName}</td>
+                    <td className={clsx('px-3 py-2 text-right font-bold tabular-nums', (r.overallPct ?? 0) >= 80 ? 'text-green-400' : (r.overallPct ?? 0) >= 50 ? 'text-amber-400' : 'text-red-400')}>{r.overallPct == null ? '—' : `${r.overallPct}%`}</td>
+                    <td className="px-3 py-2 text-right tabular-nums text-text-secondary">{r.passRate == null ? '—' : `${r.passRate}%`}</td>
+                    <td className="px-3 py-2 text-right tabular-nums text-text-muted">{fmtLatency(r.avgLatencyMs)}</td>
+                    <td className={clsx('px-3 py-2 text-right tabular-nums', r.failureCount ? 'text-red-400' : 'text-text-muted')}>{r.failureCount}</td>
+                    <td className="px-3 py-2 text-right tabular-nums text-text-muted">{mode === 'average' ? r.runs : `${r.runsUsed}/${r.runs}`}</td>
+                    {lanes.map(l => {
+                      const v = r.laneScores[l.id]
+                      return <td key={l.id} className={clsx('px-2 py-2 text-right tabular-nums', v == null ? 'text-text-muted/40' : v >= 80 ? 'text-green-400' : v >= 50 ? 'text-amber-400' : 'text-red-400')}>{v == null ? '·' : v}</td>
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="text-xxs text-text-muted mt-2">Grouped by model + harness + task pack. Lane columns are pass-weighted percentages; “·” = no scored task in that lane. Runs column = used/available.</p>
+        </>
+      )}
     </div>
   )
 }
@@ -581,6 +662,76 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
     <div className="flex flex-col gap-1">
       <label className="text-xxs uppercase tracking-wide text-text-muted font-medium">{label}</label>
       {children}
+    </div>
+  )
+}
+
+// Recent-run card — model, pack, score, relative time, pass/fail counts, mode.
+function RunChip({ run, selected, onOpen, onDelete }: {
+  run: HbRun; selected: boolean; onOpen: () => void; onDelete: () => void
+}) {
+  const scorePct = run.maxScore > 0 ? Math.round((run.totalScore / run.maxScore) * 100) : null
+  const passed = Math.max(0, run.completedCount - run.failureCount)
+  const dot = run.status === 'completed' ? 'bg-green-500'
+    : run.status === 'running' ? 'bg-blue-500 animate-pulse'
+    : run.status === 'failed' ? 'bg-red-500'
+    : run.status === 'cancelled' ? 'bg-amber-400' : 'bg-text-muted'
+  return (
+    <div className={clsx(
+      'relative shrink-0 w-[208px] rounded-lg border p-2.5 transition-colors group',
+      selected ? 'border-accent-blue bg-card-hover ring-1 ring-accent-blue/40' : 'border-border bg-card hover:bg-card-hover',
+    )}>
+      <button onClick={onOpen} className="w-full text-left">
+        <div className="flex items-center gap-1.5 mb-0.5 pr-5">
+          <span className={clsx('w-1.5 h-1.5 rounded-full shrink-0', dot)} />
+          <span className="text-xs font-semibold text-text-primary truncate flex-1">{run.modelName}</span>
+          {scorePct != null && (
+            <span className={clsx('text-xs font-bold tabular-nums', scorePct >= 80 ? 'text-green-400' : scorePct >= 50 ? 'text-amber-400' : 'text-red-400')}>{scorePct}%</span>
+          )}
+        </div>
+        <div className="text-xxs text-text-muted truncate mb-1">{run.taskPackName}</div>
+        <div className="flex items-center gap-2 text-xxs tabular-nums">
+          <span className="text-green-400">✓{passed}</span>
+          <span className={run.failureCount ? 'text-red-400' : 'text-text-muted'}>✗{run.failureCount}</span>
+          <span className="text-text-muted ml-auto">{relTime(run.startedAt)}</span>
+        </div>
+        <div className="mt-1">
+          <span className="px-1.5 py-0.5 rounded border border-accent-teal/30 bg-accent-teal/10 text-accent-teal text-[10px] font-mono">{run.mode}</span>
+        </div>
+      </button>
+      <button onClick={onDelete} title="Delete run"
+        className="absolute top-1.5 right-1.5 opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-red-950/40 text-text-muted hover:text-red-300 transition-opacity">
+        <Trash2 size={11} />
+      </button>
+    </div>
+  )
+}
+
+// Compact connector status replacing the prominent model-fetch warning.
+function ConnectorStatus({ harnessLabel, status, count, error, expanded, onToggle }: {
+  harnessLabel: string; status: 'loading' | 'connected' | 'failed'; count: number
+  error: string | null; expanded: boolean; onToggle: () => void
+}) {
+  const conf = status === 'loading'
+    ? { Icon: Loader2, cls: 'text-text-muted', label: 'checking…', spin: true }
+    : status === 'connected'
+      ? { Icon: Wifi, cls: 'text-green-400', label: `connected · ${count} model${count === 1 ? '' : 's'}`, spin: false }
+      : { Icon: WifiOff, cls: 'text-amber-400', label: count > 0 ? 'failed (cached)' : 'unavailable', spin: false }
+  const Icon = conf.Icon
+  const clickable = status === 'failed' && !!error
+  return (
+    <div className="mt-0.5">
+      <button
+        onClick={clickable ? onToggle : undefined}
+        className={clsx('flex items-center gap-1 text-xxs', conf.cls, clickable && 'hover:underline cursor-pointer')}
+      >
+        <Icon size={10} className={conf.spin ? 'animate-spin' : ''} />
+        {harnessLabel} models: {conf.label}
+        {clickable && <ChevronRight size={9} className={clsx('transition-transform', expanded && 'rotate-90')} />}
+      </button>
+      {expanded && error && (
+        <p className="text-xxs text-text-muted mt-1 max-w-[224px] break-words">{error} · manual model entry still works.</p>
+      )}
     </div>
   )
 }
