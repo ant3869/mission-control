@@ -18,6 +18,7 @@ import { OpenClawMetrics, HermesMetrics } from './views/PlatformMetrics'
 import { Inventory } from './views/Inventory'
 import { FlowMap } from './views/FlowMap'
 import { Evaluations } from './views/Evaluations'
+import { HarnessBenchmarks } from './views/HarnessBenchmarks'
 import type { View } from './types'
 
 const VIEW_TITLES: Record<View, string> = {
@@ -38,6 +39,7 @@ const VIEW_TITLES: Record<View, string> = {
   hermes:      'Hermes Metrics',
   flowmap:     'Flow Map',
   evaluations: 'Evaluations',
+  harness:     'Harness Benchmarks',
 }
 
 // Render each view once (on first visit) and keep it mounted — hidden via CSS.
@@ -89,6 +91,7 @@ export default function App() {
           <ViewPane view="inventory"   active={activeView} mounted={mounted}><Inventory /></ViewPane>
           <ViewPane view="flowmap"     active={activeView} mounted={mounted}><FlowMap /></ViewPane>
           <ViewPane view="evaluations" active={activeView} mounted={mounted}><Evaluations /></ViewPane>
+          <ViewPane view="harness"     active={activeView} mounted={mounted}><HarnessBenchmarks /></ViewPane>
 
         </main>
       </div>

@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.7.0] — 2026-06-06
+
+### Added
+
+- **Harness Benchmarks view** — a first-class page (sidebar → Analytics → Harness Bench, FlaskConical icon) that benchmarks how a model performs *through* OpenClaw/Hermes: **App → harness → selected model → tools/context/routing → result**. Distinct from generic/raw model benchmarks. Run controls (harness, model, task pack, OSS/local endpoint override), a run summary (status, total score, pass rate, avg latency, failures, execution mode), nine lane cards that filter the results table, an inspectable per-task detail drawer (prompt, expected behavior, model response, parsed tool call, scoring detail, raw harness output), cross-run model comparison, and JSON export.
+- **9 benchmark lanes** — runtime compatibility, instruction adherence, tool selection, tool-call formatting, log/config diagnosis, multi-turn troubleshooting, memory/context, command/action quality, and reliability/failure behavior. Failures normalize into 17 typed categories (timeout, auth_error, model_not_found, invalid_json, wrong_tool, hallucinated_tool, ignored_instruction, ungrounded_claim, wrong_diagnosis, unsafe_command, …).
+- **4 seeded task packs** — `quick-smoke-pack`, `openclaw-config-pack`, `hermes-agent-pack`, `oss-model-stability-pack` (22 tasks). No coding benchmarks (HumanEval/MBPP/SWE-bench) and no MMLU-style trivia — agent-harness behavior only.
+- **`/api/harness-bench`** — REST surface: packs, live harness/model availability, runs (start/get/list/cancel/rerun-failed/delete/export), and cross-run comparison. Runs execute **real** dispatches (Hermes API server via `hermesChat`, OpenClaw via WS `chat.send`+poll, or any OpenAI-compatible `/v1` endpoint for OSS/local models); unreachable endpoints record real failure types — never fabricated scores.
+- **Deterministic scoring** (`harnessBenchScoring`) — exact, regex, json_schema deep-equal, and tool-call match (name + argument subset) with no LLM judge; rubric/manual tasks are honestly returned as `manual_review` rather than guessed.
+- **SQLite persistence** (`data/harness_bench.db`) for runs, per-task results, and raw harness output, following the existing `node:sqlite` pattern.
+
 ## [0.6.0] — 2026-05-26
 
 ### Added

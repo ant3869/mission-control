@@ -3,7 +3,7 @@ import {
   CheckSquare, Radio, BookOpen, FolderKanban, Radar,
   MessageSquare, Calendar, Brain, FileText, ThumbsUp,
   Activity, Gauge, Target, Workflow, Package,
-  Users, Cog, ChevronLeft, ChevronRight,
+  Users, Cog, ChevronLeft, ChevronRight, FlaskConical,
 } from 'lucide-react'
 import { clsx } from 'clsx'
 import type { View } from '../../types'
@@ -48,8 +48,9 @@ const NAV: NavSection[] = [
     label: 'Analytics',
     items: [
       { id: 'ops',         label: 'Ops',         icon: <Radar    size={iconSize} /> },
-      { id: 'evaluations', label: 'Evaluations', icon: <Target   size={iconSize} /> },
-      { id: 'flowmap',     label: 'Flow Map',    icon: <Workflow size={iconSize} /> },
+      { id: 'evaluations', label: 'Evaluations', icon: <Target       size={iconSize} /> },
+      { id: 'harness',     label: 'Harness Bench', icon: <FlaskConical size={iconSize} /> },
+      { id: 'flowmap',     label: 'Flow Map',    icon: <Workflow     size={iconSize} /> },
     ],
   },
   {

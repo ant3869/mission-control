@@ -1,0 +1,586 @@
+// title: Harness Benchmarks view
+// path: src/views/HarnessBenchmarks.tsx
+// purpose: Benchmark how a model performs THROUGH OpenClaw/Hermes — App →
+//          harness → selected model → tools/context/routing → result. Distinct
+//          from generic model benchmarks: every run is a real harness dispatch
+//          across 9 agent-behavior lanes, scored deterministically.
+
+import { useState, useEffect, useCallback } from 'react'
+import { clsx } from 'clsx'
+import {
+  FlaskConical, Play, Square, RotateCcw, Download, X, Loader2, CheckCircle2,
+  XCircle, AlertTriangle, Clock, Cpu, Filter, RefreshCw, ChevronRight, Server, Zap,
+} from 'lucide-react'
+import {
+  harnessBench as api,
+  type BenchmarkHarness, type HbPackSummary, type HbLaneMeta, type HbRun,
+  type HbTaskResult, type HbResultStatus, type HbComparisonRow,
+} from '../lib/api'
+
+const POLL_MS = 1500
+
+// ─── small helpers ────────────────────────────────────────────────────────────
+
+function fmtLatency(ms: number | null | undefined): string {
+  if (ms == null) return '—'
+  if (ms < 1000) return `${Math.round(ms)}ms`
+  return `${(ms / 1000).toFixed(1)}s`
+}
+function relTime(iso?: string | null): string {
+  if (!iso) return ''
+  const diff = Date.now() - new Date(iso).getTime()
+  const m = Math.floor(diff / 60_000), h = Math.floor(diff / 3_600_000), d = Math.floor(diff / 86_400_000)
+  if (m < 1) return 'just now'; if (m < 60) return `${m}m ago`; if (h < 24) return `${h}h ago`
+  if (d < 7) return `${d}d ago`; return new Date(iso).toLocaleDateString()
+}
+const STATUS_STYLE: Record<HbResultStatus, { dot: string; text: string; label: string; Icon: typeof CheckCircle2 }> = {
+  passed:        { dot: 'bg-green-500',  text: 'text-green-400',  label: 'Passed',  Icon: CheckCircle2 },
+  failed:        { dot: 'bg-red-500',    text: 'text-red-400',    label: 'Failed',  Icon: XCircle },
+  error:         { dot: 'bg-orange-500', text: 'text-orange-400', label: 'Error',   Icon: AlertTriangle },
+  manual_review: { dot: 'bg-amber-400',  text: 'text-amber-400',  label: 'Review',  Icon: AlertTriangle },
+}
+
+const RUN_STATUS_STYLE: Record<string, string> = {
+  running:   'text-blue-400 bg-blue-950/40 border-blue-900/50',
+  queued:    'text-text-muted bg-card border-border',
+  completed: 'text-green-400 bg-green-950/40 border-green-900/50',
+  failed:    'text-red-400 bg-red-950/40 border-red-900/50',
+  cancelled: 'text-amber-400 bg-amber-950/40 border-amber-900/50',
+}
+
+function failureChip(ft?: string | null) {
+  if (!ft) return null
+  return (
+    <span className="px-1.5 py-0.5 rounded border border-red-900/40 bg-red-950/30 text-red-300 text-xxs font-mono">
+      {ft}
+    </span>
+  )
+}
+
+// ─── stat ─────────────────────────────────────────────────────────────────────
+
+function Stat({ label, value, accent }: { label: string; value: React.ReactNode; accent?: string }) {
+  return (
+    <div className="flex flex-col gap-0.5 min-w-0">
+      <span className="text-xxs uppercase tracking-wide text-text-muted">{label}</span>
+      <span className={clsx('text-sm font-semibold tabular-nums truncate', accent ?? 'text-text-primary')}>{value}</span>
+    </div>
+  )
+}
+
+// ─── lane card ────────────────────────────────────────────────────────────────
+
+function LaneCard({ meta, results, active, onClick }: {
+  meta: HbLaneMeta; results: HbTaskResult[]; active: boolean; onClick: () => void
+}) {
+  const scored = results.filter(r => r.status === 'passed' || r.status === 'failed')
+  const passed = scored.filter(r => r.status === 'passed').length
+  const maxP = scored.reduce((s, r) => s + r.maxPoints, 0)
+  const gotP = scored.reduce((s, r) => s + r.points, 0)
+  const score = maxP > 0 ? Math.round((gotP / maxP) * 100) : null
+  const lat = results.map(r => r.latencyMs).filter((n): n is number => typeof n === 'number')
+  const avgLat = lat.length ? Math.round(lat.reduce((s, n) => s + n, 0) / lat.length) : null
+  const failures = results.filter(r => r.status === 'failed' || r.status === 'error').length
+  const empty = results.length === 0
+
+  const scoreColor = score == null ? 'text-text-muted' : score >= 80 ? 'text-green-400' : score >= 50 ? 'text-amber-400' : 'text-red-400'
+
+  return (
+    <button
+      onClick={onClick}
+      title={meta.blurb}
+      className={clsx(
+        'flex flex-col gap-2 p-3 rounded-lg border text-left transition-all',
+        empty ? 'opacity-50' : 'hover:bg-card-hover',
+        active ? 'border-accent-blue bg-card-hover' : 'border-border bg-card',
+      )}
+    >
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-xs font-medium text-text-secondary truncate">{meta.short}</span>
+        <span className={clsx('text-sm font-bold tabular-nums', scoreColor)}>{score == null ? '—' : `${score}%`}</span>
+      </div>
+      <div className="h-1 rounded-full bg-base overflow-hidden">
+        <div className={clsx('h-full rounded-full', score == null ? 'bg-text-muted' : score >= 80 ? 'bg-green-500' : score >= 50 ? 'bg-amber-400' : 'bg-red-500')}
+          style={{ width: `${score ?? 0}%` }} />
+      </div>
+      <div className="flex items-center justify-between text-xxs text-text-muted tabular-nums">
+        <span>{passed}/{scored.length} pass</span>
+        <span>{fmtLatency(avgLat)}</span>
+        <span className={failures ? 'text-red-400' : ''}>{failures} fail</span>
+      </div>
+    </button>
+  )
+}
+
+// ─── detail drawer ──────────────────────────────────────────────────────────────
+
+function DetailDrawer({ result, laneLabel, onClose }: {
+  result: HbTaskResult; laneLabel: (l: string) => string; onClose: () => void
+}) {
+  const s = STATUS_STYLE[result.status]
+  const raw = result.rawHarnessOutput != null ? JSON.stringify(result.rawHarnessOutput, null, 2) : ''
+  const tool = result.parsedToolCall != null ? JSON.stringify(result.parsedToolCall, null, 2) : ''
+  return (
+    <div className="fixed inset-0 z-50 flex justify-end bg-black/50 backdrop-blur-sm" onClick={onClose}>
+      <div className="w-full max-w-xl h-full bg-surface border-l border-border overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <div className="sticky top-0 bg-surface border-b border-border px-5 py-3 flex items-center justify-between z-10">
+          <div className="flex items-center gap-2 min-w-0">
+            <s.Icon size={15} className={s.text} />
+            <span className="text-sm font-semibold text-text-primary truncate">{result.taskTitle}</span>
+          </div>
+          <button onClick={onClose} className="text-text-muted hover:text-text-primary"><X size={16} /></button>
+        </div>
+
+        <div className="p-5 flex flex-col gap-4">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className={clsx('px-2 py-0.5 rounded border text-xxs', 'border-border bg-card', s.text)}>{s.label}</span>
+            <span className="px-2 py-0.5 rounded border border-border bg-card text-xxs text-text-secondary">{laneLabel(result.lane)}</span>
+            <span className="text-xxs text-text-muted tabular-nums">{result.points}/{result.maxPoints} pts · {fmtLatency(result.latencyMs)}</span>
+            {failureChip(result.failureType)}
+          </div>
+
+          <Section title="Prompt"><pre className="whitespace-pre-wrap break-words text-xxs text-text-secondary font-mono">{result.prompt || '—'}</pre></Section>
+          <Section title="Expected behavior"><p className="text-xs text-text-secondary leading-relaxed">{result.expectedBehavior || '—'}</p></Section>
+          <Section title="Model response"><pre className="whitespace-pre-wrap break-words text-xxs text-text-primary font-mono bg-base rounded border border-border p-2.5 max-h-72 overflow-y-auto">{result.modelResponse || '(empty)'}</pre></Section>
+          {tool && <Section title="Parsed tool call"><pre className="whitespace-pre-wrap break-words text-xxs text-accent-teal font-mono bg-base rounded border border-border p-2.5">{tool}</pre></Section>}
+          <Section title="Scoring detail"><p className="text-xs text-text-secondary leading-relaxed">{result.scoreReason || '—'}</p></Section>
+          {result.errorMessage && <Section title="Error"><pre className="whitespace-pre-wrap break-words text-xxs text-red-300 font-mono bg-red-950/20 rounded border border-red-900/40 p-2.5">{result.errorMessage}</pre></Section>}
+          {result.notes && <Section title="Notes"><p className="text-xs text-text-muted">{result.notes}</p></Section>}
+          {raw && <Section title="Raw harness output"><pre className="whitespace-pre-wrap break-words text-xxs text-text-muted font-mono bg-base rounded border border-border p-2.5 max-h-72 overflow-y-auto">{raw.slice(0, 8000)}</pre></Section>}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <span className="text-xxs uppercase tracking-wide text-text-muted font-medium">{title}</span>
+      {children}
+    </div>
+  )
+}
+
+// ─── main view ────────────────────────────────────────────────────────────────
+
+export function HarnessBenchmarks() {
+  const [tab, setTab] = useState<'run' | 'compare'>('run')
+
+  // meta
+  const [packs, setPacks] = useState<HbPackSummary[]>([])
+  const [lanes, setLanes] = useState<HbLaneMeta[]>([])
+  const [harnesses, setHarnesses] = useState<Array<{ id: BenchmarkHarness; label: string; live: boolean; baseUrl: string; apiBaseUrl?: string }>>([])
+
+  // controls
+  const [harness, setHarness] = useState<BenchmarkHarness>('hermes')
+  const [models, setModels] = useState<string[]>([])
+  const [modelsErr, setModelsErr] = useState<string | null>(null)
+  const [model, setModel] = useState('')
+  const [packId, setPackId] = useState('quick-smoke-pack')
+  const [showAdvanced, setShowAdvanced] = useState(false)
+  const [endpoint, setEndpoint] = useState('')
+  const [token, setToken] = useState('')
+
+  // runs
+  const [runsList, setRunsList] = useState<HbRun[]>([])
+  const [activeRunId, setActiveRunId] = useState<string | null>(null)
+  const [run, setRun] = useState<HbRun | null>(null)
+  const [starting, setStarting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [laneFilter, setLaneFilter] = useState<string | null>(null)
+  const [detail, setDetail] = useState<HbTaskResult | null>(null)
+
+  // comparison
+  const [comparison, setComparison] = useState<HbComparisonRow[]>([])
+
+  const laneLabel = useCallback((id: string) => lanes.find(l => l.id === id)?.label ?? id, [lanes])
+
+  // ── initial load ──
+  useEffect(() => {
+    api.packs().then(r => { setPacks(r.packs); setLanes(r.lanes) }).catch(e => setError(e.message))
+    api.connectors().then(r => {
+      setHarnesses(r.harnesses)
+      const live = r.harnesses.find(h => h.live)
+      if (live) setHarness(live.id)
+    }).catch(() => {})
+    refreshRuns()
+  }, [])
+
+  const refreshRuns = useCallback(() => {
+    api.runs().then(r => setRunsList(r.runs)).catch(() => {})
+  }, [])
+
+  // ── load models when harness changes ──
+  useEffect(() => {
+    setModels([]); setModelsErr(null)
+    api.models(harness)
+      .then(r => { setModels(r.models); if (!r.reachable && r.error) setModelsErr(r.error) })
+      .catch(e => setModelsErr(e.message))
+    // default pack matching harness
+    setPackId(prev => {
+      const p = packs.find(x => x.id === prev)
+      if (p && (p.harness === 'any' || p.harness === harness)) return prev
+      const match = packs.find(x => x.harness === harness) ?? packs.find(x => x.harness === 'any')
+      return match?.id ?? prev
+    })
+  }, [harness, packs])
+
+  // ── poll active run ──
+  useEffect(() => {
+    if (!activeRunId) return
+    let stop = false
+    const tick = async () => {
+      try {
+        const r = await api.run(activeRunId)
+        if (stop) return
+        setRun(r.run)
+        if (r.run.status === 'running' || r.run.status === 'queued') {
+          setTimeout(tick, POLL_MS)
+        } else {
+          refreshRuns()
+          if (tab === 'compare') api.comparison().then(c => setComparison(c.rows)).catch(() => {})
+        }
+      } catch { if (!stop) setTimeout(tick, POLL_MS) }
+    }
+    tick()
+    return () => { stop = true }
+  }, [activeRunId, refreshRuns, tab])
+
+  // ── comparison load ──
+  useEffect(() => {
+    if (tab === 'compare') api.comparison().then(c => setComparison(c.rows)).catch(e => setError(e.message))
+  }, [tab])
+
+  const harnessLive = harnesses.find(h => h.id === harness)?.live ?? false
+  const canRun = (harnessLive || !!endpoint.trim()) && !!packId && !starting && (!run || run.status !== 'running')
+
+  const start = async () => {
+    setStarting(true); setError(null); setLaneFilter(null); setDetail(null)
+    try {
+      const res = await api.start({
+        harness, taskPackId: packId,
+        model: model.trim() || undefined,
+        endpoint: endpoint.trim() || undefined,
+        token: token.trim() || undefined,
+      })
+      setActiveRunId(res.run.id)
+      setRun(res.run)
+    } catch (e: any) { setError(e.message) } finally { setStarting(false) }
+  }
+
+  const cancel = async () => { if (activeRunId) { await api.cancel(activeRunId).catch(() => {}) } }
+  const rerun = async () => {
+    if (!activeRunId) return
+    try { const r = await api.rerunFailed(activeRunId); setActiveRunId(r.run.id); setRun(r.run) }
+    catch (e: any) { setError(e.message) }
+  }
+  const openRun = async (id: string) => {
+    setActiveRunId(id); setLaneFilter(null); setDetail(null)
+    try { setRun((await api.run(id)).run) } catch (e: any) { setError(e.message) }
+  }
+
+  const results = run?.results ?? []
+  const filtered = laneFilter ? results.filter(r => r.lane === laneFilter) : results
+  const scored = results.filter(r => r.status === 'passed' || r.status === 'failed')
+  const isRunning = run?.status === 'running' || run?.status === 'queued'
+
+  return (
+    <div className="flex flex-col h-full overflow-hidden">
+      {/* Header */}
+      <div className="flex items-center justify-between px-6 pt-5 pb-3 border-b border-border shrink-0">
+        <div className="flex items-center gap-2.5">
+          <FlaskConical size={18} className="text-accent-purple" />
+          <div>
+            <h1 className="text-base font-semibold text-text-primary">Harness Benchmarks</h1>
+            <p className="text-xs text-text-muted mt-0.5">
+              App → OpenClaw/Hermes → model → tools/context/routing → result · <span className="text-text-secondary">not raw model benchmarks</span>
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-1 p-0.5 rounded-lg border border-border bg-card">
+          {(['run', 'compare'] as const).map(t => (
+            <button key={t} onClick={() => setTab(t)}
+              className={clsx('px-3 py-1 rounded text-xs font-medium capitalize transition-colors',
+                tab === t ? 'bg-card-hover text-text-primary' : 'text-text-muted hover:text-text-secondary')}>
+              {t === 'run' ? 'Benchmark' : 'Compare'}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {tab === 'run' ? (
+        <div className="flex-1 overflow-y-auto">
+          {/* Run controls */}
+          <div className="px-6 py-4 border-b border-border flex flex-col gap-3">
+            <div className="flex flex-wrap items-end gap-3">
+              {/* Harness */}
+              <Field label="Harness">
+                <div className="flex rounded-lg border border-border overflow-hidden">
+                  {harnesses.map(h => (
+                    <button key={h.id} onClick={() => setHarness(h.id)}
+                      className={clsx('flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium transition-colors',
+                        harness === h.id ? 'bg-card-hover text-text-primary' : 'bg-card text-text-muted hover:text-text-secondary')}>
+                      <span className={clsx('w-1.5 h-1.5 rounded-full', h.live ? 'bg-green-500' : 'bg-text-muted')} />
+                      {h.label}
+                    </button>
+                  ))}
+                </div>
+              </Field>
+
+              {/* Model */}
+              <Field label="Model">
+                <input
+                  list="hb-models"
+                  value={model}
+                  onChange={e => setModel(e.target.value)}
+                  placeholder={models.length ? 'auto (or pick / type)' : 'auto / type model id'}
+                  className="w-56 px-3 py-1.5 rounded-lg border border-border bg-base text-xs text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent-blue/60"
+                />
+                <datalist id="hb-models">
+                  {models.map(m => <option key={m} value={m} />)}
+                </datalist>
+              </Field>
+
+              {/* Pack */}
+              <Field label="Task pack">
+                <select value={packId} onChange={e => setPackId(e.target.value)}
+                  className="px-3 py-1.5 rounded-lg border border-border bg-base text-xs text-text-primary focus:outline-none focus:border-accent-blue/60">
+                  {packs.filter(p => p.harness === 'any' || p.harness === harness).map(p => (
+                    <option key={p.id} value={p.id}>{p.name} ({p.taskCount})</option>
+                  ))}
+                </select>
+              </Field>
+
+              {/* Actions */}
+              <div className="flex items-center gap-2 ml-auto">
+                {isRunning ? (
+                  <button onClick={cancel} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-amber-900/50 bg-amber-950/30 text-amber-300 text-xs font-medium hover:bg-amber-950/50">
+                    <Square size={12} /> Cancel
+                  </button>
+                ) : (
+                  <button onClick={start} disabled={!canRun}
+                    className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-accent-blue/90 hover:bg-accent-blue disabled:opacity-40 text-white text-xs font-semibold">
+                    {starting ? <Loader2 size={13} className="animate-spin" /> : <Play size={13} />} Start run
+                  </button>
+                )}
+                {run && run.failureCount > 0 && !isRunning && (
+                  <button onClick={rerun} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border bg-card hover:bg-card-hover text-text-secondary text-xs">
+                    <RotateCcw size={12} /> Rerun failed
+                  </button>
+                )}
+                {run && (
+                  <a href={api.exportUrl(run.id)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border bg-card hover:bg-card-hover text-text-secondary text-xs">
+                    <Download size={12} /> Export
+                  </a>
+                )}
+              </div>
+            </div>
+
+            {/* Advanced: endpoint override */}
+            <div>
+              <button onClick={() => setShowAdvanced(v => !v)} className="flex items-center gap-1 text-xxs text-text-muted hover:text-text-secondary">
+                <ChevronRight size={11} className={clsx('transition-transform', showAdvanced && 'rotate-90')} />
+                Advanced · OSS/local endpoint override
+              </button>
+              {showAdvanced && (
+                <div className="flex flex-wrap items-end gap-3 mt-2 p-3 rounded-lg border border-border bg-card">
+                  <Field label="OpenAI-compatible /v1 base URL">
+                    <input value={endpoint} onChange={e => setEndpoint(e.target.value)}
+                      placeholder="http://127.0.0.1:11434/v1 (Ollama / LM Studio / vLLM)"
+                      className="w-80 px-3 py-1.5 rounded-lg border border-border bg-base text-xs text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent-blue/60" />
+                  </Field>
+                  <Field label="Bearer token (optional)">
+                    <input value={token} onChange={e => setToken(e.target.value)} type="password" placeholder="if required"
+                      className="w-44 px-3 py-1.5 rounded-lg border border-border bg-base text-xs text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent-blue/60" />
+                  </Field>
+                  <p className="text-xxs text-text-muted max-w-xs">When set, the run dispatches directly to this endpoint (still labelled <span className="text-accent-teal">harness_direct</span>) — used for local/OSS models.</p>
+                </div>
+              )}
+            </div>
+
+            {modelsErr && <p className="text-xxs text-amber-400">Models: {modelsErr} — you can still type a model id manually.</p>}
+            {!harnessLive && !endpoint.trim() && (
+              <p className="text-xxs text-amber-400 flex items-center gap-1.5">
+                <AlertTriangle size={11} /> {harness} is not connected. Enable it in Settings, or set an endpoint override above.
+              </p>
+            )}
+            {error && <p className="text-xxs text-red-400">{error}</p>}
+          </div>
+
+          {/* Past runs strip */}
+          {runsList.length > 0 && (
+            <div className="px-6 py-2 border-b border-border flex items-center gap-2 overflow-x-auto">
+              <span className="text-xxs text-text-muted shrink-0 flex items-center gap-1"><Clock size={11} /> Recent:</span>
+              {runsList.slice(0, 12).map(r => (
+                <button key={r.id} onClick={() => openRun(r.id)}
+                  className={clsx('shrink-0 flex items-center gap-1.5 px-2 py-1 rounded border text-xxs transition-colors',
+                    run?.id === r.id ? 'border-accent-blue bg-card-hover text-text-primary' : 'border-border bg-card text-text-muted hover:text-text-secondary')}>
+                  <span className={clsx('w-1.5 h-1.5 rounded-full', r.status === 'completed' ? 'bg-green-500' : r.status === 'running' ? 'bg-blue-500 animate-pulse' : r.status === 'failed' ? 'bg-red-500' : 'bg-amber-400')} />
+                  {r.harness}/{r.modelName.slice(0, 18)} · {r.taskPackName}
+                  {r.maxScore > 0 && <span className="tabular-nums">{Math.round((r.totalScore / r.maxScore) * 100)}%</span>}
+                </button>
+              ))}
+              <button onClick={refreshRuns} className="shrink-0 p-1 rounded hover:bg-card text-text-muted hover:text-text-secondary"><RefreshCw size={11} /></button>
+            </div>
+          )}
+
+          {/* Summary + lanes + table */}
+          {run ? (
+            <div className="px-6 py-4 flex flex-col gap-4">
+              {/* Summary */}
+              <div className="rounded-xl border border-border bg-card p-4">
+                <div className="flex items-center gap-2 mb-3 flex-wrap">
+                  <span className={clsx('px-2 py-0.5 rounded border text-xxs font-medium capitalize flex items-center gap-1.5', RUN_STATUS_STYLE[run.status])}>
+                    {isRunning && <Loader2 size={10} className="animate-spin" />}
+                    {run.status}
+                  </span>
+                  <span className="px-2 py-0.5 rounded border border-accent-teal/40 bg-accent-teal/10 text-accent-teal text-xxs font-mono">{run.mode}</span>
+                  <span className="text-xxs text-text-muted">{run.completedCount}/{run.taskCount} tasks · {relTime(run.startedAt)}</span>
+                  {run.error && <span className="text-xxs text-red-400 truncate max-w-md" title={run.error}>· {run.error}</span>}
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
+                  <Stat label="Harness" value={<span className="flex items-center gap-1"><Server size={12} className="text-text-muted" />{run.harness}</span>} />
+                  <Stat label="Model" value={<span className="flex items-center gap-1"><Cpu size={12} className="text-text-muted" />{run.modelName}</span>} />
+                  <Stat label="Provider" value={run.provider} />
+                  <Stat label="Total score" value={`${run.totalScore}/${run.maxScore}`} accent="text-accent-blue" />
+                  <Stat label="Pass rate" value={run.passRate == null ? '—' : `${run.passRate}%`} accent={run.passRate != null && run.passRate >= 70 ? 'text-green-400' : 'text-amber-400'} />
+                  <Stat label="Avg latency" value={fmtLatency(run.avgLatencyMs)} />
+                  <Stat label="Failures" value={run.failureCount} accent={run.failureCount ? 'text-red-400' : 'text-green-400'} />
+                </div>
+              </div>
+
+              {/* Lane cards */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-semibold text-text-secondary">Lanes</span>
+                  {laneFilter && (
+                    <button onClick={() => setLaneFilter(null)} className="flex items-center gap-1 text-xxs text-accent-blue hover:underline">
+                      <Filter size={10} /> clear filter ({laneLabel(laneFilter)})
+                    </button>
+                  )}
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
+                  {lanes.map(meta => (
+                    <LaneCard key={meta.id} meta={meta} results={results.filter(r => r.lane === meta.id)}
+                      active={laneFilter === meta.id}
+                      onClick={() => setLaneFilter(laneFilter === meta.id ? null : meta.id)} />
+                  ))}
+                </div>
+              </div>
+
+              {/* Results table */}
+              <div className="rounded-xl border border-border overflow-hidden">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="border-b border-border bg-surface text-text-muted">
+                      <th className="text-left font-medium px-3 py-2 w-20">Status</th>
+                      <th className="text-left font-medium px-3 py-2">Lane</th>
+                      <th className="text-left font-medium px-3 py-2">Task</th>
+                      <th className="text-right font-medium px-3 py-2 w-16">Score</th>
+                      <th className="text-right font-medium px-3 py-2 w-20">Latency</th>
+                      <th className="text-left font-medium px-3 py-2 w-36">Failure</th>
+                      <th className="px-3 py-2 w-16"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filtered.length === 0 ? (
+                      <tr><td colSpan={7} className="px-3 py-6 text-center text-text-muted">{isRunning ? 'Running tasks…' : 'No results'}</td></tr>
+                    ) : filtered.map(r => {
+                      const s = STATUS_STYLE[r.status]
+                      return (
+                        <tr key={r.id} className="border-b border-border-subtle hover:bg-card-hover cursor-pointer" onClick={() => setDetail(r)}>
+                          <td className="px-3 py-2"><span className={clsx('flex items-center gap-1.5', s.text)}><span className={clsx('w-1.5 h-1.5 rounded-full', s.dot)} />{s.label}</span></td>
+                          <td className="px-3 py-2 text-text-muted">{laneLabel(r.lane)}</td>
+                          <td className="px-3 py-2 text-text-primary">{r.taskTitle}</td>
+                          <td className="px-3 py-2 text-right tabular-nums text-text-secondary">{r.points}/{r.maxPoints}</td>
+                          <td className="px-3 py-2 text-right tabular-nums text-text-muted">{fmtLatency(r.latencyMs)}</td>
+                          <td className="px-3 py-2">{failureChip(r.failureType)}</td>
+                          <td className="px-3 py-2 text-right"><ChevronRight size={13} className="text-text-muted inline" /></td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              {scored.length === 0 && results.some(r => r.status === 'manual_review') && (
+                <p className="text-xxs text-text-muted">Some tasks are rubric/manual-review and are intentionally not auto-scored.</p>
+              )}
+            </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center py-20 gap-2 text-center">
+              <FlaskConical size={28} className="text-text-muted" />
+              <p className="text-sm text-text-secondary">Pick a harness, model and task pack, then Start run.</p>
+              <p className="text-xs text-text-muted max-w-md">Each task is dispatched live through the harness and scored deterministically across 9 agent-behavior lanes.</p>
+            </div>
+          )}
+        </div>
+      ) : (
+        <ComparisonTab rows={comparison} lanes={lanes} />
+      )}
+
+      {detail && <DetailDrawer result={detail} laneLabel={laneLabel} onClose={() => setDetail(null)} />}
+    </div>
+  )
+}
+
+// ─── compare tab ──────────────────────────────────────────────────────────────
+
+function ComparisonTab({ rows, lanes }: { rows: HbComparisonRow[]; lanes: HbLaneMeta[] }) {
+  if (rows.length === 0) {
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center gap-2 text-center">
+        <Zap size={26} className="text-text-muted" />
+        <p className="text-sm text-text-secondary">No completed runs to compare yet.</p>
+        <p className="text-xs text-text-muted">Run a benchmark on the Benchmark tab — results aggregate here by harness + model.</p>
+      </div>
+    )
+  }
+  return (
+    <div className="flex-1 overflow-auto p-6">
+      <div className="rounded-xl border border-border overflow-hidden">
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="border-b border-border bg-surface text-text-muted">
+              <th className="text-left font-medium px-3 py-2">Model</th>
+              <th className="text-left font-medium px-3 py-2">Harness</th>
+              <th className="text-right font-medium px-3 py-2">Overall</th>
+              <th className="text-right font-medium px-3 py-2">Pass</th>
+              <th className="text-right font-medium px-3 py-2">Latency</th>
+              <th className="text-right font-medium px-3 py-2">Fails</th>
+              <th className="text-right font-medium px-3 py-2">Runs</th>
+              {lanes.map(l => <th key={l.id} className="text-right font-medium px-2 py-2 whitespace-nowrap" title={l.label}>{l.short}</th>)}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r, i) => (
+              <tr key={`${r.harness}-${r.modelName}-${i}`} className="border-b border-border-subtle hover:bg-card-hover">
+                <td className="px-3 py-2 text-text-primary font-medium">{r.modelName}</td>
+                <td className="px-3 py-2 text-text-muted">{r.harness}</td>
+                <td className={clsx('px-3 py-2 text-right font-bold tabular-nums', (r.overallPct ?? 0) >= 80 ? 'text-green-400' : (r.overallPct ?? 0) >= 50 ? 'text-amber-400' : 'text-red-400')}>{r.overallPct == null ? '—' : `${r.overallPct}%`}</td>
+                <td className="px-3 py-2 text-right tabular-nums text-text-secondary">{r.passRate == null ? '—' : `${r.passRate}%`}</td>
+                <td className="px-3 py-2 text-right tabular-nums text-text-muted">{fmtLatency(r.avgLatencyMs)}</td>
+                <td className={clsx('px-3 py-2 text-right tabular-nums', r.failureCount ? 'text-red-400' : 'text-text-muted')}>{r.failureCount}</td>
+                <td className="px-3 py-2 text-right tabular-nums text-text-muted">{r.runs}</td>
+                {lanes.map(l => {
+                  const v = r.laneScores[l.id]
+                  return <td key={l.id} className={clsx('px-2 py-2 text-right tabular-nums', v == null ? 'text-text-muted/40' : v >= 80 ? 'text-green-400' : v >= 50 ? 'text-amber-400' : 'text-red-400')}>{v == null ? '·' : v}</td>
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="text-xxs text-text-muted mt-2">Aggregated across all completed runs per harness + model. Lane columns are pass-weighted percentages; “·” = no scored task in that lane yet.</p>
+    </div>
+  )
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex flex-col gap-1">
+      <label className="text-xxs uppercase tracking-wide text-text-muted font-medium">{label}</label>
+      {children}
+    </div>
+  )
+}

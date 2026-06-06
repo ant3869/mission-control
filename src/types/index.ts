@@ -28,6 +28,7 @@ export type View =
   | 'hermes'
   | 'flowmap'
   | 'evaluations'
+  | 'harness'      // Harness Benchmarks (OpenClaw/Hermes)
 
 export type TaskColor =
   | 'red'

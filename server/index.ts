@@ -27,6 +27,7 @@ import { flowmapRouter }  from './routes/flowmap.js'
 import { alertsRouter }   from './routes/alerts.js'
 import { securityRouter } from './routes/security.js'
 import { evaluationsRouter } from './routes/evaluations.js'
+import { harnessBenchRouter } from './routes/harnessBench.js'
 
 const app = express()
 const PORT = process.env.API_PORT ?? 3001
@@ -60,6 +61,7 @@ app.use('/api/flowmap',  flowmapRouter)
 app.use('/api/alerts',   alertsRouter)
 app.use('/api/security', securityRouter)
 app.use('/api/evaluations', evaluationsRouter)
+app.use('/api/harness-bench', harnessBenchRouter)
 
 app.get('/api/health', (_req, res) => res.json({ ok: true, ts: new Date().toISOString() }))
 

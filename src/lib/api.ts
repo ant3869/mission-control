@@ -1527,3 +1527,72 @@ export const evaluations = {
     post<{ manualScore: ManualScoreRecord }>('/evaluations/manual-score', body),
   methodology:     () => get<ScoringMethodology>('/evaluations/scoring-methodology'),
 }
+
+// ─── Harness Benchmarks ─────────────────────────────────────────────────────────
+// App → OpenClaw/Hermes → selected model → tools/context/routing → result.
+
+export type BenchmarkHarness  = 'openclaw' | 'hermes'
+export type ExecutionMode     = 'harness_direct' | 'simulated' | 'imported_result'
+export type HbRunStatus       = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled'
+export type HbResultStatus    = 'passed' | 'failed' | 'manual_review' | 'error'
+export type HbLane =
+  | 'runtime_compatibility' | 'instruction_adherence' | 'tool_selection'
+  | 'tool_call_formatting' | 'log_config_diagnosis' | 'multi_turn_troubleshooting'
+  | 'memory_context' | 'command_action_quality' | 'reliability_failure_behavior'
+export type HbFailureType =
+  | 'timeout' | 'empty_response' | 'harness_error' | 'auth_error' | 'model_not_found'
+  | 'invalid_json' | 'schema_mismatch' | 'wrong_tool' | 'hallucinated_tool' | 'missing_tool_call'
+  | 'wrong_arguments' | 'ignored_instruction' | 'ungrounded_claim' | 'wrong_diagnosis'
+  | 'unsafe_command' | 'manual_review_required' | 'unknown'
+
+export interface HbLaneMeta { id: HbLane; label: string; short: string; blurb: string }
+export interface HbPackSummary {
+  id: string; name: string; description: string; harness: BenchmarkHarness | 'any'
+  taskCount: number; laneCounts: Partial<Record<HbLane, number>>
+}
+export interface HbTask {
+  id: string; title: string; lane: HbLane; harnesses: BenchmarkHarness[]
+  prompt: string; expectedBehavior: string; scoringMode: string
+  expectedTool?: string; expectedArguments?: Record<string, unknown>
+  requiredSubstrings?: string[]; forbiddenSubstrings?: string[]; maxPoints: number; tags: string[]
+}
+export interface HbTaskResult {
+  id: string; runId: string; taskId: string; taskTitle: string; lane: HbLane
+  status: HbResultStatus; points: number; maxPoints: number; latencyMs: number | null
+  modelResponse: string; rawHarnessOutput?: unknown; parsedToolCall?: unknown
+  errorMessage?: string | null; failureType?: HbFailureType | null
+  scoreReason?: string; notes?: string; prompt?: string; expectedBehavior?: string; ts: string
+}
+export interface HbRun {
+  id: string; harness: BenchmarkHarness; mode: ExecutionMode; modelName: string
+  provider: string; endpoint?: string; taskPackId: string; taskPackName: string
+  startedAt: string; finishedAt?: string | null; status: HbRunStatus
+  taskCount: number; completedCount: number; totalScore: number; maxScore: number
+  passRate: number | null; avgLatencyMs: number | null; failureCount: number
+  error?: string | null; results?: HbTaskResult[]
+}
+export interface HbComparisonRow {
+  harness: BenchmarkHarness; modelName: string; provider: string
+  runs: number; totalScore: number; maxScore: number; overallPct: number | null
+  passRate: number | null; avgLatencyMs: number | null; failureCount: number
+  laneScores: Record<string, number | null>; lastRunAt: string
+}
+export interface HbStartBody {
+  harness: BenchmarkHarness; taskPackId: string; model?: string
+  provider?: string; endpoint?: string; token?: string; mode?: ExecutionMode
+}
+
+export const harnessBench = {
+  packs:      () => get<{ packs: HbPackSummary[]; lanes: HbLaneMeta[]; failureTypes: HbFailureType[]; fetchedAt: string }>('/harness-bench/packs'),
+  pack:       (id: string) => get<{ pack: { id: string; name: string; description: string; harness: string; tasks: HbTask[] } }>(`/harness-bench/packs/${encodeURIComponent(id)}`),
+  connectors: () => get<{ harnesses: Array<{ id: BenchmarkHarness; label: string; live: boolean; baseUrl: string; apiBaseUrl?: string; enabled: boolean }>; fetchedAt: string }>('/harness-bench/connectors'),
+  models:     (harness: BenchmarkHarness) => get<{ harness: BenchmarkHarness; reachable: boolean; models: string[]; error: string | null; source: string }>('/harness-bench/models', { harness }),
+  runs:       () => get<{ runs: HbRun[]; fetchedAt: string }>('/harness-bench/runs'),
+  run:        (id: string) => get<{ run: HbRun }>(`/harness-bench/runs/${encodeURIComponent(id)}`),
+  start:      (body: HbStartBody) => post<{ ok: boolean; run: HbRun }>('/harness-bench/runs', body),
+  cancel:     (id: string) => post<{ ok: boolean }>(`/harness-bench/runs/${encodeURIComponent(id)}/cancel`, {}),
+  rerunFailed:(id: string) => post<{ ok: boolean; run: HbRun }>(`/harness-bench/runs/${encodeURIComponent(id)}/rerun-failed`, {}),
+  remove:     (id: string) => del<{ ok: boolean }>(`/harness-bench/runs/${encodeURIComponent(id)}`),
+  exportUrl:  (id: string) => `/api/harness-bench/runs/${encodeURIComponent(id)}/export`,
+  comparison: () => get<{ rows: HbComparisonRow[]; lanes: HbLaneMeta[]; fetchedAt: string }>('/harness-bench/comparison'),
+}
