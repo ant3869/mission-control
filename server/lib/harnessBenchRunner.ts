@@ -42,6 +42,20 @@ function extractText(content: any): string {
   return ''
 }
 
+// OpenClaw's codex/agent runtime wraps the model's final answer in
+// <final>…</final> (and may precede it with <thinking>…</thinking>). That's a
+// harness artifact, not the model's content — scoring the wrapper would unfairly
+// fail exact/regex/JSON tasks. Unwrap to the model's actual final answer; the
+// raw transcript is still persisted untouched for inspection.
+function unwrapFinal(s: string): string {
+  const closed = s.match(/<final>([\s\S]*?)<\/final>/i)
+  if (closed) return closed[1].trim()
+  const open = s.match(/<final>([\s\S]*)$/i)
+  if (open) return open[1].trim()
+  // No <final> tag: still drop any <thinking>…</thinking> preamble.
+  return s.replace(/<thinking>[\s\S]*?<\/thinking>/gi, '').trim()
+}
+
 function countToolCalls(messages: any[]): { count: number; first: any } {
   let count = 0; let first: any = null
   for (const m of messages) {
@@ -118,7 +132,7 @@ async function dispatchOpenClaw(prompt: string, sessionKey: string, timeoutMs: n
     if (sig === lastSig && lastAssistant) { stable++; if (stable >= 2) break } else { stable = 0; lastSig = sig }
   }
   const lastAssistant = [...messages].reverse().find(m => String(m?.role) === 'assistant')
-  const answer = extractText(lastAssistant?.content).trim()
+  const answer = unwrapFinal(extractText(lastAssistant?.content).trim())
   const tc = countToolCalls(messages)
   return {
     ok: !!answer, answer, status: answer ? 'completed' : 'no-response', httpStatus: null,
