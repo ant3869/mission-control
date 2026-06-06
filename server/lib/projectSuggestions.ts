@@ -27,21 +27,33 @@ export interface InventoryItemSummary {
 
 // ─── Result shape (matches JSON the agent returns) ──────────────────────────
 
+export interface InfluenceMetadata {
+  inventoryFactors:      string[]
+  matchedCategories:     string[]
+  priorLikedInfluence:   string[]
+  priorRejectedInfluence: string[]
+  rejectionNotes:        string[]
+  preferenceSignals:     string[]
+  contextualFactors:     string[]
+}
+
 export interface ProjectIdeaResult {
-  title:          string
-  description:    string
-  whyFit:         string
-  haveParts:      string[]
-  missingParts:   string[]
-  difficulty:     string   // easy | medium | hard | expert
-  timeEstimate:   string
-  costEstimate:   string
-  confidence:     number   // 0-100
-  coolness:       number   // 0-100
-  requiredTools:  string[]
-  relatedItemIds: string[]
-  nextStep:       string
-  category:       string
+  title:             string
+  description:       string
+  whyFit:            string
+  haveParts:         string[]
+  missingParts:      string[]
+  difficulty:        string   // easy | medium | hard | expert
+  timeEstimate:      string
+  costEstimate:      string
+  confidence:        number   // 0-100
+  coolness:          number   // 0-100
+  usefulnessScore:   number   // 0-100
+  requiredTools:     string[]
+  relatedItemIds:    string[]
+  nextStep:          string
+  category:          string
+  influenceMetadata: InfluenceMetadata
 }
 
 // ─── Backlog context passed into prompt & dedupe ────────────────────────────

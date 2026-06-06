@@ -1,179 +1,201 @@
 // title: Cross-model benchmark comparison table
 // path: src/components/evaluations/BenchmarkComparison.tsx
-// purpose: Show one row per benchmark task and one column per model, with each
-//          cell holding the latest auto-graded rubric score that model produced
-//          for that task. This is the natural model-vs-model surface — the
-//          per-model leaderboard mixes historical-session heuristics with
-//          benchmark scores, so a side-by-side per-task view is what tells you
-//          which model actually answers each test correctly.
-//
-//          Models are columns; tasks are rows. Cells aggregate via "latest
-//          completed run per (model, task)" to avoid one stale low score
-//          dragging a model's column down forever. Hover shows runCount and
-//          the most recent attempt time.
+// purpose: One row per benchmark task, one column per model. Each cell is the
+//          latest auto-graded rubric score that (task, model) pair produced.
+//          Highlights the best score per row so a user can see at a glance
+//          which model wins each task, and surfaces coverage gaps so empty
+//          cells become actionable ("dispatch X to fill this row") instead
+//          of cosmetic dashes.
 
 import { useMemo } from 'react'
 import { clsx } from 'clsx'
-import { GitCompare } from 'lucide-react'
+import { GitCompare, Trophy, AlertCircle } from 'lucide-react'
 import type { BenchmarkTask, BenchmarkRun } from '../../lib/api'
-import { fmtTimeAgo, scoreBg, scoreColor, HeuristicTag } from './shared'
-
-interface Cell {
-  model:        string
-  taskId:       string
-  latest:       BenchmarkRun | null
-  runCount:     number
-  rubricScored: number     // how many runs had a non-null rubricScore
-  bestScore:    number | null
-  worstScore:   number | null
-}
+import { fmtTimeAgo, fmtDuration, scoreBg, scoreColor, HeuristicTag } from './shared'
+import { buildComparisonMatrix, gapsInComparison } from './synthesis'
 
 interface Props {
   tasks: BenchmarkTask[]
   runs:  BenchmarkRun[]
+  /** Optional callback so clicking a column header re-targets the Model Report. */
+  onSelectModel?: (model: string) => void
 }
 
-const SCORED_STATUSES = new Set(['success', 'failure', 'unresolved'])
+export function BenchmarkComparison({ tasks, runs, onSelectModel }: Props) {
+  const { models, rows, modelColumnSummary } = useMemo(
+    () => buildComparisonMatrix({ tasks, runs }),
+    [tasks, runs],
+  )
 
-export function BenchmarkComparison({ tasks, runs }: Props) {
-  const { models, cellMap, columnSummary } = useMemo(() => {
-    // Collect models that have at least one completed (non-running) run.
-    const modelSet = new Set<string>()
-    for (const r of runs) {
-      if (!r.model || r.model === 'unknown') continue
-      if (!SCORED_STATUSES.has(r.status)) continue
-      modelSet.add(r.model)
-    }
-    const models = [...modelSet].sort()
+  // Sort built-in tasks first; preserves the catalog ordering the user expects.
+  const orderedRows = useMemo(() => {
+    const builtIn = rows.filter(r => r.task.builtIn)
+    const custom  = rows.filter(r => !r.task.builtIn)
+    return [...builtIn, ...custom]
+  }, [rows])
 
-    // Bucket runs by (taskId, model), keep the latest per bucket.
-    const buckets = new Map<string, BenchmarkRun[]>()
-    for (const r of runs) {
-      if (!r.model || r.model === 'unknown') continue
-      if (!SCORED_STATUSES.has(r.status)) continue
-      const k = `${r.taskId}::${r.model}`
-      const arr = buckets.get(k) ?? []
-      arr.push(r); buckets.set(k, arr)
-    }
+  const { neverRun, lowestCoverage } = useMemo(() => gapsInComparison(orderedRows), [orderedRows])
 
-    const cellMap = new Map<string, Cell>()
-    for (const [k, arr] of buckets) {
-      arr.sort((a, b) => new Date(b.ts).getTime() - new Date(a.ts).getTime())
-      const [taskId, model] = k.split('::')
-      const scored = arr.filter(r => r.rubricScore != null)
-      cellMap.set(k, {
-        model, taskId,
-        latest: arr[0] ?? null,
-        runCount: arr.length,
-        rubricScored: scored.length,
-        bestScore:  scored.length ? Math.max(...scored.map(r => r.rubricScore as number)) : null,
-        worstScore: scored.length ? Math.min(...scored.map(r => r.rubricScore as number)) : null,
-      })
-    }
-
-    // Column-level summary: average of the latest auto-graded score per task
-    // for this model. Models with no auto-graded runs anywhere stay null.
-    const columnSummary = new Map<string, { avg: number | null; tasksGraded: number }>()
-    for (const m of models) {
-      const perTaskLatest: number[] = []
-      for (const t of tasks) {
-        const c = cellMap.get(`${t.id}::${m}`)
-        if (c?.latest && c.latest.rubricScore != null) perTaskLatest.push(c.latest.rubricScore)
-      }
-      columnSummary.set(m, {
-        avg: perTaskLatest.length ? Math.round(perTaskLatest.reduce((s, v) => s + v, 0) / perTaskLatest.length) : null,
-        tasksGraded: perTaskLatest.length,
-      })
-    }
-
-    return { models, cellMap, columnSummary }
-  }, [tasks, runs])
-
-  if (models.length === 0 || tasks.length === 0) return null
-  const builtIn = tasks.filter(t => t.builtIn)
-  const custom  = tasks.filter(t => !t.builtIn)
-  const ordered = [...builtIn, ...custom]
+  if (models.length === 0 || tasks.length === 0) {
+    // Show an actionable empty-state instead of hiding the section. A user who
+    // lands here without runs needs to know what would populate it.
+    return (
+      <div className="bg-bg-secondary border border-white/10 rounded-xl p-4">
+        <div className="flex items-center gap-2 mb-2">
+          <GitCompare size={13} className="text-violet-400" />
+          <h3 className="text-xs font-semibold uppercase tracking-wider text-text-muted">Benchmark comparison — task × model</h3>
+        </div>
+        <p className="text-xs text-text-muted leading-relaxed">
+          No model has run a benchmark yet. Dispatch any task below (built-ins are auto-graded) and a comparison grid will populate as scores come in.
+        </p>
+      </div>
+    )
+  }
 
   return (
     <div className="bg-bg-secondary border border-white/10 rounded-xl overflow-hidden">
-      <div className="flex items-center gap-2 px-4 py-2.5 border-b border-white/10">
+      <div className="flex items-center gap-2 px-4 py-2.5 border-b border-white/10 flex-wrap">
         <GitCompare size={13} className="text-violet-400" />
         <h3 className="text-xs font-semibold uppercase tracking-wider text-text-muted">Benchmark comparison — task × model</h3>
-        <HeuristicTag tip="Each cell is the latest auto-graded rubric score this model produced for this task. Built-in tasks grade deterministically; user-defined tasks show — until you assign a manual rubric score. Empty cells mean the model hasn't run that task yet." />
-        <span className="ml-auto text-[10px] text-text-muted">{ordered.length} task{ordered.length === 1 ? '' : 's'} · {models.length} model{models.length === 1 ? '' : 's'}</span>
+        <HeuristicTag tip="Each cell is the latest auto-graded rubric score this model produced for this task. The trophy marks the best score per row. Empty cells mean the model hasn't run that task yet — dispatch to fill the gap." />
+        <span className="ml-auto text-[10px] text-text-muted">{orderedRows.length} task{orderedRows.length === 1 ? '' : 's'} · {models.length} model{models.length === 1 ? '' : 's'}</span>
       </div>
+
+      {(neverRun.length > 0 || lowestCoverage.length > 0) && (
+        <div className="px-4 py-2 bg-amber-500/5 border-b border-amber-500/15 text-[11px] text-amber-200 flex items-start gap-2">
+          <AlertCircle size={12} className="mt-0.5 flex-shrink-0" />
+          <div className="leading-snug">
+            {neverRun.length > 0 && (
+              <p>
+                <span className="font-semibold">Untested:</span>{' '}
+                {neverRun.slice(0, 4).map(t => t.title).join(', ')}
+                {neverRun.length > 4 && ` +${neverRun.length - 4} more`}
+                {' '}— dispatch any task to populate its row.
+              </p>
+            )}
+            {lowestCoverage.length > 0 && (
+              <p>
+                <span className="font-semibold">Partial coverage:</span> {lowestCoverage.length} task{lowestCoverage.length === 1 ? '' : 's'} only graded on a subset of models — fill the gaps to make rows comparable.
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+
       <div className="overflow-x-auto">
         <table className="w-full text-xs">
           <thead className="bg-white/[0.02] text-text-muted">
             <tr className="text-left">
               <th className="px-3 py-2 font-medium whitespace-nowrap">Task ↓ · Model →</th>
               {models.map(m => {
-                const s = columnSummary.get(m)
+                const s = modelColumnSummary.get(m)
                 return (
                   <th key={m} className="px-2 py-2 font-medium whitespace-nowrap min-w-[120px]">
-                    <div className="flex flex-col gap-0.5">
-                      <span className="text-text-primary truncate max-w-[200px]" title={m}>{m}</span>
+                    <button type="button"
+                      onClick={() => onSelectModel?.(m)}
+                      className={clsx('flex flex-col gap-0.5 w-full text-left',
+                        onSelectModel && 'hover:text-violet-200 cursor-pointer')}
+                      title={onSelectModel ? `Open report for ${m}` : m}>
+                      <span className="text-text-primary truncate max-w-[200px]">{m}</span>
                       <span className="text-[9px] font-normal text-text-muted">
                         {s?.avg == null
                           ? 'no graded runs'
-                          : <>avg <span className={scoreColor(s.avg)}>{s.avg}</span> · {s.tasksGraded}/{ordered.length} tasks</>}
+                          : <>avg <span className={scoreColor(s.avg)}>{s.avg}</span> · {s.tasksGraded}/{orderedRows.length} tasks</>}
                       </span>
-                    </div>
+                    </button>
                   </th>
                 )
               })}
             </tr>
           </thead>
           <tbody>
-            {ordered.map(t => (
-              <tr key={t.id} className="border-t border-white/5">
-                <td className="px-3 py-2 max-w-[260px]">
-                  <div className="flex items-center gap-2">
-                    <span className="text-text-primary text-xs truncate" title={t.title}>{t.title}</span>
-                    {t.builtIn && (
-                      <span className="text-[9px] uppercase tracking-wide px-1 py-px rounded bg-violet-500/15 text-violet-200 flex-shrink-0" title="Built-in — auto-graded">
-                        auto
-                      </span>
-                    )}
-                  </div>
-                  <span className="block text-[10px] text-text-muted truncate" title={t.prompt}>{t.prompt.slice(0, 80)}{t.prompt.length > 80 ? '…' : ''}</span>
-                </td>
-                {models.map(m => {
-                  const c = cellMap.get(`${t.id}::${m}`)
-                  if (!c || !c.latest) {
-                    return <td key={m} className="px-2 py-2 text-text-muted/40 text-center text-[10px]">—</td>
-                  }
-                  const score = c.latest.rubricScore
-                  const status = c.latest.status
-                  // Failed dispatches with no rubric score still convey signal.
-                  if (score == null) {
-                    return (
-                      <td key={m} className="px-2 py-2 text-center"
-                          title={`${c.runCount} run${c.runCount === 1 ? '' : 's'} · latest ${status} · ${fmtTimeAgo(c.latest.ts)} · no rubric grade`}>
-                        <span className={clsx('text-[10px] px-1 py-0.5 rounded',
-                          status === 'failure' || status === 'error' ? 'bg-red-500/15 text-red-300' : 'bg-white/5 text-text-muted')}>
-                          {status}
-                        </span>
-                      </td>
-                    )
-                  }
-                  return (
-                    <td key={m} className="px-2 py-2 text-center"
-                        title={`${c.runCount} run${c.runCount === 1 ? '' : 's'} · ${c.rubricScored} graded · best ${c.bestScore} / worst ${c.worstScore} · latest ${fmtTimeAgo(c.latest.ts)}`}>
-                      <span className={clsx('inline-flex items-center justify-center min-w-[40px] px-1.5 py-0.5 rounded font-semibold tabular-nums',
-                        scoreBg(score), scoreColor(score))}>
-                        {Math.round(score)}
-                      </span>
-                      {c.runCount > 1 && (
-                        <span className="block text-[9px] text-text-muted/70 mt-0.5">
-                          ±{Math.max(0, (c.bestScore ?? 0) - (c.worstScore ?? 0))} · n={c.rubricScored}
+            {orderedRows.map(row => {
+              const t = row.task
+              const winnerSet = new Set(row.bestModels)
+              return (
+                <tr key={t.id} className="border-t border-white/5">
+                  <td className="px-3 py-2 max-w-[260px]">
+                    <div className="flex items-center gap-2">
+                      <span className="text-text-primary text-xs truncate" title={t.title}>{t.title}</span>
+                      {t.builtIn && (
+                        <span className="text-[9px] uppercase tracking-wide px-1 py-px rounded bg-violet-500/15 text-violet-200 flex-shrink-0" title="Built-in — auto-graded">
+                          auto
                         </span>
                       )}
-                    </td>
-                  )
-                })}
-              </tr>
-            ))}
+                      {row.aliasTaskIds.length > 0 && (
+                        <span className="text-[9px] uppercase tracking-wide px-1 py-px rounded bg-white/10 text-text-muted flex-shrink-0" title="Same built-in task is installed on both platforms — runs from both are merged into this row.">
+                          merged
+                        </span>
+                      )}
+                      {row.ungradeable && (
+                        <span className="text-[9px] uppercase tracking-wide px-1 py-px rounded bg-amber-500/15 text-amber-200 flex-shrink-0" title="Runs completed but no rubric score — this task has no auto-grader. Add a rubric or build a deterministic grader.">
+                          needs grader
+                        </span>
+                      )}
+                      {!row.ungradeable && row.coverage.graded === 0 && (
+                        <span className="text-[9px] uppercase tracking-wide px-1 py-px rounded bg-amber-500/15 text-amber-200 flex-shrink-0" title="No model has produced a graded run for this task yet.">
+                          unrun
+                        </span>
+                      )}
+                      {row.bestScore != null && row.bestModels.length === 1 && row.coverage.graded >= 2 && row.spreadAcross >= 10 && (
+                        <span className="text-[9px] uppercase tracking-wide px-1 py-px rounded bg-emerald-500/15 text-emerald-200 flex-shrink-0" title={`Spread of ${row.spreadAcross} pts across graded models — clear winner`}>
+                          decisive
+                        </span>
+                      )}
+                    </div>
+                    <span className="block text-[10px] text-text-muted truncate" title={t.prompt}>{t.prompt.slice(0, 80)}{t.prompt.length > 80 ? '…' : ''}</span>
+                  </td>
+                  {models.map(m => {
+                    const c = row.cells.get(m)
+                    if (!c || c.runCount === 0) {
+                      return (
+                        <td key={m} className="px-2 py-2 text-text-muted/40 text-center text-[10px]"
+                            title="Not yet dispatched on this model. Run the task with this model selected to fill this cell.">
+                          —
+                        </td>
+                      )
+                    }
+                    const score = c.latestScore
+                    const winner = winnerSet.has(m) && row.bestModels.length === 1 && score != null
+                    const outcome = c.latestOutcome ?? c.latestStatus ?? '—'
+                    const outcomeColor =
+                      outcome === 'success' || outcome === 'recovered' ? 'text-emerald-300' :
+                      outcome === 'failure' || outcome === 'error'      ? 'text-red-300' :
+                      'text-text-muted'
+                    const titleLine = `${c.runCount} run${c.runCount === 1 ? '' : 's'} · ${c.rubricScored} graded`
+                      + (score != null ? ` · best ${c.bestScore} / worst ${c.worstScore} · spread ${c.spread}` : ' · no rubric grade')
+                      + ` · latest ${fmtTimeAgo(c.latestTs)} · ${fmtDuration(c.durationMs ?? 0)}`
+                      + (c.notes ? ` · ${c.notes.slice(0, 80)}` : '')
+                    return (
+                      <td key={m} className={clsx('px-2 py-2 text-center align-top', winner && 'bg-emerald-500/[0.06]')}
+                          title={titleLine}>
+                        {score == null ? (
+                          <span className={clsx('inline-flex items-center gap-1 text-[10px] px-1 py-0.5 rounded',
+                            c.needsGrader ? 'bg-white/5 text-text-muted border border-amber-500/20' : 'bg-white/5 text-text-muted')}>
+                            <span className={outcomeColor}>{outcome}</span>
+                          </span>
+                        ) : (
+                          <span className={clsx('inline-flex items-center justify-center min-w-[40px] px-1.5 py-0.5 rounded font-semibold tabular-nums gap-1',
+                            scoreBg(score), scoreColor(score),
+                            winner && 'ring-1 ring-emerald-400/50')}>
+                            {winner && <Trophy size={9} className="text-emerald-300" />}
+                            {Math.round(score)}
+                          </span>
+                        )}
+                        <span className="block text-[9px] text-text-muted/80 mt-0.5 leading-tight">
+                          <span className={outcomeColor}>{outcome}</span>
+                          {' · n='}{c.runCount}
+                          {c.durationMs != null && c.durationMs > 0 && <> · {fmtDuration(c.durationMs)}</>}
+                        </span>
+                        {c.runCount > 1 && score != null && (
+                          <span className="block text-[9px] text-text-muted/60">±{c.spread}</span>
+                        )}
+                      </td>
+                    )
+                  })}
+                </tr>
+              )
+            })}
           </tbody>
         </table>
       </div>

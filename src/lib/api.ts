@@ -620,6 +620,16 @@ export const inventory = {
 
 export type ProjectIdeaStatus = 'new' | 'liked' | 'rejected' | 'snoozed' | 'completed'
 
+export interface InfluenceMetadata {
+  inventoryFactors: string[];
+  matchedCategories: string[];
+  priorLikedInfluence: string[];
+  priorRejectedInfluence: string[];
+  rejectionNotes: string[];
+  preferenceSignals: string[];
+  contextualFactors: string[];
+}
+
 export interface ProjectIdea {
   id:              string
   title:           string

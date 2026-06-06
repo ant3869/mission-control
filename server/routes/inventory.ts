@@ -128,6 +128,15 @@ db.exec(`
   );
 `)
 
+// ─── Schema migrations ────────────────────────────────────────────────────────
+// Add columns introduced after initial schema. SQLite has no IF NOT EXISTS for
+// ALTER TABLE, so wrap each in try/catch.
+;[
+  `ALTER TABLE project_ideas ADD COLUMN statusHistory    TEXT NOT NULL DEFAULT '[]'`,
+  `ALTER TABLE project_ideas ADD COLUMN influenceMetadata TEXT NOT NULL DEFAULT '{}'`,
+  `ALTER TABLE project_ideas ADD COLUMN usefulnessScore  REAL NOT NULL DEFAULT 0`,
+].forEach(sql => { try { db.prepare(sql).run() } catch { /* column already exists */ } })
+
 // On every startup/hot-reload, any items left in 'pending' from a previous run
 // are orphaned (their promises are gone). Reset them so research can be retried.
 db.exec(`UPDATE items SET researchStatus = 'idle', researchError = 'Reset: server restarted while research was in progress' WHERE researchStatus = 'pending'`)
