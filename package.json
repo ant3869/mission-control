@@ -1,7 +1,7 @@
 {
   "name": "mission-control",
   "private": true,
-  "version": "0.7.4",
+  "version": "0.7.5",
   "type": "module",
   "scripts": {
     "dev": "concurrently -n \"api,vite\" -c \"cyan,magenta\" \"npm run server\" \"wait-on http://localhost:3001/api/health && vite\"",

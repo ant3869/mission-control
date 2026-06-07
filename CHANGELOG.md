@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.7.5] — 2026-06-07
+
+### Added
+
+- **Model fingerprint columns in Compare** — beyond Overall/Pass, the comparison table now surfaces the characteristics that differ *even when accuracy is equal*: **Reliab.** (sample pass-consistency), **Speed** (avg latency ± stdev = speed consistency), **Verbose** (mean response length in chars), and **Fences** (% of replies wrapped in ``` — markdown tendency). These give real, differing data points for picking a model (e.g. terser vs chattier, steadier vs spikier latency) instead of a wall of 100%s. Backend computes them per comparison group; reliability falls back to pass rate for single-sample runs.
+
 ## [0.7.4] — 2026-06-07
 
 ### Added

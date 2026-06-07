@@ -206,6 +206,12 @@ export interface ModelComparisonRow {
   totalScore: number; maxScore: number; overallPct: number | null
   passRate: number | null; avgLatencyMs: number | null; failureCount: number
   laneScores: Record<string, number | null>   // lane → percentage
+  // ── Model fingerprint: characteristics that differ even at equal accuracy ──
+  reliabilityPct: number | null   // sample pass-consistency = Σpassed / Σsamples
+  latencyStdevMs: number | null   // speed consistency (lower = steadier)
+  avgResponseChars: number        // verbosity — mean response length
+  fenceRate: number               // % of responses wrapped in ``` code fences
+  maxSamples: number              // largest samples/task used (1 → reliability == pass rate)
   lastRunAt: string
 }
 
@@ -241,6 +247,22 @@ export function modelComparison(mode: CompareMode = 'latest'): ModelComparisonRo
     const passed = scored.filter(x => x.status === 'passed').length
     const lat = results.map(x => x.latencyMs).filter((n): n is number => typeof n === 'number')
     const failureCount = results.filter(x => x.status === 'failed' || x.status === 'error').length
+
+    // ── fingerprint metrics ──
+    // For multi-sample results use stored passCount/sampleCount; for single-sample
+    // (or pre-sampling rows whose pass_count defaulted to 0) fall back to status.
+    const perSamples = (x: BenchmarkTaskResult) => (x.sampleCount && x.sampleCount > 1 ? x.sampleCount : 1)
+    const perPasses  = (x: BenchmarkTaskResult) => (x.sampleCount && x.sampleCount > 1 ? (x.passCount ?? 0) : (x.status === 'passed' ? 1 : 0))
+    const sumSamples = results.reduce((s, x) => s + perSamples(x), 0)
+    const sumPasses  = results.reduce((s, x) => s + perPasses(x), 0)
+    const reliabilityPct = sumSamples > 0 ? Math.round((sumPasses / sumSamples) * 100) : null
+    const maxSamples = results.reduce((m, x) => Math.max(m, x.sampleCount ?? 1), 1)
+    const latMean = lat.length ? lat.reduce((s, n) => s + n, 0) / lat.length : 0
+    const latStdev = lat.length > 1 ? Math.round(Math.sqrt(lat.reduce((s, n) => s + (n - latMean) ** 2, 0) / lat.length)) : null
+    const chars = results.map(x => (x.modelResponse ?? '').length)
+    const avgResponseChars = chars.length ? Math.round(chars.reduce((s, n) => s + n, 0) / chars.length) : 0
+    const fenced = results.filter(x => (x.modelResponse ?? '').includes('```')).length
+    const fenceRate = results.length ? Math.round((fenced / results.length) * 100) : 0
     const laneScores: Record<string, number | null> = {}
     const byLane = new Map<string, BenchmarkTaskResult[]>()
     for (const x of scored) { const a = byLane.get(x.lane) ?? []; a.push(x); byLane.set(x.lane, a) }
@@ -255,8 +277,9 @@ export function modelComparison(mode: CompareMode = 'latest'): ModelComparisonRo
       totalScore, maxScore,
       overallPct: maxScore > 0 ? Math.round((totalScore / maxScore) * 100) : null,
       passRate: scored.length ? Math.round((passed / scored.length) * 100) : null,
-      avgLatencyMs: lat.length ? Math.round(lat.reduce((s, n) => s + n, 0) / lat.length) : null,
+      avgLatencyMs: lat.length ? Math.round(latMean) : null,
       failureCount, laneScores,
+      reliabilityPct, latencyStdevMs: latStdev, avgResponseChars, fenceRate, maxSamples,
       lastRunAt: sortedDesc[0]?.startedAt ?? '',
     })
   }

@@ -1579,7 +1579,10 @@ export interface HbComparisonRow {
   runs: number; runsUsed: number
   totalScore: number; maxScore: number; overallPct: number | null
   passRate: number | null; avgLatencyMs: number | null; failureCount: number
-  laneScores: Record<string, number | null>; lastRunAt: string
+  laneScores: Record<string, number | null>
+  reliabilityPct: number | null; latencyStdevMs: number | null
+  avgResponseChars: number; fenceRate: number; maxSamples: number
+  lastRunAt: string
 }
 export interface HbStartBody {
   harness: BenchmarkHarness; taskPackId: string; model?: string

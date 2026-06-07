@@ -660,7 +660,10 @@ function ComparisonTab({ rows, lanes, mode, onMode }: {
                   <th className="text-left font-medium px-3 py-2">Task pack</th>
                   <th className="text-right font-medium px-3 py-2">Overall</th>
                   <th className="text-right font-medium px-3 py-2">Pass</th>
-                  <th className="text-right font-medium px-3 py-2">Latency</th>
+                  <th className="text-right font-medium px-3 py-2" title="Sample pass-consistency (Σpassed / Σsamples). At 1 sample this equals pass rate.">Reliab.</th>
+                  <th className="text-right font-medium px-3 py-2" title="Average latency per task (± standard deviation = speed consistency)">Speed</th>
+                  <th className="text-right font-medium px-3 py-2" title="Verbosity — mean response length in characters">Verbose</th>
+                  <th className="text-right font-medium px-3 py-2" title="Share of responses wrapped in ``` code fences (format/markdown tendency)">Fences</th>
                   <th className="text-right font-medium px-3 py-2">Fails</th>
                   <th className="text-right font-medium px-3 py-2" title="runs used / runs available">Runs</th>
                   {lanes.map(l => <th key={l.id} className="text-right font-medium px-2 py-2 whitespace-nowrap" title={l.label}>{l.short}</th>)}
@@ -673,7 +676,15 @@ function ComparisonTab({ rows, lanes, mode, onMode }: {
                     <td className="px-3 py-2 text-text-muted">{r.taskPackName}</td>
                     <td className={clsx('px-3 py-2 text-right font-bold tabular-nums', (r.overallPct ?? 0) >= 80 ? 'text-green-400' : (r.overallPct ?? 0) >= 50 ? 'text-amber-400' : 'text-red-400')}>{r.overallPct == null ? '—' : `${r.overallPct}%`}</td>
                     <td className="px-3 py-2 text-right tabular-nums text-text-secondary">{r.passRate == null ? '—' : `${r.passRate}%`}</td>
-                    <td className="px-3 py-2 text-right tabular-nums text-text-muted">{fmtLatency(r.avgLatencyMs)}</td>
+                    <td className={clsx('px-3 py-2 text-right tabular-nums', r.reliabilityPct == null ? 'text-text-muted' : r.reliabilityPct >= 90 ? 'text-green-400' : r.reliabilityPct >= 60 ? 'text-amber-400' : 'text-red-400')}
+                        title={r.maxSamples > 1 ? `${r.maxSamples} samples/task` : '1 sample/task — equals pass rate; run 3×/5× for a real reliability signal'}>
+                      {r.reliabilityPct == null ? '—' : `${r.reliabilityPct}%`}{r.maxSamples > 1 && <span className="text-text-muted text-xxs">·{r.maxSamples}×</span>}
+                    </td>
+                    <td className="px-3 py-2 text-right tabular-nums text-text-muted" title={r.latencyStdevMs != null ? `± ${fmtLatency(r.latencyStdevMs)} stdev` : undefined}>
+                      {fmtLatency(r.avgLatencyMs)}{r.latencyStdevMs != null && <span className="text-text-muted/60 text-xxs"> ±{fmtLatency(r.latencyStdevMs)}</span>}
+                    </td>
+                    <td className="px-3 py-2 text-right tabular-nums text-text-muted">{r.avgResponseChars}c</td>
+                    <td className={clsx('px-3 py-2 text-right tabular-nums', r.fenceRate === 0 ? 'text-text-muted' : 'text-amber-400')}>{r.fenceRate}%</td>
                     <td className={clsx('px-3 py-2 text-right tabular-nums', r.failureCount ? 'text-red-400' : 'text-text-muted')}>{r.failureCount}</td>
                     <td className="px-3 py-2 text-right tabular-nums text-text-muted">{mode === 'average' ? r.runs : `${r.runsUsed}/${r.runs}`}</td>
                     {lanes.map(l => {
@@ -685,7 +696,16 @@ function ComparisonTab({ rows, lanes, mode, onMode }: {
               </tbody>
             </table>
           </div>
-          <p className="text-xxs text-text-muted mt-2">Grouped by model + harness + task pack. Lane columns are pass-weighted percentages; “·” = no scored task in that lane. Runs column = used/available.</p>
+          <div className="text-xxs text-text-muted mt-2 space-y-1">
+            <p>Grouped by model + harness + task pack. Lane columns are pass-weighted percentages; “·” = no scored task in that lane.</p>
+            <p>
+              <span className="text-text-secondary">Model fingerprint</span> — differences that show even at equal accuracy:
+              <b className="text-text-secondary"> Reliab.</b> = sample pass-consistency (run 3×/5× for signal) ·
+              <b className="text-text-secondary"> Speed</b> = avg latency ± stdev (speed consistency) ·
+              <b className="text-text-secondary"> Verbose</b> = mean response length in chars ·
+              <b className="text-text-secondary"> Fences</b> = % of replies wrapped in ``` (markdown tendency).
+            </p>
+          </div>
         </>
       )}
     </div>
