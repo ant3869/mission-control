@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.7.7] — 2026-06-07
+
+### Fixed — important benchmark-validity finding
+
+- **OpenClaw runs the agent's configured model, NOT the requested one.** While wiring session-level token usage, discovered that `chat.send` ignores the per-call model selector — across 79 real benchmark sessions every run resolved to the same model (`gemini-3.1-pro-preview`) regardless of what was selected, and it can even change between runs. So earlier "model A vs model B" comparisons were largely the *same* model under different labels — the real reason scores never diverged. (Passing a `model` param to `chat.send` doesn't help: OpenClaw strictly validates params and rejects it, erroring the turn.)
+- The runner now reads the **actual** model from the transcript (the assistant message's `model` field), persists it as `resolvedModel`, and raises a clear amber **warning** on the run when it differs from the requested model. The run summary shows the real model in amber.
+- **Compare now groups by the model that actually ran** (`resolvedModel`), so differently-labelled OpenClaw runs collapse into the true model instead of appearing as several distinct models.
+
+### Added
+
+- Session-level token fallback: when OpenClaw's per-message `usage` is zero, the runner reads `sessions.list` totals (still zero on dashboard-dispatched sessions today, but correct if the gateway starts reporting). Tokens/cost remain estimates (`~`) until real usage is reported, or use the OpenAI-compatible endpoint override (which returns real `usage` and honours the model).
+
 ## [0.7.6] — 2026-06-07
 
 ### Added

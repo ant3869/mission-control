@@ -143,7 +143,8 @@ export interface BenchmarkRun {
   id:           string
   harness:      BenchmarkHarness
   mode:         ExecutionMode
-  modelName:    string
+  modelName:    string          // model the user requested
+  resolvedModel?: string | null  // model the harness actually ran (OpenClaw may ignore the request)
   provider:     string
   endpoint?:    string
   taskPackId:   string

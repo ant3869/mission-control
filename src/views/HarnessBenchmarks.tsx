@@ -521,7 +521,7 @@ export function HarnessBenchmarks() {
                   </span>
                   <span className="px-2 py-0.5 rounded border border-accent-teal/40 bg-accent-teal/10 text-accent-teal text-xxs font-mono">{run.mode}</span>
                   <span className="text-xxs text-text-muted">{run.completedCount}/{run.taskCount} tasks · {relTime(run.startedAt)}</span>
-                  {run.error && <span className="text-xxs text-red-400 truncate max-w-md" title={run.error}>· {run.error}</span>}
+                  {run.error && <span className={clsx('text-xxs truncate max-w-2xl', run.error.startsWith('⚠') ? 'text-amber-400' : 'text-red-400')} title={run.error}>· {run.error}</span>}
                   {!isRunning && (
                     <button onClick={() => deleteRunById(run.id)} title="Delete this run"
                       className="ml-auto flex items-center gap-1 px-2 py-0.5 rounded border border-border bg-card hover:bg-red-950/30 hover:border-red-900/40 text-xxs text-text-muted hover:text-red-300 transition-colors">
@@ -531,7 +531,11 @@ export function HarnessBenchmarks() {
                 </div>
                 <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
                   <Stat label="Harness" value={<span className="flex items-center gap-1"><Server size={12} className="text-text-muted" />{run.harness}</span>} />
-                  <Stat label="Model" value={<span className="flex items-center gap-1"><Cpu size={12} className="text-text-muted" />{run.modelName}</span>} />
+                  <Stat label="Model" value={
+                    run.resolvedModel && run.resolvedModel.toLowerCase() !== run.modelName.toLowerCase()
+                      ? <span className="flex items-center gap-1" title={`requested ${run.modelName}`}><Cpu size={12} className="text-amber-400" /><span className="text-amber-300">{run.resolvedModel}</span></span>
+                      : <span className="flex items-center gap-1"><Cpu size={12} className="text-text-muted" />{run.modelName}</span>
+                  } />
                   <Stat label="Provider" value={run.provider} />
                   <Stat label="Total score" value={`${run.totalScore}/${run.maxScore}`} accent="text-accent-blue" />
                   <Stat label="Pass rate" value={run.passRate == null ? '—' : `${run.passRate}%`} accent={run.passRate != null && run.passRate >= 70 ? 'text-green-400' : 'text-amber-400'} />

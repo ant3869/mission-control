@@ -1566,6 +1566,7 @@ export interface HbTaskResult {
 }
 export interface HbRun {
   id: string; harness: BenchmarkHarness; mode: ExecutionMode; modelName: string
+  resolvedModel?: string | null
   provider: string; endpoint?: string; taskPackId: string; taskPackName: string
   startedAt: string; finishedAt?: string | null; status: HbRunStatus
   taskCount: number; completedCount: number; totalScore: number; maxScore: number

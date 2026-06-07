@@ -58,6 +58,28 @@ function openclawUsage(messages: any[]): { out: number; in: number; cost: number
   return { out, in: inn, cost }
 }
 
+/**
+ * Session-level token fallback. OpenClaw's per-message usage is often 0 on
+ * dashboard-dispatched sessions, but sessions.list carries per-session
+ * totalTokens / inputTokens / outputTokens (and sometimes cost + resolved model).
+ * Look our session up by key and use those when the message-level usage is empty.
+ */
+async function openclawSessionUsage(sessionKey: string): Promise<{ out: number; in: number; cost: number; model: string | null } | null> {
+  try {
+    const r: any = await ocRequest('sessions.list', {}, 8000)
+    const arr: any[] = Array.isArray(r?.sessions) ? r.sessions : Array.isArray(r) ? r : []
+    const s = arr.find(x => x?.key === sessionKey || x?.sessionKey === sessionKey)
+    if (!s) return null
+    const inn = num(s.inputTokens ?? s.input_tokens ?? s.input)
+    let out = num(s.outputTokens ?? s.output_tokens ?? s.output)
+    const total = num(s.totalTokens ?? s.total_tokens ?? s.tokens)
+    if (!out && total) out = inn ? Math.max(0, total - inn) : total   // only a total → treat as output proxy
+    const cost = num(s.cost?.total ?? s.cost ?? s.estimatedCost ?? s.cost_usd ?? s.costUsd)
+    const model = (typeof s.model === 'string' && s.model) || (typeof s.modelId === 'string' && s.modelId) || null
+    return { out, in: inn, cost, model }
+  } catch { return null }
+}
+
 function extractText(content: any): string {
   if (typeof content === 'string') return content
   if (Array.isArray(content)) {
@@ -140,10 +162,15 @@ async function dispatchHermes(prompt: string, model: string, timeoutMs: number):
   }
 }
 
-async function dispatchOpenClaw(prompt: string, sessionKey: string, timeoutMs: number): Promise<DispatchResult> {
+async function dispatchOpenClaw(prompt: string, sessionKey: string, timeoutMs: number, model?: string): Promise<DispatchResult> {
   const start = Date.now()
   try {
     await ensureConnected(12_000)
+    // NOTE: chat.send does NOT accept a per-call model — OpenClaw strictly
+    // validates params and rejects unknown props, and the session runs the
+    // agent's configured model regardless. We record the ACTUAL model from the
+    // transcript below and warn when it differs from what was requested.
+    void model
     await ocRequest('chat.send', { sessionKey, message: prompt, deliver: false, idempotencyKey: randomUUID() }, 12_000)
   } catch (err: any) {
     return { ok: false, answer: '', status: 'error', httpStatus: null,
@@ -164,12 +191,23 @@ async function dispatchOpenClaw(prompt: string, sessionKey: string, timeoutMs: n
   const answer = unwrapFinal(extractText(lastAssistant?.content).trim())
   const tc = countToolCalls(messages)
   const u = openclawUsage(messages)
+  // The assistant message carries the model that actually generated it — the
+  // ground truth for what OpenClaw ran (the per-call model selector is NOT
+  // honoured by chat.send on a configured agent, so this often differs from the
+  // requested model). Read it straight from the transcript (race-free).
+  let resolvedModel: string | null = (typeof (lastAssistant as any)?.model === 'string' && (lastAssistant as any).model) || null
+  let outTok = u.out, inTok = u.in, cost = u.cost
+  // Fall back to session-level totals/model when per-message usage was zero.
+  if (outTok === 0 && inTok === 0) {
+    const sess = await openclawSessionUsage(sessionKey)
+    if (sess) { outTok = sess.out; inTok = sess.in; cost = cost || sess.cost; resolvedModel = resolvedModel || sess.model }
+  }
   return {
     ok: !!answer, answer, status: answer ? 'completed' : 'no-response', httpStatus: null,
     error: answer ? null : 'OpenClaw returned no assistant reply within the time budget',
-    latencyMs: Date.now() - start, raw: messages, resolvedModel: null,
+    latencyMs: Date.now() - start, raw: messages, resolvedModel,
     nativeToolCall: tc.first, toolCalls: tc.count,
-    outputTokens: u.out, inputTokens: u.in, reportedCost: u.cost,
+    outputTokens: outTok, inputTokens: inTok, reportedCost: cost,
   }
 }
 
@@ -182,7 +220,7 @@ async function dispatch(req: StartRunRequest, task: BenchmarkTask, runId: string
   if (req.harness === 'hermes') return dispatchHermes(task.prompt, model, perTaskTimeout)
   // Unique session per sample so chat.history of one sample never mixes into the next.
   const sessionKey = `agent:main:dashboard-benchmark:${runId.slice(0, 8)}-${task.id}-s${sampleIdx}`
-  return dispatchOpenClaw(task.prompt, sessionKey, perTaskTimeout)
+  return dispatchOpenClaw(task.prompt, sessionKey, perTaskTimeout, model)
 }
 
 // ─── orchestration ──────────────────────────────────────────────────────────────
@@ -224,6 +262,7 @@ const mean = (xs: number[]) => (xs.length ? xs.reduce((s, n) => s + n, 0) / xs.l
 
 async function executeTasks(runId: string, req: StartRunRequest, tasks: BenchmarkTask[]) {
   const samples = Math.min(Math.max(Math.round(req.samples ?? 1), 1), 5)
+  const resolvedModels: string[] = []
   for (const task of tasks) {
     if (cancelled.has(runId)) { recomputeAndFinalize(runId, 'cancelled'); return }
 
@@ -252,6 +291,7 @@ async function executeTasks(runId: string, req: StartRunRequest, tasks: Benchmar
     const meanCost = mean(trials.map(t => t.d.reportedCost))
     // Representative trial for inspection: prefer a non-passing one (shows the failure mode), else the first.
     const rep = trials.find(t => t.outcome.status !== 'passed') ?? trials[0]
+    for (const t of trials) if (t.d.resolvedModel) resolvedModels.push(t.d.resolvedModel)
     const status = manual ? 'manual_review'
       : passCount === trials.length ? 'passed'
       : allError ? 'error' : 'failed'
@@ -278,6 +318,20 @@ async function executeTasks(runId: string, req: StartRunRequest, tasks: Benchmar
     // Incremental progress so the UI poller shows live advancement.
     updateRun(runId, { completedCount: listResults(runId).length })
   }
+
+  // Flag when OpenClaw actually ran a different model than requested — its
+  // chat.send uses the agent's configured model and ignores the per-call
+  // selector, so a "gpt-5.2" run may really be the agent's default. Without
+  // this warning the comparison would mislabel one model as several.
+  const requested = (req.model ?? '').trim().toLowerCase()
+  const counts = new Map<string, number>()
+  for (const m of resolvedModels) counts.set(m, (counts.get(m) ?? 0) + 1)
+  const dominant = [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0]
+  if (dominant) updateRun(runId, { resolvedModel: dominant })
+  if (req.harness === 'openclaw' && dominant && requested && requested !== 'auto' && dominant.toLowerCase() !== requested) {
+    updateRun(runId, { error: `⚠ OpenClaw ran "${dominant}", not the requested "${req.model}" — chat.send uses the agent's configured model and ignores per-call model selection. Comparing models needs the endpoint override (or a per-model agent).` })
+  }
+
   recomputeAndFinalize(runId, 'completed')
 }
 

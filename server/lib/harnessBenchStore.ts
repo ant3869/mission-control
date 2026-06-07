@@ -25,6 +25,7 @@ db.exec(`
     harness       TEXT NOT NULL,
     mode          TEXT NOT NULL,
     model_name    TEXT NOT NULL,
+    resolved_model TEXT,
     provider      TEXT NOT NULL,
     endpoint      TEXT,
     task_pack_id  TEXT NOT NULL,
@@ -80,13 +81,15 @@ for (const col of [
 ]) {
   try { db.exec(`ALTER TABLE bench_results ADD COLUMN ${col}`) } catch { /* already present */ }
 }
+try { db.exec('ALTER TABLE bench_runs ADD COLUMN resolved_model TEXT') } catch { /* already present */ }
 
 // ─── row mappers ──────────────────────────────────────────────────────────────
 
 function runFromRow(r: any): BenchmarkRun {
   return {
     id: r.id, harness: r.harness as BenchmarkHarness, mode: r.mode as ExecutionMode,
-    modelName: r.model_name, provider: r.provider, endpoint: r.endpoint ?? undefined,
+    modelName: r.model_name, resolvedModel: r.resolved_model ?? null,
+    provider: r.provider, endpoint: r.endpoint ?? undefined,
     taskPackId: r.task_pack_id, taskPackName: r.task_pack_name,
     startedAt: r.started_at, finishedAt: r.finished_at ?? null, status: r.status as RunStatus,
     taskCount: r.task_count, completedCount: r.completed_count,
@@ -153,7 +156,7 @@ export function listRuns(limit = 100): BenchmarkRun[] {
 export interface RunPatch {
   status?: RunStatus; finishedAt?: string | null; completedCount?: number
   totalScore?: number; passRate?: number | null; avgLatencyMs?: number | null
-  failureCount?: number; error?: string | null
+  failureCount?: number; error?: string | null; resolvedModel?: string | null
 }
 
 export function updateRun(id: string, patch: RunPatch): BenchmarkRun | null {
@@ -162,9 +165,10 @@ export function updateRun(id: string, patch: RunPatch): BenchmarkRun | null {
   const next = { ...cur, ...patch }
   db.prepare(`
     UPDATE bench_runs SET status=?, finished_at=?, completed_count=?, total_score=?,
-      pass_rate=?, avg_latency=?, failure_count=?, error=? WHERE id=?
+      pass_rate=?, avg_latency=?, failure_count=?, error=?, resolved_model=? WHERE id=?
   `).run(next.status, next.finishedAt ?? null, next.completedCount, next.totalScore,
-    next.passRate ?? null, next.avgLatencyMs ?? null, next.failureCount, next.error ?? null, id)
+    next.passRate ?? null, next.avgLatencyMs ?? null, next.failureCount, next.error ?? null,
+    next.resolvedModel ?? null, id)
   return getRun(id)
 }
 
@@ -234,6 +238,11 @@ export interface ModelComparisonRow {
 }
 
 type Entry = { r: BenchmarkTaskResult; model: string }
+
+// The model identity for comparison is what the harness ACTUALLY ran
+// (resolvedModel), not what was requested — OpenClaw ignores the per-call model,
+// so two differently-labelled runs may be the same model and must collapse.
+function effModel(r: BenchmarkRun): string { return (r.resolvedModel && r.resolvedModel.trim()) || r.modelName }
 
 function chooseRuns(rs: BenchmarkRun[], mode: CompareMode): { chosen: BenchmarkRun[]; ref: BenchmarkRun } {
   const sortedDesc = [...rs].sort((a, b) => b.startedAt.localeCompare(a.startedAt))
@@ -311,20 +320,20 @@ export function modelComparison(mode: CompareMode = 'latest', groupBy: CompareGr
   if (groupBy === 'provider') {
     const byFam = new Map<string, BenchmarkRun[]>()
     for (const r of runs) {
-      const k = `${r.harness}|${deriveFamily(r.modelName)}|${r.taskPackId}`
+      const k = `${r.harness}|${deriveFamily(effModel(r))}|${r.taskPackId}`
       const arr = byFam.get(k) ?? []; arr.push(r); byFam.set(k, arr)
     }
     const out: ModelComparisonRow[] = []
     for (const [, rs] of byFam) {
       const byModel = new Map<string, BenchmarkRun[]>()
-      for (const r of rs) { const a = byModel.get(r.modelName) ?? []; a.push(r); byModel.set(r.modelName, a) }
+      for (const r of rs) { const a = byModel.get(effModel(r)) ?? []; a.push(r); byModel.set(effModel(r), a) }
       const entries: Entry[] = []; let runsUsed = 0
       for (const [model, runsM] of byModel) {
         const { chosen } = chooseRuns(runsM, mode); runsUsed += chosen.length
         for (const run of chosen) for (const x of listResults(run.id)) entries.push({ r: x, model })
       }
       const ref = [...rs].sort((a, b) => b.startedAt.localeCompare(a.startedAt))[0]
-      const family = deriveFamily(ref.modelName)
+      const family = deriveFamily(effModel(ref))
       out.push({
         harness: ref.harness, modelName: family, provider: family, family, modelCount: byModel.size,
         taskPackId: ref.taskPackId, taskPackName: ref.taskPackName,
@@ -337,16 +346,17 @@ export function modelComparison(mode: CompareMode = 'latest', groupBy: CompareGr
 
   const byKey = new Map<string, BenchmarkRun[]>()
   for (const r of runs) {
-    const k = `${r.harness}|${r.modelName}|${r.provider}|${r.taskPackId}`
+    const k = `${r.harness}|${effModel(r)}|${r.provider}|${r.taskPackId}`
     const arr = byKey.get(k) ?? []; arr.push(r); byKey.set(k, arr)
   }
   const out: ModelComparisonRow[] = []
   for (const [, rs] of byKey) {
     const { chosen, ref } = chooseRuns(rs, mode)
-    const entries: Entry[] = chosen.flatMap(run => listResults(run.id).map(x => ({ r: x, model: ref.modelName })))
+    const model = effModel(ref)
+    const entries: Entry[] = chosen.flatMap(run => listResults(run.id).map(x => ({ r: x, model })))
     out.push({
-      harness: ref.harness, modelName: ref.modelName, provider: ref.provider,
-      family: deriveFamily(ref.modelName), modelCount: 1,
+      harness: ref.harness, modelName: model, provider: ref.provider,
+      family: deriveFamily(model), modelCount: 1,
       taskPackId: ref.taskPackId, taskPackName: ref.taskPackName,
       runs: rs.length, runsUsed: chosen.length, ...metricsFor(entries, chosen.length),
       lastRunAt: ref.startedAt,
