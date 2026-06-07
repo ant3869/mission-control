@@ -144,6 +144,12 @@ function DetailDrawer({ result, laneLabel, onClose }: {
             <span className={clsx('px-2 py-0.5 rounded border text-xxs', 'border-border bg-card', s.text)}>{s.label}</span>
             <span className="px-2 py-0.5 rounded border border-border bg-card text-xxs text-text-secondary">{laneLabel(result.lane)}</span>
             <span className="text-xxs text-text-muted tabular-nums">{result.points}/{result.maxPoints} pts · {fmtLatency(result.latencyMs)}</span>
+            {(result.sampleCount ?? 1) > 1 && (
+              <span className={clsx('px-2 py-0.5 rounded border text-xxs tabular-nums', 'border-border bg-card',
+                (result.passCount ?? 0) === result.sampleCount ? 'text-green-400' : (result.passCount ?? 0) === 0 ? 'text-red-400' : 'text-amber-400')}>
+                reliability {result.passCount}/{result.sampleCount}
+              </span>
+            )}
             {failureChip(result.failureType)}
           </div>
 
@@ -196,6 +202,7 @@ export function HarnessBenchmarks() {
   const [showModelsErr, setShowModelsErr] = useState(false)
   const [model, setModel] = useState('')
   const [packId, setPackId] = useState('quick-smoke-pack')
+  const [samples, setSamples] = useState(1)
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [endpoint, setEndpoint] = useState('')
   const [token, setToken] = useState('')
@@ -286,6 +293,7 @@ export function HarnessBenchmarks() {
         model: model.trim() || undefined,
         endpoint: endpoint.trim() || undefined,
         token: token.trim() || undefined,
+        samples,
       })
       setActiveRunId(res.run.id)
       setRun(res.run)
@@ -396,6 +404,19 @@ export function HarnessBenchmarks() {
                     <option key={p.id} value={p.id}>{p.name} ({p.taskCount})</option>
                   ))}
                 </select>
+              </Field>
+
+              {/* Samples (consistency) */}
+              <Field label="Samples / task">
+                <div className="flex rounded-lg border border-border overflow-hidden" title="Run each task N times and score on reliability (pass-consistency). The real separator between capable models.">
+                  {[1, 3, 5].map(n => (
+                    <button key={n} onClick={() => setSamples(n)}
+                      className={clsx('px-3 py-1.5 text-xs font-medium tabular-nums transition-colors',
+                        samples === n ? 'bg-card-hover text-text-primary' : 'bg-card text-text-muted hover:text-text-secondary')}>
+                      {n}×
+                    </button>
+                  ))}
+                </div>
               </Field>
 
               {/* Actions */}
@@ -551,7 +572,14 @@ export function HarnessBenchmarks() {
                           <td className="px-3 py-2"><span className={clsx('flex items-center gap-1.5', s.text)}><span className={clsx('w-1.5 h-1.5 rounded-full', s.dot)} />{s.label}</span></td>
                           <td className="px-3 py-2 text-text-muted">{laneLabel(r.lane)}</td>
                           <td className="px-3 py-2 text-text-primary">{r.taskTitle}</td>
-                          <td className="px-3 py-2 text-right tabular-nums text-text-secondary">{r.points}/{r.maxPoints}</td>
+                          <td className="px-3 py-2 text-right tabular-nums">
+                            <span className="text-text-secondary">{r.points}/{r.maxPoints}</span>
+                            {(r.sampleCount ?? 1) > 1 && (
+                              <span className={clsx('ml-1 text-xxs', (r.passCount ?? 0) === r.sampleCount ? 'text-green-400' : (r.passCount ?? 0) === 0 ? 'text-red-400' : 'text-amber-400')}>
+                                {r.passCount}/{r.sampleCount}
+                              </span>
+                            )}
+                          </td>
                           <td className="px-3 py-2 text-right tabular-nums text-text-muted">{fmtLatency(r.latencyMs)}</td>
                           <td className="px-3 py-2">{failureChip(r.failureType)}</td>
                           <td className="px-3 py-2 text-right"><ChevronRight size={13} className="text-text-muted inline" /></td>

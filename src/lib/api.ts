@@ -1561,7 +1561,8 @@ export interface HbTaskResult {
   status: HbResultStatus; points: number; maxPoints: number; latencyMs: number | null
   modelResponse: string; rawHarnessOutput?: unknown; parsedToolCall?: unknown
   errorMessage?: string | null; failureType?: HbFailureType | null
-  scoreReason?: string; notes?: string; prompt?: string; expectedBehavior?: string; ts: string
+  scoreReason?: string; notes?: string; prompt?: string; expectedBehavior?: string
+  sampleCount?: number; passCount?: number; ts: string
 }
 export interface HbRun {
   id: string; harness: BenchmarkHarness; mode: ExecutionMode; modelName: string
@@ -1582,7 +1583,7 @@ export interface HbComparisonRow {
 }
 export interface HbStartBody {
   harness: BenchmarkHarness; taskPackId: string; model?: string
-  provider?: string; endpoint?: string; token?: string; mode?: ExecutionMode
+  provider?: string; endpoint?: string; token?: string; mode?: ExecutionMode; samples?: number
 }
 
 export const harnessBench = {

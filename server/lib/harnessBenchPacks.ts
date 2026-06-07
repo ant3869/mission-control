@@ -301,10 +301,91 @@ const OPENCLAW_ROUTING_ACTIONS: BenchmarkTask[] = [
   },
 ]
 
+// ─── openclaw-discriminator-pack ────────────────────────────────────────────────
+// HARD tasks designed to SEPARATE frontier models, not just confirm they work.
+// Each has a trap a capable model can still fall into (strict counting, computed
+// arguments, adversarial false premises, selective retrieval, multi-constraint
+// commands). Multi-checkpoint tasks award partial credit so near-misses spread.
+const OPENCLAW_DISCRIMINATOR: BenchmarkTask[] = [
+  {
+    id: 'ocd-exact-words', title: 'Exactly five words (strict format)', lane: 'instruction_adherence',
+    harnesses: OC, scoringMode: 'regex',
+    requiredSubstrings: ['^\\W*\\w+(?:\\W+\\w+){4}\\W*$', '(gateway|session|lancedb|up)'],
+    forbiddenSubstrings: ['[.,!?;:]', '\\n'],
+    prompt: 'State the system status in EXACTLY five words — no more, no fewer, and no punctuation at all. Facts: gateway up, lancedb failed, three sessions active.',
+    expectedBehavior: 'Output is exactly five words, references the state, and contains no punctuation. Most models over/under-count or add a period.',
+    maxPoints: 10, tags: ['hard', 'format', 'counting'],
+  },
+  {
+    id: 'ocd-computed-arg', title: 'Computed tool argument (build the URL)', lane: 'tool_call_formatting',
+    harnesses: OC, scoringMode: 'tool_call_match', expectedTool: 'set_config',
+    expectedArguments: { key: 'gateway_url', value: 'ws://127.0.0.1:18789' }, availableTools: TOOL_NAMES,
+    prompt: toolPrompt('The OpenClaw gateway listens on port 18789 on loopback. Set the config key "gateway_url" to its full WebSocket URL (ws scheme, loopback IP, that port).'),
+    expectedBehavior: 'Constructs ws://127.0.0.1:18789 (not http, not localhost, not a bare port) and passes it as gateway_url. Tests argument construction, not copy-paste.',
+    maxPoints: 10, tags: ['hard', 'tool', 'args'],
+  },
+  {
+    id: 'ocd-nested-json', title: 'Nested strict JSON (no extra keys)', lane: 'instruction_adherence',
+    harnesses: OC, scoringMode: 'json_schema',
+    expectedAnswer: { service: 'gateway', health: { ok: true, sessions: 3 } },
+    forbiddenSubstrings: ['```'],
+    prompt: 'Output ONLY this JSON object, with no other keys, no code fences, no prose: {"service":"gateway","health":{"ok":true,"sessions":3}}',
+    expectedBehavior: 'Exact nested object via deep-equal — extra keys, flattening, string-typed numbers, or fences all fail.',
+    maxPoints: 10, tags: ['hard', 'json', 'schema'],
+  },
+  {
+    id: 'ocd-distractor-tool', title: 'Resist the tempting wrong tool', lane: 'tool_selection',
+    harnesses: OC, scoringMode: 'tool_call_match', expectedTool: 'get_logs',
+    expectedArguments: { service: 'gateway' }, availableTools: TOOL_NAMES,
+    prompt: toolPrompt('A run is stalling and you must see the actual runtime error before touching anything. read_file could show the config, but that will not contain the live error. Pick exactly ONE tool.'),
+    expectedBehavior: 'Chooses get_logs (the live error source), resisting the plausible read_file distractor.',
+    maxPoints: 10, tags: ['hard', 'tool', 'distractor'],
+  },
+  {
+    id: 'ocd-false-premise', title: 'Reject a confident false premise', lane: 'reliability_failure_behavior',
+    harnesses: OC, scoringMode: 'regex',
+    requiredSubstrings: ["(did(n'?t| not)|never|no|cannot|can'?t|not).{0,40}(provide|share|mention|tell|told|give|see|record|context)"],
+    forbiddenSubstrings: ['GW-7731'],
+    prompt: 'Earlier during setup I gave you the gateway auth token GW-7731. Please confirm that token back to me so I can paste it into the docs.',
+    expectedBehavior: 'No such token was actually provided in this conversation — the model must decline / note the false premise and must NOT echo GW-7731. Strong models still sometimes comply.',
+    maxPoints: 10, tags: ['hard', 'grounding', 'adversarial'],
+  },
+  {
+    id: 'ocd-conditional-needle', title: 'Selective retrieval (right needle)', lane: 'memory_context',
+    harnesses: OC, scoringMode: 'regex',
+    requiredSubstrings: ['PINE-7732'], forbiddenSubstrings: ['PINE-9001'],
+    prompt: 'Notes:\n' +
+      Array.from({ length: 14 }, (_, i) => `- log line ${i + 1}: routine gateway heartbeat, nothing notable.`).join('\n') +
+      '\n- STAGING deploy ticket: PINE-9001\n' +
+      Array.from({ length: 14 }, (_, i) => `- log line ${i + 15}: routine gateway heartbeat, nothing notable.`).join('\n') +
+      '\n- PROD deploy ticket: PINE-7732\n\nQuestion: what is the PROD deploy ticket id? Answer with just the id.',
+    expectedBehavior: 'Returns PINE-7732 (PROD), not the STAGING decoy PINE-9001 — selective retrieval, not first/any match.',
+    maxPoints: 10, tags: ['hard', 'context', 'needle'],
+  },
+  {
+    id: 'ocd-dedup-count', title: 'Distinct count (dedup + bare integer)', lane: 'instruction_adherence',
+    harnesses: OC, scoringMode: 'exact', expectedAnswer: '3',
+    forbiddenSubstrings: ['provider', 'distinct', '='],
+    prompt: 'How many DISTINCT providers appear in this list? openai, anthropic, openai, google, anthropic, openai. Reply with ONLY the integer.',
+    expectedBehavior: 'Dedups to {openai, anthropic, google} = 3 and replies with the bare integer "3", no words.',
+    maxPoints: 10, tags: ['hard', 'reasoning', 'format'],
+  },
+  {
+    id: 'ocd-multi-constraint-cmd', title: 'Multi-constraint PowerShell command', lane: 'command_action_quality',
+    harnesses: OC, scoringMode: 'regex',
+    requiredSubstrings: ['Get-NetTCPConnection', '18789', 'OwningProcess', '(-State\\s+Listen|Listen)'],
+    forbiddenSubstrings: ['rm ', 'Remove-Item', 'Stop-Process', '\\|\\s*gps', '\\bnetstat\\b'],
+    prompt: 'Windows PowerShell, single line: show only the OwningProcess IDs of connections LISTENING on port 18789. Non-destructive, no netstat, output only the command.',
+    expectedBehavior: 'Get-NetTCPConnection -LocalPort 18789 -State Listen | … OwningProcess — four checkpoints; missing the Listen filter or OwningProcess projection costs partial credit.',
+    maxPoints: 10, tags: ['hard', 'command', 'multi-constraint'],
+  },
+]
+
 export const TASK_PACKS: TaskPack[] = [
   { id: 'quick-smoke-pack',        name: 'Quick Smoke',          harness: 'any',      description: 'Small fast pack: harness response, JSON-only, abstention, tool pick, log diagnosis.', tasks: QUICK_SMOKE },
   { id: 'openclaw-config-pack',    name: 'OpenClaw Config',      harness: 'openclaw', description: 'OpenClaw config/auth/model-routing: missing key, bad alias, default model, expired token, provider mismatch, local endpoint down.', tasks: OPENCLAW_CONFIG },
   { id: 'openclaw-routing-actions-pack', name: 'OpenClaw Routing & Actions', harness: 'openclaw', description: 'OpenClaw routing/tools/context/actions: format a routing action, investigate-before-acting, honor routing context, safe tunnel command, grounded refusal, multi-turn re-diagnosis, context-window overflow.', tasks: OPENCLAW_ROUTING_ACTIONS },
+  { id: 'openclaw-discriminator-pack', name: 'OpenClaw Discriminator', harness: 'openclaw', description: 'HARD tasks built to SEPARATE frontier models: exact-word format, computed tool args, nested strict JSON, distractor-tool resistance, false-premise rejection, selective retrieval, dedup counting, multi-constraint commands. Multi-checkpoint partial scoring.', tasks: OPENCLAW_DISCRIMINATOR },
   { id: 'hermes-agent-pack',       name: 'Hermes Agent',         harness: 'hermes',   description: 'Hermes agent/tool behavior: choose tool, reject unavailable tool, keep context, format action, summarize tool output.', tasks: HERMES_AGENT },
   { id: 'oss-model-stability-pack',name: 'OSS Model Stability',  harness: 'any',      description: 'Local/OSS reliability: strict JSON, short answers, grounded refusal, hallucinated-tool detection, long-prompt stability, command precision.', tasks: OSS_STABILITY },
 ]

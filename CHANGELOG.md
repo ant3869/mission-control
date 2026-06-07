@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.7.4] — 2026-06-07
+
+### Added
+
+- **Multi-sample consistency scoring** — a `Samples / task` control (1× / 3× / 5×) runs each task N times and scores on **reliability** (pass-consistency), not a single shot. Each result shows a colour-coded `passed/N` badge in the table and a "reliability X/N" badge in the detail drawer; the score is the mean across samples so flakiness lowers it. This is the differentiator that single-shot accuracy can't provide: frontier models converge on single-shot answers but differ in *reliability*. Backend: `samples` on the run request, per-result `sampleCount`/`passCount` columns (migrated in place).
+- **`openclaw-discriminator-pack`** (8 HARD tasks) built to separate frontier models: exactly-five-words format, computed tool argument (`ws://127.0.0.1:18789`), nested strict JSON, distractor-tool resistance, confident false-premise rejection, selective retrieval (right needle vs decoy), dedup counting, and a four-checkpoint multi-constraint PowerShell command.
+
+### Notes
+
+- Empirically: on single-shot, gemini-3.1-pro / gemini-2.5-flash / gpt-5.2 all scored 70/80 on the hard pack with **zero** per-task divergence (all even failed the false-premise task identically) — confirming single-shot deterministic accuracy cannot rank frontier models. At **3 samples** the profiles diverge: gpt-5.2 is more reliable on strict nested JSON (3/3 vs 2/3) while gemini-2.5-flash is more reliable resisting the distractor tool (3/3 vs 2/3).
+
 ## [0.7.3] — 2026-06-07
 
 ### Changed

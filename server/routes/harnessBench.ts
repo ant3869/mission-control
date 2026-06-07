@@ -103,6 +103,7 @@ harnessBenchRouter.post('/runs', (req, res) => {
     endpoint: b.endpoint ? String(b.endpoint) : undefined,
     token: b.token ? String(b.token) : undefined,
     mode: b.mode,
+    samples: b.samples != null ? Number(b.samples) : undefined,
   })
   if (!result.ok) return res.status(409).json({ error: result.error })
   res.status(202).json({ ok: true, run: result.run })

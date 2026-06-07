@@ -131,6 +131,8 @@ export interface BenchmarkTaskResult {
   notes?:          string
   prompt?:         string
   expectedBehavior?: string
+  sampleCount?:    number          // how many times the task was run (consistency)
+  passCount?:      number          // how many of those samples fully passed
   ts:              string
 }
 
@@ -165,5 +167,6 @@ export interface StartRunRequest {
   endpoint?:  string          // optional OpenAI-compatible /v1 base URL override (OSS/local)
   token?:     string          // optional bearer for the override endpoint
   mode?:      ExecutionMode   // defaults to harness_direct
+  samples?:   number          // runs per task for consistency scoring (1..5, default 1)
   onlyTaskIds?: string[]      // rerun-failed: restrict to these tasks
 }

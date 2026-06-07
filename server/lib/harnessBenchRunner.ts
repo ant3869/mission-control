@@ -142,14 +142,15 @@ async function dispatchOpenClaw(prompt: string, sessionKey: string, timeoutMs: n
   }
 }
 
-async function dispatch(req: StartRunRequest, task: BenchmarkTask, runId: string): Promise<DispatchResult> {
+async function dispatch(req: StartRunRequest, task: BenchmarkTask, runId: string, sampleIdx = 0): Promise<DispatchResult> {
   const model = req.model ?? ''
   const perTaskTimeout = req.harness === 'openclaw' ? 150_000 : 120_000
   if (req.endpoint?.trim()) {
     return openaiCompatChat(req.endpoint.trim(), req.token ?? '', model, task.prompt, perTaskTimeout)
   }
   if (req.harness === 'hermes') return dispatchHermes(task.prompt, model, perTaskTimeout)
-  const sessionKey = `agent:main:dashboard-benchmark:${runId.slice(0, 8)}-${task.id}`
+  // Unique session per sample so chat.history of one sample never mixes into the next.
+  const sessionKey = `agent:main:dashboard-benchmark:${runId.slice(0, 8)}-${task.id}-s${sampleIdx}`
   return dispatchOpenClaw(task.prompt, sessionKey, perTaskTimeout)
 }
 
@@ -188,31 +189,59 @@ function recomputeAndFinalize(runId: string, finalStatus: BenchmarkRun['status']
   cancelled.delete(runId)
 }
 
+const mean = (xs: number[]) => (xs.length ? xs.reduce((s, n) => s + n, 0) / xs.length : 0)
+
 async function executeTasks(runId: string, req: StartRunRequest, tasks: BenchmarkTask[]) {
+  const samples = Math.min(Math.max(Math.round(req.samples ?? 1), 1), 5)
   for (const task of tasks) {
     if (cancelled.has(runId)) { recomputeAndFinalize(runId, 'cancelled'); return }
-    let d: DispatchResult
-    try {
-      d = await dispatch(req, task, runId)
-    } catch (err: any) {
-      d = { ok: false, answer: '', status: 'error', httpStatus: null, error: String(err?.message ?? err),
-        latencyMs: 0, raw: null, resolvedModel: null, toolCalls: 0 }
+
+    // Run the task `samples` times and aggregate on reliability + mean score.
+    const trials: Array<{ d: DispatchResult; outcome: ReturnType<typeof scoreTask> }> = []
+    for (let i = 0; i < samples; i++) {
+      if (cancelled.has(runId)) break
+      let d: DispatchResult
+      try {
+        d = await dispatch(req, task, runId, i)
+      } catch (err: any) {
+        d = { ok: false, answer: '', status: 'error', httpStatus: null, error: String(err?.message ?? err),
+          latencyMs: 0, raw: null, resolvedModel: null, toolCalls: 0 }
+      }
+      trials.push({ d, outcome: scoreTask(task, d) })
     }
-    const outcome = scoreTask(task, d)
+    if (trials.length === 0) { recomputeAndFinalize(runId, 'cancelled'); return }
+
+    const passCount = trials.filter(t => t.outcome.status === 'passed').length
+    const manual = trials.some(t => t.outcome.status === 'manual_review')
+    const allError = trials.every(t => t.outcome.status === 'error')
+    const meanPoints = Math.round(mean(trials.map(t => t.outcome.points)))
+    const meanLatency = Math.round(mean(trials.map(t => t.d.latencyMs)))
+    // Representative trial for inspection: prefer a non-passing one (shows the failure mode), else the first.
+    const rep = trials.find(t => t.outcome.status !== 'passed') ?? trials[0]
+    const status = manual ? 'manual_review'
+      : passCount === trials.length ? 'passed'
+      : allError ? 'error' : 'failed'
+    const consistencyNote = samples > 1 ? `passed ${passCount}/${trials.length} samples` : ''
+    const latNote = samples > 1 ? ` · latencies ${trials.map(t => Math.round(t.d.latencyMs)).join('/')}ms` : ''
+
     deleteResultsForTask(runId, task.id) // idempotent for rerun
     addResult({
       runId, taskId: task.id, taskTitle: task.title, lane: task.lane,
-      status: outcome.status, points: outcome.points, maxPoints: outcome.maxPoints,
-      latencyMs: d.latencyMs, modelResponse: d.answer,
-      rawHarnessOutput: d.raw, parsedToolCall: outcome.parsedToolCall,
-      errorMessage: d.error ?? null, failureType: outcome.failureType,
-      scoreReason: outcome.reason,
-      notes: d.resolvedModel ? `resolved model: ${d.resolvedModel}${d.toolCalls ? ` · ${d.toolCalls} tool call(s)` : ''}` : (d.toolCalls ? `${d.toolCalls} tool call(s)` : ''),
+      status, points: meanPoints, maxPoints: rep.outcome.maxPoints,
+      latencyMs: meanLatency, modelResponse: rep.d.answer,
+      rawHarnessOutput: rep.d.raw, parsedToolCall: rep.outcome.parsedToolCall,
+      errorMessage: rep.d.error ?? null, failureType: status === 'passed' ? null : rep.outcome.failureType,
+      scoreReason: [consistencyNote, rep.outcome.reason].filter(Boolean).join(' · '),
+      notes: [
+        rep.d.resolvedModel ? `resolved model: ${rep.d.resolvedModel}` : '',
+        rep.d.toolCalls ? `${rep.d.toolCalls} tool call(s)` : '',
+        samples > 1 ? `mean ${meanPoints}/${rep.outcome.maxPoints} over ${trials.length} samples${latNote}` : '',
+      ].filter(Boolean).join(' · '),
       prompt: task.prompt, expectedBehavior: task.expectedBehavior,
+      sampleCount: trials.length, passCount,
     })
     // Incremental progress so the UI poller shows live advancement.
-    const partial = listResults(runId)
-    updateRun(runId, { completedCount: partial.length })
+    updateRun(runId, { completedCount: listResults(runId).length })
   }
   recomputeAndFinalize(runId, 'completed')
 }
@@ -255,9 +284,11 @@ export function rerunFailed(runId: string): StartResult {
     .map(r => r.taskId)
   if (failedTaskIds.length === 0) return { ok: false, error: 'no failed tasks to rerun' }
 
+  const priorSamples = listResults(runId)[0]?.sampleCount ?? 1
   const req: StartRunRequest = {
     harness: run.harness, taskPackId: run.taskPackId, model: run.modelName,
-    provider: run.provider, endpoint: run.endpoint, mode: run.mode, onlyTaskIds: failedTaskIds,
+    provider: run.provider, endpoint: run.endpoint, mode: run.mode,
+    samples: priorSamples, onlyTaskIds: failedTaskIds,
   }
   const tasks = tasksForRun(req)
   if (tasks.length === 0) return { ok: false, error: 'failed tasks no longer exist in the pack' }

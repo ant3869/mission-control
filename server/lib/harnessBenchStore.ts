@@ -61,10 +61,17 @@ db.exec(`
     notes         TEXT,
     prompt        TEXT,
     expected_behavior TEXT,
+    sample_count  INTEGER NOT NULL DEFAULT 1,
+    pass_count    INTEGER NOT NULL DEFAULT 0,
     ts            TEXT NOT NULL
   );
   CREATE INDEX IF NOT EXISTS idx_bench_results_run ON bench_results(run_id);
 `)
+
+// Migrate existing DBs created before the consistency columns existed.
+for (const col of ['sample_count INTEGER NOT NULL DEFAULT 1', 'pass_count INTEGER NOT NULL DEFAULT 0']) {
+  try { db.exec(`ALTER TABLE bench_results ADD COLUMN ${col}`) } catch { /* already present */ }
+}
 
 // ─── row mappers ──────────────────────────────────────────────────────────────
 
@@ -91,6 +98,7 @@ function resultFromRow(r: any): BenchmarkTaskResult {
     errorMessage: r.error_message ?? null, failureType: r.failure_type ?? null,
     scoreReason: r.score_reason ?? undefined, notes: r.notes ?? undefined,
     prompt: r.prompt ?? undefined, expectedBehavior: r.expected_behavior ?? undefined,
+    sampleCount: r.sample_count ?? 1, passCount: r.pass_count ?? 0,
     ts: r.ts,
   }
 }
@@ -165,14 +173,14 @@ export function addResult(r: Omit<BenchmarkTaskResult, 'id' | 'ts'> & { id?: str
   db.prepare(`
     INSERT INTO bench_results (id, run_id, task_id, task_title, lane, status, points, max_points,
       latency_ms, model_response, raw_json, parsed_tool_json, error_message, failure_type,
-      score_reason, notes, prompt, expected_behavior, ts)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+      score_reason, notes, prompt, expected_behavior, sample_count, pass_count, ts)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
   `).run(id, r.runId, r.taskId, r.taskTitle, r.lane, r.status, r.points, r.maxPoints,
     r.latencyMs ?? null, r.modelResponse ?? '',
     r.rawHarnessOutput !== undefined ? JSON.stringify(r.rawHarnessOutput) : null,
     r.parsedToolCall !== undefined ? JSON.stringify(r.parsedToolCall) : null,
     r.errorMessage ?? null, r.failureType ?? null, r.scoreReason ?? null, r.notes ?? null,
-    r.prompt ?? null, r.expectedBehavior ?? null, ts)
+    r.prompt ?? null, r.expectedBehavior ?? null, r.sampleCount ?? 1, r.passCount ?? 0, ts)
   return { ...r, id, ts } as BenchmarkTaskResult
 }
 
