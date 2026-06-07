@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.7.3] — 2026-06-07
+
+### Changed
+
+- **Partial credit for multi-criteria (regex) tasks** — diagnosis/command/reliability tasks now score by fraction of required patterns matched (e.g. identified the *cause* but not the *fix* → 5/10) instead of all-or-nothing. This gives real gradation between models and stops penalising correct-but-differently-worded answers as hard zeros. Forbidden patterns and destructive commands still hard-fail; exact/JSON/tool-call tasks remain binary. Pass-rate stays strict (full marks only) so the two signals (pass-rate vs score %) are distinct.
+- **Partial results render as an amber "Partial"** chip (with `n/max pts`) in the results table and detail drawer, instead of a red "Failed", so the gradation is visible.
+
 ## [0.7.2] — 2026-06-07
 
 ### Added

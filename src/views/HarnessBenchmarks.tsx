@@ -34,12 +34,19 @@ function relTime(iso?: string | null): string {
   if (m < 1) return 'just now'; if (m < 60) return `${m}m ago`; if (h < 24) return `${h}h ago`
   if (d < 7) return `${d}d ago`; return new Date(iso).toLocaleDateString()
 }
-const STATUS_STYLE: Record<HbResultStatus, { dot: string; text: string; label: string; Icon: typeof CheckCircle2 }> = {
+type StatusStyle = { dot: string; text: string; label: string; Icon: typeof CheckCircle2 }
+const STATUS_STYLE: Record<HbResultStatus, StatusStyle> = {
   passed:        { dot: 'bg-green-500',  text: 'text-green-400',  label: 'Passed',  Icon: CheckCircle2 },
   failed:        { dot: 'bg-red-500',    text: 'text-red-400',    label: 'Failed',  Icon: XCircle },
   error:         { dot: 'bg-orange-500', text: 'text-orange-400', label: 'Error',   Icon: AlertTriangle },
   manual_review: { dot: 'bg-amber-400',  text: 'text-amber-400',  label: 'Review',  Icon: AlertTriangle },
 }
+const PARTIAL_STYLE: StatusStyle = { dot: 'bg-amber-400', text: 'text-amber-400', label: 'Partial', Icon: AlertTriangle }
+
+// A 'failed' result that still earned points (partial credit on a multi-criteria
+// task) is shown as "Partial" so the gradation is visible, not hidden as a red fail.
+function isPartial(r: HbTaskResult): boolean { return r.status === 'failed' && r.points > 0 && r.points < r.maxPoints }
+function displayStyle(r: HbTaskResult): StatusStyle { return isPartial(r) ? PARTIAL_STYLE : STATUS_STYLE[r.status] }
 
 const RUN_STATUS_STYLE: Record<string, string> = {
   running:   'text-blue-400 bg-blue-950/40 border-blue-900/50',
@@ -118,7 +125,7 @@ function LaneCard({ meta, results, active, onClick }: {
 function DetailDrawer({ result, laneLabel, onClose }: {
   result: HbTaskResult; laneLabel: (l: string) => string; onClose: () => void
 }) {
-  const s = STATUS_STYLE[result.status]
+  const s = displayStyle(result)
   const raw = result.rawHarnessOutput != null ? JSON.stringify(result.rawHarnessOutput, null, 2) : ''
   const tool = result.parsedToolCall != null ? JSON.stringify(result.parsedToolCall, null, 2) : ''
   return (
@@ -538,7 +545,7 @@ export function HarnessBenchmarks() {
                     {filtered.length === 0 ? (
                       <tr><td colSpan={7} className="px-3 py-6 text-center text-text-muted">{isRunning ? 'Running tasks…' : 'No results'}</td></tr>
                     ) : filtered.map(r => {
-                      const s = STATUS_STYLE[r.status]
+                      const s = displayStyle(r)
                       return (
                         <tr key={r.id} className="border-b border-border-subtle hover:bg-card-hover cursor-pointer" onClick={() => setDetail(r)}>
                           <td className="px-3 py-2"><span className={clsx('flex items-center gap-1.5', s.text)}><span className={clsx('w-1.5 h-1.5 rounded-full', s.dot)} />{s.label}</span></td>
