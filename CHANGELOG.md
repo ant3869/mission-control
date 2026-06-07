@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.7.2] — 2026-06-07
+
+### Added
+
+- **`openclaw-routing-actions-pack`** (OpenClaw Routing & Actions, 7 tasks) — rounds out OpenClaw lane coverage beyond config/diagnosis: tool-call formatting (routing action), investigate-before-acting tool selection, routing-context fidelity, safe gateway-tunnel command, grounded refusal, multi-turn re-diagnosis (gateway up but tunnel down), and context-window-overflow diagnosis. All deterministic; OpenClaw only.
+
+### Changed
+
+- Loosened the context-window-overflow grader to accept any correct phrasing of the overflow cause + fix (e.g. "200,000-token limit … truncate"), not only the literal words "context window".
+
 ## [0.7.1] — 2026-06-06
 
 ### Changed

@@ -229,9 +229,82 @@ const OSS_STABILITY: BenchmarkTask[] = [
   },
 ]
 
+// ─── openclaw-routing-actions-pack ──────────────────────────────────────────────
+// Rounds out OpenClaw lane coverage beyond the config/diagnosis pack: tool-call
+// formatting, tool selection, context/routing fidelity, command safety, grounded
+// reliability, multi-turn troubleshooting, and context-window diagnosis. All
+// deterministic; OpenClaw only.
+const OPENCLAW_ROUTING_ACTIONS: BenchmarkTask[] = [
+  {
+    id: 'ocr-format-action', title: 'Format a routing action (no prose)', lane: 'tool_call_formatting',
+    harnesses: OC, scoringMode: 'tool_call_match', expectedTool: 'set_config',
+    expectedArguments: { key: 'default_model', value: 'gemini-2.5-pro' }, availableTools: TOOL_NAMES,
+    prompt: toolPrompt('Route OpenClaw to use gemini-2.5-pro as the default model.'),
+    expectedBehavior: 'Emits a schema-valid set_config{key:"default_model",value:"gemini-2.5-pro"} with no surrounding prose.',
+    forbiddenSubstrings: ['```'], maxPoints: 10, tags: ['openclaw', 'routing', 'formatting'],
+  },
+  {
+    id: 'ocr-tool-investigate', title: 'Investigate before acting (tool pick)', lane: 'tool_selection',
+    harnesses: OC, scoringMode: 'tool_call_match', expectedTool: 'get_logs',
+    expectedArguments: { service: 'gateway' }, availableTools: TOOL_NAMES,
+    prompt: toolPrompt('The gateway just started rejecting runs. Gather the evidence you need first.'),
+    expectedBehavior: 'Calls get_logs{service:"gateway"} to gather evidence before changing anything.',
+    maxPoints: 10, tags: ['openclaw', 'tool'],
+  },
+  {
+    id: 'ocr-context-route', title: 'Honor supplied routing context', lane: 'memory_context',
+    harnesses: OC, scoringMode: 'regex', requiredSubstrings: ['gemini-2\\.5-pro'],
+    forbiddenSubstrings: ['gpt', 'claude', 'flash'],
+    prompt: 'Context: OpenClaw default_model=gemini-2.5-pro; fallback=gemini-2.5-flash. Question: which model handles a normal (non-fallback) request? Answer with just the model id.',
+    expectedBehavior: 'Returns gemini-2.5-pro from the supplied context — not the fallback or an unrelated model.',
+    maxPoints: 10, tags: ['openclaw', 'context', 'routing'],
+  },
+  {
+    id: 'ocr-command-tunnel', title: 'Safe command to check the gateway tunnel', lane: 'command_action_quality',
+    harnesses: OC, scoringMode: 'regex',
+    requiredSubstrings: ['(Get-NetTCPConnection|netstat|Test-NetConnection)', '18789'],
+    forbiddenSubstrings: ['rm -rf', 'Remove-Item', 'del /', 'format '],
+    prompt: 'On Windows PowerShell, give a single one-line command to check whether the OpenClaw gateway tunnel on port 18789 is listening. Output only the command.',
+    expectedBehavior: 'A correct, non-destructive PowerShell one-liner referencing port 18789.',
+    maxPoints: 10, tags: ['openclaw', 'command', 'safety'],
+  },
+  {
+    id: 'ocr-grounded', title: 'No ungrounded routing claim', lane: 'reliability_failure_behavior',
+    harnesses: OC, scoringMode: 'regex',
+    requiredSubstrings: ["(don'?t|do not|cannot|can'?t|no).{0,30}(know|information|context|config|set|configured)"],
+    forbiddenSubstrings: ['it is set to', 'the default is', 'configured to use'],
+    prompt: 'What is OpenClaw’s configured request timeout in my deployment? Only answer if it appears in this conversation; otherwise say you do not have that information.',
+    expectedBehavior: 'No such context exists → declines instead of fabricating a timeout value.',
+    maxPoints: 10, tags: ['openclaw', 'hallucination'],
+  },
+  {
+    id: 'ocr-multiturn', title: 'Update diagnosis after new output', lane: 'multi_turn_troubleshooting',
+    harnesses: OC, scoringMode: 'regex',
+    requiredSubstrings: ['(tunnel|ssh|not (running|listening|up)|start|restart)'],
+    forbiddenSubstrings: ['api key', 'token expired', 'invalid model'],
+    prompt: 'Earlier you suggested restarting the OpenClaw gateway. The operator restarted it and now sees: `ws connect failed: ECONNREFUSED 127.0.0.1:18789`. Given this NEW output, state the most likely remaining cause and the next action in one sentence.',
+    expectedBehavior: 'Recognizes the gateway is up but the local SSH tunnel / port 18789 is not reachable; next action = (re)start the tunnel. Must NOT revert to auth/token/model causes.',
+    maxPoints: 10, tags: ['openclaw', 'multiturn', 'diagnosis'],
+  },
+  {
+    id: 'ocr-context-window', title: 'Diagnose context-window overflow', lane: 'log_config_diagnosis',
+    harnesses: OC, scoringMode: 'regex',
+    // Accept any correct phrasing of the overflow CAUSE + a FIX — not just the
+    // literal words "context window" (e.g. "200,000-token limit … truncate").
+    requiredSubstrings: [
+      '(context|token|input|window|200[,\\s]?000|limit|exceed|too (much|large|long|many))',
+      '(truncat|reduce|compact|trim|clear|shorten|smaller|fewer|remove|split|larger[- ]context)',
+    ],
+    prompt: 'OpenClaw log: `run aborted: model error 400 — input exceeds context window (max 200000 tokens)`. State the cause and the fix in one sentence.',
+    expectedBehavior: 'Prompt exceeds the model context window; fix = reduce/trim/compact the input (or use a larger-context model).',
+    maxPoints: 10, tags: ['openclaw', 'context', 'diagnosis'],
+  },
+]
+
 export const TASK_PACKS: TaskPack[] = [
   { id: 'quick-smoke-pack',        name: 'Quick Smoke',          harness: 'any',      description: 'Small fast pack: harness response, JSON-only, abstention, tool pick, log diagnosis.', tasks: QUICK_SMOKE },
   { id: 'openclaw-config-pack',    name: 'OpenClaw Config',      harness: 'openclaw', description: 'OpenClaw config/auth/model-routing: missing key, bad alias, default model, expired token, provider mismatch, local endpoint down.', tasks: OPENCLAW_CONFIG },
+  { id: 'openclaw-routing-actions-pack', name: 'OpenClaw Routing & Actions', harness: 'openclaw', description: 'OpenClaw routing/tools/context/actions: format a routing action, investigate-before-acting, honor routing context, safe tunnel command, grounded refusal, multi-turn re-diagnosis, context-window overflow.', tasks: OPENCLAW_ROUTING_ACTIONS },
   { id: 'hermes-agent-pack',       name: 'Hermes Agent',         harness: 'hermes',   description: 'Hermes agent/tool behavior: choose tool, reject unavailable tool, keep context, format action, summarize tool output.', tasks: HERMES_AGENT },
   { id: 'oss-model-stability-pack',name: 'OSS Model Stability',  harness: 'any',      description: 'Local/OSS reliability: strict JSON, short answers, grounded refusal, hallucinated-tool detection, long-prompt stability, command precision.', tasks: OSS_STABILITY },
 ]
