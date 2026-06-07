@@ -1573,16 +1573,20 @@ export interface HbRun {
   error?: string | null; results?: HbTaskResult[]
 }
 export type HbCompareMode = 'latest' | 'average' | 'best'
+export type HbCompareGroupBy = 'model' | 'provider'
+export type HbModelFamily = 'Anthropic' | 'OpenAI' | 'Google' | 'Meta' | 'Mistral' | 'Other'
 export interface HbComparisonRow {
   harness: BenchmarkHarness; modelName: string; provider: string
+  family: HbModelFamily; modelCount: number
   taskPackId: string; taskPackName: string
   runs: number; runsUsed: number
   totalScore: number; maxScore: number; overallPct: number | null
   passRate: number | null; avgLatencyMs: number | null; failureCount: number
   laneScores: Record<string, number | null>
   reliabilityPct: number | null; latencyStdevMs: number | null
-  avgResponseChars: number; fenceRate: number; maxSamples: number
-  lastRunAt: string
+  avgResponseChars: number; avgOutputTokens: number; tokensEstimated: boolean
+  fenceRate: number; estCostUsd: number | null; costEstimated: boolean
+  maxSamples: number; lastRunAt: string
 }
 export interface HbStartBody {
   harness: BenchmarkHarness; taskPackId: string; model?: string
@@ -1602,5 +1606,5 @@ export const harnessBench = {
   remove:     (id: string) => del<{ ok: boolean }>(`/harness-bench/runs/${encodeURIComponent(id)}`),
   clear:      (scope: 'failed' | 'all') => post<{ ok: boolean; scope: string; removed: number }>('/harness-bench/runs/clear', { scope }),
   exportUrl:  (id: string) => `/api/harness-bench/runs/${encodeURIComponent(id)}/export`,
-  comparison: (mode: HbCompareMode = 'latest') => get<{ rows: HbComparisonRow[]; mode: HbCompareMode; lanes: HbLaneMeta[]; fetchedAt: string }>('/harness-bench/comparison', { mode }),
+  comparison: (mode: HbCompareMode = 'latest', groupBy: HbCompareGroupBy = 'model') => get<{ rows: HbComparisonRow[]; mode: HbCompareMode; groupBy: HbCompareGroupBy; lanes: HbLaneMeta[]; fetchedAt: string }>('/harness-bench/comparison', { mode, groupBy }),
 }

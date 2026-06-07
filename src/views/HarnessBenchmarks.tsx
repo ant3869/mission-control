@@ -34,6 +34,16 @@ function relTime(iso?: string | null): string {
   if (m < 1) return 'just now'; if (m < 60) return `${m}m ago`; if (h < 24) return `${h}h ago`
   if (d < 7) return `${d}d ago`; return new Date(iso).toLocaleDateString()
 }
+function fmtTokens(n: number, est: boolean): string { return (est ? '~' : '') + (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n)) }
+function fmtCost(v: number | null | undefined, est: boolean): string {
+  if (v == null) return '—'
+  const s = v < 0.01 ? `$${v.toFixed(4)}` : `$${v.toFixed(3)}`
+  return (est ? '~' : '') + s
+}
+const FAMILY_COLOR: Record<string, string> = {
+  Anthropic: 'text-orange-300', OpenAI: 'text-emerald-300', Google: 'text-blue-300',
+  Meta: 'text-indigo-300', Mistral: 'text-amber-300', Other: 'text-text-secondary',
+}
 type StatusStyle = { dot: string; text: string; label: string; Icon: typeof CheckCircle2 }
 const STATUS_STYLE: Record<HbResultStatus, StatusStyle> = {
   passed:        { dot: 'bg-green-500',  text: 'text-green-400',  label: 'Passed',  Icon: CheckCircle2 },
@@ -219,6 +229,7 @@ export function HarnessBenchmarks() {
   // comparison
   const [comparison, setComparison] = useState<HbComparisonRow[]>([])
   const [compareMode, setCompareMode] = useState<'latest' | 'average' | 'best'>('latest')
+  const [groupBy, setGroupBy] = useState<'model' | 'provider'>('model')
 
   const laneLabel = useCallback((id: string) => lanes.find(l => l.id === id)?.label ?? id, [lanes])
 
@@ -269,7 +280,7 @@ export function HarnessBenchmarks() {
           setTimeout(tick, POLL_MS)
         } else {
           refreshRuns()
-          if (tab === 'compare') api.comparison(compareMode).then(c => setComparison(c.rows)).catch(() => {})
+          if (tab === 'compare') api.comparison(compareMode, groupBy).then(c => setComparison(c.rows)).catch(() => {})
         }
       } catch { if (!stop) setTimeout(tick, POLL_MS) }
     }
@@ -279,8 +290,8 @@ export function HarnessBenchmarks() {
 
   // ── comparison load ──
   useEffect(() => {
-    if (tab === 'compare') api.comparison(compareMode).then(c => setComparison(c.rows)).catch(e => setError(e.message))
-  }, [tab, compareMode])
+    if (tab === 'compare') api.comparison(compareMode, groupBy).then(c => setComparison(c.rows)).catch(e => setError(e.message))
+  }, [tab, compareMode, groupBy])
 
   const harnessLive = harnesses.find(h => h.id === harness)?.live ?? false
   const canRun = (harnessLive || !!endpoint.trim()) && !!packId && !starting && (!run || run.status !== 'running')
@@ -602,7 +613,7 @@ export function HarnessBenchmarks() {
           )}
         </div>
       ) : (
-        <ComparisonTab rows={comparison} lanes={lanes} mode={compareMode} onMode={setCompareMode} />
+        <ComparisonTab rows={comparison} lanes={lanes} mode={compareMode} onMode={setCompareMode} groupBy={groupBy} onGroupBy={setGroupBy} />
       )}
 
       {detail && <DetailDrawer result={detail} laneLabel={laneLabel} onClose={() => setDetail(null)} />}
@@ -612,9 +623,10 @@ export function HarnessBenchmarks() {
 
 // ─── compare tab ──────────────────────────────────────────────────────────────
 
-function ComparisonTab({ rows, lanes, mode, onMode }: {
+function ComparisonTab({ rows, lanes, mode, onMode, groupBy, onGroupBy }: {
   rows: HbComparisonRow[]; lanes: HbLaneMeta[]
   mode: 'latest' | 'average' | 'best'; onMode: (m: 'latest' | 'average' | 'best') => void
+  groupBy: 'model' | 'provider'; onGroupBy: (g: 'model' | 'provider') => void
 }) {
   const modeBlurb = mode === 'latest'
     ? 'Each row uses the most recent completed run per model + task pack — older runs don’t drag the score down.'
@@ -639,9 +651,23 @@ function ComparisonTab({ rows, lanes, mode, onMode }: {
           <span className="text-xs font-semibold text-text-secondary">Model comparison</span>
           <p className="text-xxs text-text-muted mt-0.5">{modeBlurb}</p>
         </div>
-        <div className="flex items-center gap-2">
-          <span className="text-xxs uppercase tracking-wide text-text-muted">Compare by</span>
-          {ModeToggle}
+        <div className="flex items-center gap-3 flex-wrap">
+          <div className="flex items-center gap-2">
+            <span className="text-xxs uppercase tracking-wide text-text-muted">Group by</span>
+            <div className="flex items-center gap-1 p-0.5 rounded-lg border border-border bg-card">
+              {(['model', 'provider'] as const).map(g => (
+                <button key={g} onClick={() => onGroupBy(g)}
+                  className={clsx('px-2.5 py-1 rounded text-xxs font-medium capitalize transition-colors',
+                    groupBy === g ? 'bg-card-hover text-text-primary' : 'text-text-muted hover:text-text-secondary')}>
+                  {g}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-xxs uppercase tracking-wide text-text-muted">Compare by</span>
+            {ModeToggle}
+          </div>
         </div>
       </div>
       {rows.length === 0 ? (
@@ -656,13 +682,14 @@ function ComparisonTab({ rows, lanes, mode, onMode }: {
             <table className="w-full text-xs">
               <thead>
                 <tr className="border-b border-border bg-surface text-text-muted">
-                  <th className="text-left font-medium px-3 py-2">Model</th>
+                  <th className="text-left font-medium px-3 py-2">{groupBy === 'provider' ? 'Provider' : 'Model'}</th>
                   <th className="text-left font-medium px-3 py-2">Task pack</th>
                   <th className="text-right font-medium px-3 py-2">Overall</th>
                   <th className="text-right font-medium px-3 py-2">Pass</th>
                   <th className="text-right font-medium px-3 py-2" title="Sample pass-consistency (Σpassed / Σsamples). At 1 sample this equals pass rate.">Reliab.</th>
                   <th className="text-right font-medium px-3 py-2" title="Average latency per task (± standard deviation = speed consistency)">Speed</th>
-                  <th className="text-right font-medium px-3 py-2" title="Verbosity — mean response length in characters">Verbose</th>
+                  <th className="text-right font-medium px-3 py-2" title="Verbosity — mean output tokens per task (~ = estimated from chars when the harness reports no usage)">Tokens</th>
+                  <th className="text-right font-medium px-3 py-2" title="Estimated USD per run (one pack pass). ~ = from the pricing table; real harness-reported cost is used when available.">Cost</th>
                   <th className="text-right font-medium px-3 py-2" title="Share of responses wrapped in ``` code fences (format/markdown tendency)">Fences</th>
                   <th className="text-right font-medium px-3 py-2">Fails</th>
                   <th className="text-right font-medium px-3 py-2" title="runs used / runs available">Runs</th>
@@ -672,7 +699,15 @@ function ComparisonTab({ rows, lanes, mode, onMode }: {
               <tbody>
                 {rows.map((r, i) => (
                   <tr key={`${r.harness}-${r.modelName}-${r.taskPackId}-${i}`} className="border-b border-border-subtle hover:bg-card-hover">
-                    <td className="px-3 py-2 text-text-primary font-medium">{r.modelName}<span className="text-text-muted font-normal"> · {r.harness}</span></td>
+                    <td className="px-3 py-2 font-medium">
+                      {groupBy === 'provider' ? (
+                        <span className={clsx(FAMILY_COLOR[r.family] ?? 'text-text-primary')}>
+                          {r.family}<span className="text-text-muted font-normal"> · {r.modelCount} model{r.modelCount === 1 ? '' : 's'}</span>
+                        </span>
+                      ) : (
+                        <span className="text-text-primary">{r.modelName}<span className={clsx('font-normal ml-1', FAMILY_COLOR[r.family] ?? 'text-text-muted')}>· {r.family}</span></span>
+                      )}
+                    </td>
                     <td className="px-3 py-2 text-text-muted">{r.taskPackName}</td>
                     <td className={clsx('px-3 py-2 text-right font-bold tabular-nums', (r.overallPct ?? 0) >= 80 ? 'text-green-400' : (r.overallPct ?? 0) >= 50 ? 'text-amber-400' : 'text-red-400')}>{r.overallPct == null ? '—' : `${r.overallPct}%`}</td>
                     <td className="px-3 py-2 text-right tabular-nums text-text-secondary">{r.passRate == null ? '—' : `${r.passRate}%`}</td>
@@ -683,7 +718,8 @@ function ComparisonTab({ rows, lanes, mode, onMode }: {
                     <td className="px-3 py-2 text-right tabular-nums text-text-muted" title={r.latencyStdevMs != null ? `± ${fmtLatency(r.latencyStdevMs)} stdev` : undefined}>
                       {fmtLatency(r.avgLatencyMs)}{r.latencyStdevMs != null && <span className="text-text-muted/60 text-xxs"> ±{fmtLatency(r.latencyStdevMs)}</span>}
                     </td>
-                    <td className="px-3 py-2 text-right tabular-nums text-text-muted">{r.avgResponseChars}c</td>
+                    <td className="px-3 py-2 text-right tabular-nums text-text-muted" title={`${r.avgResponseChars} chars/task${r.tokensEstimated ? ' · tokens estimated from chars' : ''}`}>{fmtTokens(r.avgOutputTokens, r.tokensEstimated)}</td>
+                    <td className="px-3 py-2 text-right tabular-nums text-text-muted" title={r.costEstimated ? 'estimated from the pricing table (no harness-reported cost)' : 'harness-reported cost'}>{fmtCost(r.estCostUsd, r.costEstimated)}</td>
                     <td className={clsx('px-3 py-2 text-right tabular-nums', r.fenceRate === 0 ? 'text-text-muted' : 'text-amber-400')}>{r.fenceRate}%</td>
                     <td className={clsx('px-3 py-2 text-right tabular-nums', r.failureCount ? 'text-red-400' : 'text-text-muted')}>{r.failureCount}</td>
                     <td className="px-3 py-2 text-right tabular-nums text-text-muted">{mode === 'average' ? r.runs : `${r.runsUsed}/${r.runs}`}</td>
@@ -702,8 +738,10 @@ function ComparisonTab({ rows, lanes, mode, onMode }: {
               <span className="text-text-secondary">Model fingerprint</span> — differences that show even at equal accuracy:
               <b className="text-text-secondary"> Reliab.</b> = sample pass-consistency (run 3×/5× for signal) ·
               <b className="text-text-secondary"> Speed</b> = avg latency ± stdev (speed consistency) ·
-              <b className="text-text-secondary"> Verbose</b> = mean response length in chars ·
+              <b className="text-text-secondary"> Tokens</b> = mean output tokens/task (verbosity) ·
+              <b className="text-text-secondary"> Cost</b> = est. USD per run ·
               <b className="text-text-secondary"> Fences</b> = % of replies wrapped in ``` (markdown tendency).
+              <span className="text-text-muted"> A leading “~” means estimated (no harness-reported usage/cost). Pricing is editable in <code>server/lib/harnessBenchPricing.ts</code>.</span>
             </p>
           </div>
         </>

@@ -14,7 +14,8 @@ import { packSummaries, getPack } from '../lib/harnessBenchPacks.js'
 import { LANES, FAILURE_TYPES, type BenchmarkHarness } from '../lib/harnessBenchTypes.js'
 import { startRun, rerunFailed, requestCancel } from '../lib/harnessBenchRunner.js'
 import {
-  listRuns, getRunWithResults, deleteRun, modelComparison, clearRuns, type CompareMode,
+  listRuns, getRunWithResults, deleteRun, modelComparison, clearRuns,
+  type CompareMode, type CompareGroupBy,
 } from '../lib/harnessBenchStore.js'
 
 export const harnessBenchRouter = Router()
@@ -138,5 +139,7 @@ harnessBenchRouter.post('/runs/clear', (req, res) => {
 harnessBenchRouter.get('/comparison', (req, res) => {
   const m = String(req.query.mode ?? 'latest')
   const mode: CompareMode = m === 'average' || m === 'best' ? m : 'latest'
-  res.json({ rows: modelComparison(mode), mode, lanes: LANES, fetchedAt: new Date().toISOString() })
+  const g = String(req.query.groupBy ?? 'model')
+  const groupBy: CompareGroupBy = g === 'provider' ? 'provider' : 'model'
+  res.json({ rows: modelComparison(mode, groupBy), mode, groupBy, lanes: LANES, fetchedAt: new Date().toISOString() })
 })

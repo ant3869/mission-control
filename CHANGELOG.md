@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.7.6] — 2026-06-07
+
+### Added
+
+- **Provider rollup in Compare** — a `Group by: Model / Provider` toggle aggregates rows by model **family** (Anthropic / OpenAI / Google / Meta / Mistral) so you can compare ecosystems, not just individual models. Provider rows are family-coloured and show the model count; all fingerprint metrics aggregate across the family's models per the selected mode.
+- **Token-based verbosity + cost** — the runner now captures token usage from each harness (OpenClaw assistant-message `usage`, OpenAI-compatible `usage`) into per-result `output_tokens` / `input_tokens` / `reported_cost` (migrated in place). Compare replaces the chars column with **Tokens** (mean output tokens/task) and adds **Cost** (est. USD per run). Real harness-reported cost is used when present; otherwise tokens are estimated from chars (~4/token) and cost from a pricing table — both marked with a leading `~`. Pricing/family detection live in `server/lib/harnessBenchPricing.ts` (editable).
+
+### Notes
+
+- Surfaces a real ecosystem difference even at equal accuracy: on the Config and Discriminator packs, OpenAI models cost ~20–25× more per run than Google models for the same score. (OpenClaw currently reports zero usage on dashboard-dispatched sessions, so token/cost show as estimates until the gateway populates usage.)
+
 ## [0.7.5] — 2026-06-07
 
 ### Added

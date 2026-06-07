@@ -12,6 +12,7 @@ import { randomUUID } from 'crypto'
 import type {
   BenchmarkRun, BenchmarkTaskResult, RunStatus, ExecutionMode, BenchmarkHarness,
 } from './harnessBenchTypes.js'
+import { deriveFamily, estimateCost, estimateTokens, type ModelFamily } from './harnessBenchPricing.js'
 
 const dataDir = join(process.cwd(), 'data')
 if (!existsSync(dataDir)) mkdirSync(dataDir, { recursive: true })
@@ -63,13 +64,20 @@ db.exec(`
     expected_behavior TEXT,
     sample_count  INTEGER NOT NULL DEFAULT 1,
     pass_count    INTEGER NOT NULL DEFAULT 0,
+    output_tokens INTEGER NOT NULL DEFAULT 0,
+    input_tokens  INTEGER NOT NULL DEFAULT 0,
+    reported_cost REAL NOT NULL DEFAULT 0,
     ts            TEXT NOT NULL
   );
   CREATE INDEX IF NOT EXISTS idx_bench_results_run ON bench_results(run_id);
 `)
 
-// Migrate existing DBs created before the consistency columns existed.
-for (const col of ['sample_count INTEGER NOT NULL DEFAULT 1', 'pass_count INTEGER NOT NULL DEFAULT 0']) {
+// Migrate existing DBs created before later columns existed.
+for (const col of [
+  'sample_count INTEGER NOT NULL DEFAULT 1', 'pass_count INTEGER NOT NULL DEFAULT 0',
+  'output_tokens INTEGER NOT NULL DEFAULT 0', 'input_tokens INTEGER NOT NULL DEFAULT 0',
+  'reported_cost REAL NOT NULL DEFAULT 0',
+]) {
   try { db.exec(`ALTER TABLE bench_results ADD COLUMN ${col}`) } catch { /* already present */ }
 }
 
@@ -99,6 +107,7 @@ function resultFromRow(r: any): BenchmarkTaskResult {
     scoreReason: r.score_reason ?? undefined, notes: r.notes ?? undefined,
     prompt: r.prompt ?? undefined, expectedBehavior: r.expected_behavior ?? undefined,
     sampleCount: r.sample_count ?? 1, passCount: r.pass_count ?? 0,
+    outputTokens: r.output_tokens ?? 0, inputTokens: r.input_tokens ?? 0, reportedCost: r.reported_cost ?? 0,
     ts: r.ts,
   }
 }
@@ -173,14 +182,16 @@ export function addResult(r: Omit<BenchmarkTaskResult, 'id' | 'ts'> & { id?: str
   db.prepare(`
     INSERT INTO bench_results (id, run_id, task_id, task_title, lane, status, points, max_points,
       latency_ms, model_response, raw_json, parsed_tool_json, error_message, failure_type,
-      score_reason, notes, prompt, expected_behavior, sample_count, pass_count, ts)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+      score_reason, notes, prompt, expected_behavior, sample_count, pass_count,
+      output_tokens, input_tokens, reported_cost, ts)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
   `).run(id, r.runId, r.taskId, r.taskTitle, r.lane, r.status, r.points, r.maxPoints,
     r.latencyMs ?? null, r.modelResponse ?? '',
     r.rawHarnessOutput !== undefined ? JSON.stringify(r.rawHarnessOutput) : null,
     r.parsedToolCall !== undefined ? JSON.stringify(r.parsedToolCall) : null,
     r.errorMessage ?? null, r.failureType ?? null, r.scoreReason ?? null, r.notes ?? null,
-    r.prompt ?? null, r.expectedBehavior ?? null, r.sampleCount ?? 1, r.passCount ?? 0, ts)
+    r.prompt ?? null, r.expectedBehavior ?? null, r.sampleCount ?? 1, r.passCount ?? 0,
+    Math.round(r.outputTokens ?? 0), Math.round(r.inputTokens ?? 0), r.reportedCost ?? 0, ts)
   return { ...r, id, ts } as BenchmarkTaskResult
 }
 
@@ -197,9 +208,12 @@ export function listResults(runId: string): BenchmarkTaskResult[] {
 // ─── cross-run model comparison ────────────────────────────────────────────────
 
 export type CompareMode = 'latest' | 'average' | 'best'
+export type CompareGroupBy = 'model' | 'provider'
 
 export interface ModelComparisonRow {
   harness: BenchmarkHarness; modelName: string; provider: string
+  family: ModelFamily       // provider family (Anthropic/OpenAI/Google/…)
+  modelCount: number        // 1 for model rows; N distinct models for provider rows
   taskPackId: string; taskPackName: string
   runs: number          // total completed runs available in this group
   runsUsed: number      // how many of them this row's score is computed from (mode-dependent)
@@ -209,22 +223,118 @@ export interface ModelComparisonRow {
   // ── Model fingerprint: characteristics that differ even at equal accuracy ──
   reliabilityPct: number | null   // sample pass-consistency = Σpassed / Σsamples
   latencyStdevMs: number | null   // speed consistency (lower = steadier)
-  avgResponseChars: number        // verbosity — mean response length
+  avgResponseChars: number        // verbosity — mean response length (chars)
+  avgOutputTokens: number         // verbosity — mean output tokens/task
+  tokensEstimated: boolean        // true → tokens estimated from chars (no usage reported)
   fenceRate: number               // % of responses wrapped in ``` code fences
+  estCostUsd: number | null       // est USD per run (one pack pass)
+  costEstimated: boolean          // true → from pricing table (no harness-reported cost)
   maxSamples: number              // largest samples/task used (1 → reliability == pass rate)
   lastRunAt: string
 }
 
+type Entry = { r: BenchmarkTaskResult; model: string }
+
+function chooseRuns(rs: BenchmarkRun[], mode: CompareMode): { chosen: BenchmarkRun[]; ref: BenchmarkRun } {
+  const sortedDesc = [...rs].sort((a, b) => b.startedAt.localeCompare(a.startedAt))
+  const pctOf = (r: BenchmarkRun) => (r.maxScore > 0 ? r.totalScore / r.maxScore : -1)
+  const chosen = mode === 'average' ? rs : mode === 'best' ? [[...rs].sort((a, b) => pctOf(b) - pctOf(a))[0]] : [sortedDesc[0]]
+  return { chosen, ref: sortedDesc[0] }
+}
+
+const avg = (xs: number[]) => (xs.length ? xs.reduce((s, n) => s + n, 0) / xs.length : 0)
+
+type Metrics = Pick<ModelComparisonRow,
+  'totalScore' | 'maxScore' | 'overallPct' | 'passRate' | 'avgLatencyMs' | 'failureCount' | 'laneScores' |
+  'reliabilityPct' | 'latencyStdevMs' | 'avgResponseChars' | 'avgOutputTokens' | 'tokensEstimated' |
+  'fenceRate' | 'estCostUsd' | 'costEstimated' | 'maxSamples'>
+
+function metricsFor(entries: Entry[], runsUsed: number): Metrics {
+  const results = entries.map(e => e.r)
+  const scored = results.filter(x => x.status === 'passed' || x.status === 'failed')
+  const totalScore = scored.reduce((s, x) => s + x.points, 0)
+  const maxScore = scored.reduce((s, x) => s + x.maxPoints, 0)
+  const passed = scored.filter(x => x.status === 'passed').length
+  const lat = results.map(x => x.latencyMs).filter((n): n is number => typeof n === 'number')
+  const failureCount = results.filter(x => x.status === 'failed' || x.status === 'error').length
+
+  const perSamples = (x: BenchmarkTaskResult) => (x.sampleCount && x.sampleCount > 1 ? x.sampleCount : 1)
+  const perPasses = (x: BenchmarkTaskResult) => (x.sampleCount && x.sampleCount > 1 ? (x.passCount ?? 0) : (x.status === 'passed' ? 1 : 0))
+  const sumSamples = results.reduce((s, x) => s + perSamples(x), 0)
+  const sumPasses = results.reduce((s, x) => s + perPasses(x), 0)
+  const reliabilityPct = sumSamples > 0 ? Math.round((sumPasses / sumSamples) * 100) : null
+  const maxSamples = results.reduce((m, x) => Math.max(m, x.sampleCount ?? 1), 1)
+  const latMean = avg(lat)
+  const latStdev = lat.length > 1 ? Math.round(Math.sqrt(avg(lat.map(n => (n - latMean) ** 2)))) : null
+  const avgResponseChars = Math.round(avg(results.map(x => (x.modelResponse ?? '').length)))
+  const fenceRate = results.length ? Math.round((results.filter(x => (x.modelResponse ?? '').includes('```')).length / results.length) * 100) : 0
+
+  // Tokens — real usage when reported, else estimated from chars (~4 chars/token).
+  const outTok = (x: BenchmarkTaskResult) => ((x.outputTokens ?? 0) > 0 ? x.outputTokens! : estimateTokens((x.modelResponse ?? '').length))
+  const inTok = (x: BenchmarkTaskResult) => ((x.inputTokens ?? 0) > 0 ? x.inputTokens! : estimateTokens((x.prompt ?? '').length))
+  const tokensEstimated = !results.some(x => (x.outputTokens ?? 0) > 0)
+  const avgOutputTokens = Math.round(avg(results.map(outTok)))
+
+  // Cost — harness-reported when present, else estimated from the pricing table.
+  let totalCost = 0; let anyRealCost = false
+  for (const e of entries) {
+    if ((e.r.reportedCost ?? 0) > 0) { totalCost += e.r.reportedCost!; anyRealCost = true }
+    else totalCost += estimateCost(e.model, inTok(e.r), outTok(e.r))
+  }
+  const estCostUsd = results.length ? totalCost / Math.max(1, runsUsed) : null
+  const costEstimated = !anyRealCost
+
+  const laneScores: Record<string, number | null> = {}
+  const byLane = new Map<string, BenchmarkTaskResult[]>()
+  for (const x of scored) { const a = byLane.get(x.lane) ?? []; a.push(x); byLane.set(x.lane, a) }
+  for (const [lane, xs] of byLane) {
+    const mp = xs.reduce((s, x) => s + x.maxPoints, 0)
+    laneScores[lane] = mp > 0 ? Math.round((xs.reduce((s, x) => s + x.points, 0) / mp) * 100) : null
+  }
+
+  return {
+    totalScore, maxScore, overallPct: maxScore > 0 ? Math.round((totalScore / maxScore) * 100) : null,
+    passRate: scored.length ? Math.round((passed / scored.length) * 100) : null,
+    avgLatencyMs: lat.length ? Math.round(latMean) : null, failureCount, laneScores,
+    reliabilityPct, latencyStdevMs: latStdev, avgResponseChars, avgOutputTokens, tokensEstimated,
+    fenceRate, estCostUsd: estCostUsd != null ? Math.round(estCostUsd * 1e6) / 1e6 : null, costEstimated, maxSamples,
+  }
+}
+
 /**
- * Cross-run comparison. Grouped by harness + model + provider + task pack.
- * mode controls which run(s) within a group the score is computed from:
- *   - 'latest'  (default): the single most recent completed run — so an old
- *                low run never drags down the current score.
- *   - 'average': all completed runs in the group (aggregate).
- *   - 'best':    the single run with the highest overall percentage.
+ * Cross-run comparison. mode = latest|average|best (which run(s) per group);
+ * groupBy = 'model' (per model + pack) or 'provider' (rolled up by family + pack).
  */
-export function modelComparison(mode: CompareMode = 'latest'): ModelComparisonRow[] {
+export function modelComparison(mode: CompareMode = 'latest', groupBy: CompareGroupBy = 'model'): ModelComparisonRow[] {
   const runs = listRuns(500).filter(r => r.status === 'completed')
+
+  if (groupBy === 'provider') {
+    const byFam = new Map<string, BenchmarkRun[]>()
+    for (const r of runs) {
+      const k = `${r.harness}|${deriveFamily(r.modelName)}|${r.taskPackId}`
+      const arr = byFam.get(k) ?? []; arr.push(r); byFam.set(k, arr)
+    }
+    const out: ModelComparisonRow[] = []
+    for (const [, rs] of byFam) {
+      const byModel = new Map<string, BenchmarkRun[]>()
+      for (const r of rs) { const a = byModel.get(r.modelName) ?? []; a.push(r); byModel.set(r.modelName, a) }
+      const entries: Entry[] = []; let runsUsed = 0
+      for (const [model, runsM] of byModel) {
+        const { chosen } = chooseRuns(runsM, mode); runsUsed += chosen.length
+        for (const run of chosen) for (const x of listResults(run.id)) entries.push({ r: x, model })
+      }
+      const ref = [...rs].sort((a, b) => b.startedAt.localeCompare(a.startedAt))[0]
+      const family = deriveFamily(ref.modelName)
+      out.push({
+        harness: ref.harness, modelName: family, provider: family, family, modelCount: byModel.size,
+        taskPackId: ref.taskPackId, taskPackName: ref.taskPackName,
+        runs: rs.length, runsUsed, ...metricsFor(entries, runsUsed),
+        lastRunAt: ref.startedAt,
+      })
+    }
+    return out.sort((a, b) => (b.overallPct ?? -1) - (a.overallPct ?? -1))
+  }
+
   const byKey = new Map<string, BenchmarkRun[]>()
   for (const r of runs) {
     const k = `${r.harness}|${r.modelName}|${r.provider}|${r.taskPackId}`
@@ -232,55 +342,14 @@ export function modelComparison(mode: CompareMode = 'latest'): ModelComparisonRo
   }
   const out: ModelComparisonRow[] = []
   for (const [, rs] of byKey) {
-    const sortedDesc = [...rs].sort((a, b) => b.startedAt.localeCompare(a.startedAt))
-    const pctOf = (r: BenchmarkRun) => (r.maxScore > 0 ? r.totalScore / r.maxScore : -1)
-    let chosen: BenchmarkRun[]
-    if (mode === 'average') chosen = rs
-    else if (mode === 'best') chosen = [[...rs].sort((a, b) => pctOf(b) - pctOf(a))[0]]
-    else chosen = [sortedDesc[0]] // latest
-
-    const ref = sortedDesc[0]
-    const results = chosen.flatMap(r => listResults(r.id))
-    const scored = results.filter(x => x.status === 'passed' || x.status === 'failed')
-    const totalScore = scored.reduce((s, x) => s + x.points, 0)
-    const maxScore = scored.reduce((s, x) => s + x.maxPoints, 0)
-    const passed = scored.filter(x => x.status === 'passed').length
-    const lat = results.map(x => x.latencyMs).filter((n): n is number => typeof n === 'number')
-    const failureCount = results.filter(x => x.status === 'failed' || x.status === 'error').length
-
-    // ── fingerprint metrics ──
-    // For multi-sample results use stored passCount/sampleCount; for single-sample
-    // (or pre-sampling rows whose pass_count defaulted to 0) fall back to status.
-    const perSamples = (x: BenchmarkTaskResult) => (x.sampleCount && x.sampleCount > 1 ? x.sampleCount : 1)
-    const perPasses  = (x: BenchmarkTaskResult) => (x.sampleCount && x.sampleCount > 1 ? (x.passCount ?? 0) : (x.status === 'passed' ? 1 : 0))
-    const sumSamples = results.reduce((s, x) => s + perSamples(x), 0)
-    const sumPasses  = results.reduce((s, x) => s + perPasses(x), 0)
-    const reliabilityPct = sumSamples > 0 ? Math.round((sumPasses / sumSamples) * 100) : null
-    const maxSamples = results.reduce((m, x) => Math.max(m, x.sampleCount ?? 1), 1)
-    const latMean = lat.length ? lat.reduce((s, n) => s + n, 0) / lat.length : 0
-    const latStdev = lat.length > 1 ? Math.round(Math.sqrt(lat.reduce((s, n) => s + (n - latMean) ** 2, 0) / lat.length)) : null
-    const chars = results.map(x => (x.modelResponse ?? '').length)
-    const avgResponseChars = chars.length ? Math.round(chars.reduce((s, n) => s + n, 0) / chars.length) : 0
-    const fenced = results.filter(x => (x.modelResponse ?? '').includes('```')).length
-    const fenceRate = results.length ? Math.round((fenced / results.length) * 100) : 0
-    const laneScores: Record<string, number | null> = {}
-    const byLane = new Map<string, BenchmarkTaskResult[]>()
-    for (const x of scored) { const a = byLane.get(x.lane) ?? []; a.push(x); byLane.set(x.lane, a) }
-    for (const [lane, xs] of byLane) {
-      const mp = xs.reduce((s, x) => s + x.maxPoints, 0)
-      laneScores[lane] = mp > 0 ? Math.round((xs.reduce((s, x) => s + x.points, 0) / mp) * 100) : null
-    }
+    const { chosen, ref } = chooseRuns(rs, mode)
+    const entries: Entry[] = chosen.flatMap(run => listResults(run.id).map(x => ({ r: x, model: ref.modelName })))
     out.push({
       harness: ref.harness, modelName: ref.modelName, provider: ref.provider,
+      family: deriveFamily(ref.modelName), modelCount: 1,
       taskPackId: ref.taskPackId, taskPackName: ref.taskPackName,
-      runs: rs.length, runsUsed: chosen.length,
-      totalScore, maxScore,
-      overallPct: maxScore > 0 ? Math.round((totalScore / maxScore) * 100) : null,
-      passRate: scored.length ? Math.round((passed / scored.length) * 100) : null,
-      avgLatencyMs: lat.length ? Math.round(latMean) : null,
-      failureCount, laneScores,
-      reliabilityPct, latencyStdevMs: latStdev, avgResponseChars, fenceRate, maxSamples,
-      lastRunAt: sortedDesc[0]?.startedAt ?? '',
+      runs: rs.length, runsUsed: chosen.length, ...metricsFor(entries, chosen.length),
+      lastRunAt: ref.startedAt,
     })
   }
   return out.sort((a, b) => (b.overallPct ?? -1) - (a.overallPct ?? -1))

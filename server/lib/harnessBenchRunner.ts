@@ -32,6 +32,30 @@ interface DispatchResult extends DispatchSnapshot {
   raw:           unknown
   resolvedModel: string | null
   toolCalls:     number
+  outputTokens:  number   // 0 when the harness reports no usage
+  inputTokens:   number
+  reportedCost:  number   // harness-reported USD, 0 when not provided
+}
+
+function num(v: any): number { const n = Number(v); return Number.isFinite(n) ? n : 0 }
+
+/** Pull token usage out of an OpenAI-compatible usage object. */
+function openaiUsage(usage: any): { out: number; in: number } {
+  return { out: num(usage?.completion_tokens ?? usage?.output_tokens ?? usage?.output), in: num(usage?.prompt_tokens ?? usage?.input_tokens ?? usage?.input) }
+}
+
+/** Sum token usage + reported cost across the assistant messages of an OpenClaw turn. */
+function openclawUsage(messages: any[]): { out: number; in: number; cost: number } {
+  let out = 0, inn = 0, cost = 0
+  for (const m of messages) {
+    if (String(m?.role) !== 'assistant') continue
+    const u = m?.usage
+    if (!u) continue
+    out += num(u.output ?? u.output_tokens ?? u.completion_tokens)
+    inn += num(u.input ?? u.input_tokens ?? u.prompt_tokens)
+    cost += num(u.cost?.total ?? u.cost)
+  }
+  return { out, in: inn, cost }
 }
 
 function extractText(content: any): string {
@@ -90,25 +114,29 @@ async function openaiCompatChat(baseUrl: string, token: string, model: string, p
     if (!res.ok) {
       const errText = (raw && (raw.error?.message ?? raw.message ?? raw.detail)) || text.slice(0, 300) || res.statusText
       return { ok: false, answer: '', status: 'error', httpStatus: res.status, error: `HTTP ${res.status} — ${errText}`,
-        latencyMs, raw, resolvedModel: null, toolCalls: 0 }
+        latencyMs, raw, resolvedModel: null, toolCalls: 0, outputTokens: 0, inputTokens: 0, reportedCost: 0 }
     }
     const choice = raw?.choices?.[0]
     const answer = String(choice?.message?.content ?? choice?.text ?? '')
     const native = choice?.message?.tool_calls?.[0] ?? null
+    const u = openaiUsage(raw?.usage)
     return { ok: true, answer, status: answer ? 'completed' : 'no-response', httpStatus: res.status, error: null,
-      latencyMs, raw, resolvedModel: raw?.model ?? null, nativeToolCall: native, toolCalls: native ? 1 : 0 }
+      latencyMs, raw, resolvedModel: raw?.model ?? null, nativeToolCall: native, toolCalls: native ? 1 : 0,
+      outputTokens: u.out, inputTokens: u.in, reportedCost: 0 }
   } catch (err: any) {
     const error = err?.name === 'AbortError' ? `timeout after ${timeoutMs}ms` : (err?.message ?? 'fetch failed')
-    return { ok: false, answer: '', status: 'error', httpStatus: null, error, latencyMs: Date.now() - start, raw: null, resolvedModel: null, toolCalls: 0 }
+    return { ok: false, answer: '', status: 'error', httpStatus: null, error, latencyMs: Date.now() - start, raw: null, resolvedModel: null, toolCalls: 0, outputTokens: 0, inputTokens: 0, reportedCost: 0 }
   } finally { clearTimeout(timer) }
 }
 
 async function dispatchHermes(prompt: string, model: string, timeoutMs: number): Promise<DispatchResult> {
   const r = await hermesChat(prompt, { model, timeoutMs })
+  const u = openaiUsage(r.usage)
   return {
     ok: r.ok, answer: r.answer, status: r.answer ? 'completed' : (r.ok ? 'no-response' : 'error'),
     httpStatus: r.status, error: r.error, latencyMs: r.latencyMs, raw: r.raw,
     resolvedModel: r.model, toolCalls: 0,
+    outputTokens: u.out, inputTokens: u.in, reportedCost: 0,
   }
 }
 
@@ -119,7 +147,8 @@ async function dispatchOpenClaw(prompt: string, sessionKey: string, timeoutMs: n
     await ocRequest('chat.send', { sessionKey, message: prompt, deliver: false, idempotencyKey: randomUUID() }, 12_000)
   } catch (err: any) {
     return { ok: false, answer: '', status: 'error', httpStatus: null,
-      error: `OpenClaw chat.send failed: ${err?.message ?? err}`, latencyMs: Date.now() - start, raw: null, resolvedModel: null, toolCalls: 0 }
+      error: `OpenClaw chat.send failed: ${err?.message ?? err}`, latencyMs: Date.now() - start, raw: null, resolvedModel: null, toolCalls: 0,
+      outputTokens: 0, inputTokens: 0, reportedCost: 0 }
   }
   const deadline = start + timeoutMs
   let lastSig = ''; let stable = 0; let messages: any[] = []
@@ -134,11 +163,13 @@ async function dispatchOpenClaw(prompt: string, sessionKey: string, timeoutMs: n
   const lastAssistant = [...messages].reverse().find(m => String(m?.role) === 'assistant')
   const answer = unwrapFinal(extractText(lastAssistant?.content).trim())
   const tc = countToolCalls(messages)
+  const u = openclawUsage(messages)
   return {
     ok: !!answer, answer, status: answer ? 'completed' : 'no-response', httpStatus: null,
     error: answer ? null : 'OpenClaw returned no assistant reply within the time budget',
     latencyMs: Date.now() - start, raw: messages, resolvedModel: null,
     nativeToolCall: tc.first, toolCalls: tc.count,
+    outputTokens: u.out, inputTokens: u.in, reportedCost: u.cost,
   }
 }
 
@@ -205,7 +236,7 @@ async function executeTasks(runId: string, req: StartRunRequest, tasks: Benchmar
         d = await dispatch(req, task, runId, i)
       } catch (err: any) {
         d = { ok: false, answer: '', status: 'error', httpStatus: null, error: String(err?.message ?? err),
-          latencyMs: 0, raw: null, resolvedModel: null, toolCalls: 0 }
+          latencyMs: 0, raw: null, resolvedModel: null, toolCalls: 0, outputTokens: 0, inputTokens: 0, reportedCost: 0 }
       }
       trials.push({ d, outcome: scoreTask(task, d) })
     }
@@ -216,6 +247,9 @@ async function executeTasks(runId: string, req: StartRunRequest, tasks: Benchmar
     const allError = trials.every(t => t.outcome.status === 'error')
     const meanPoints = Math.round(mean(trials.map(t => t.outcome.points)))
     const meanLatency = Math.round(mean(trials.map(t => t.d.latencyMs)))
+    const meanOutTokens = Math.round(mean(trials.map(t => t.d.outputTokens)))
+    const meanInTokens = Math.round(mean(trials.map(t => t.d.inputTokens)))
+    const meanCost = mean(trials.map(t => t.d.reportedCost))
     // Representative trial for inspection: prefer a non-passing one (shows the failure mode), else the first.
     const rep = trials.find(t => t.outcome.status !== 'passed') ?? trials[0]
     const status = manual ? 'manual_review'
@@ -239,6 +273,7 @@ async function executeTasks(runId: string, req: StartRunRequest, tasks: Benchmar
       ].filter(Boolean).join(' · '),
       prompt: task.prompt, expectedBehavior: task.expectedBehavior,
       sampleCount: trials.length, passCount,
+      outputTokens: meanOutTokens, inputTokens: meanInTokens, reportedCost: meanCost,
     })
     // Incremental progress so the UI poller shows live advancement.
     updateRun(runId, { completedCount: listResults(runId).length })

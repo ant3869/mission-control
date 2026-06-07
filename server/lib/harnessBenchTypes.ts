@@ -133,6 +133,9 @@ export interface BenchmarkTaskResult {
   expectedBehavior?: string
   sampleCount?:    number          // how many times the task was run (consistency)
   passCount?:      number          // how many of those samples fully passed
+  outputTokens?:   number          // mean output tokens/sample (0 = none reported)
+  inputTokens?:    number          // mean input tokens/sample
+  reportedCost?:   number          // mean harness-reported USD/sample (0 = none reported)
   ts:              string
 }
 
