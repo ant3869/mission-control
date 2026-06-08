@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.7.17] — 2026-06-08
+
+### Removed
+
+- **Deleted the dead mock-data layer.** Now that every view runs on real data, removed `src/data/mockData.ts` (1,036 lines of fake contacts/content/ideas/feedback/etc. that no view imported anymore) and pruned ~25 now-unused mock-only types from `src/types/index.ts` (Person, FeedbackItem, ContentItem, FactoryIdea, ChatSession, SystemComponent, ActiveRun, …). This removes the misleading fixtures that made the app look mock-driven, and shrinks the type surface. Verified: `tsc` clean and `vite build` succeeds.
+
 ## [0.7.16] — 2026-06-08
 
 ### Changed
