@@ -1,26 +1,8 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { format, startOfWeek, addDays, isToday } from 'date-fns'
 import { clsx } from 'clsx'
-import { Zap, Clock, RefreshCw, AlertCircle, ExternalLink, Video } from 'lucide-react'
-import { alwaysRunningTasks } from '../data/mockData'
-import { calendar, type CalendarEvent } from '../lib/api'
-import type { TaskColor } from '../types'
-
-// ─── Color maps (kept for Always Running section) ──────────────────────────────
-
-const alwaysRunningColors: Record<TaskColor, string> = {
-  red:    'bg-red-950/50 border-red-900/50 text-red-300',
-  orange: 'bg-orange-950/50 border-orange-900/50 text-orange-300',
-  amber:  'bg-amber-950/50 border-amber-900/50 text-amber-200',
-  blue:   'bg-blue-950/50 border-blue-900/50 text-blue-300',
-  indigo: 'bg-indigo-950/50 border-indigo-900/50 text-indigo-300',
-  green:  'bg-green-950/50 border-green-900/50 text-green-300',
-  teal:   'bg-teal-950/50 border-teal-900/50 text-teal-300',
-  purple: 'bg-purple-950/50 border-purple-900/50 text-purple-300',
-  violet: 'bg-violet-950/50 border-violet-900/50 text-violet-300',
-  slate:  'bg-slate-800/50 border-slate-700/50 text-slate-300',
-  rose:   'bg-rose-950/50 border-rose-900/50 text-rose-300',
-}
+import { Zap, Clock, RefreshCw, AlertCircle, ExternalLink, Video, Pause, Play, Loader2 } from 'lucide-react'
+import { calendar, agentCron, type CalendarEvent, type AgentCronJob, type ConnectorId, type CronAction } from '../lib/api'
 
 const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
@@ -105,6 +87,49 @@ function ConnectBanner() {
   )
 }
 
+// ─── Always-Running cron pill (real OpenClaw / Hermes recurring jobs) ──────────
+
+function sourceTag(source: ConnectorId) {
+  return source === 'openclaw'
+    ? { label: 'Claw', cls: 'bg-amber-950/50 border-amber-900/50 text-amber-300', dot: 'bg-amber-400' }
+    : { label: 'Hermes', cls: 'bg-violet-950/50 border-violet-900/50 text-violet-300', dot: 'bg-violet-400' }
+}
+
+function CronPill({ job, busy, onToggle }: { job: AgentCronJob; busy: boolean; onToggle: () => void }) {
+  const tag = sourceTag(job.source)
+  const title = [
+    job.name,
+    `Schedule: ${job.schedule}`,
+    job.nextRunLabel ? `Next: ${job.nextRunLabel}` : '',
+    job.lastRunLabel ? `Last: ${job.lastRunLabel}` : '',
+    job.runCount ? `${job.runCount} runs · ${Math.round(job.successRate)}% ok` : '',
+    job.sample ? `\n${job.sample.slice(0, 160)}` : '',
+  ].filter(Boolean).join('\n')
+  return (
+    <div
+      title={title}
+      className={clsx(
+        'group flex items-center gap-1.5 pl-2 pr-1 py-1 rounded-full border text-xs font-medium transition-all',
+        job.enabled ? 'bg-card border-border text-text-secondary' : 'bg-surface border-border-subtle text-text-muted opacity-70',
+      )}
+    >
+      <span className={clsx('w-1.5 h-1.5 rounded-full shrink-0', job.enabled ? `${tag.dot} animate-pulse` : 'bg-text-muted')} />
+      <span className="truncate max-w-[160px] text-text-primary/90">{job.name}</span>
+      <span className="opacity-50">·</span>
+      <span className="opacity-70 truncate max-w-[120px]">{job.nextRunLabel && job.nextRunLabel !== '—' ? job.nextRunLabel : job.schedule}</span>
+      <span className={clsx('ml-0.5 px-1 py-px rounded-full border text-[9px] font-semibold shrink-0', tag.cls)}>{tag.label}</span>
+      <button
+        onClick={onToggle}
+        disabled={busy}
+        title={job.enabled ? 'Pause this job' : 'Resume this job'}
+        className="ml-0.5 w-5 h-5 flex items-center justify-center rounded-full text-text-muted hover:text-text-primary hover:bg-card-hover opacity-0 group-hover:opacity-100 transition-all shrink-0 disabled:opacity-50"
+      >
+        {busy ? <Loader2 size={11} className="animate-spin" /> : job.enabled ? <Pause size={11} /> : <Play size={11} />}
+      </button>
+    </div>
+  )
+}
+
 // ─── Main view ────────────────────────────────────────────────────────────────
 
 export function ScheduledTasks() {
@@ -113,6 +138,36 @@ export function ScheduledTasks() {
   const [loading, setLoading]   = useState(true)
   const [error, setError]       = useState<string | null>(null)
   const [fetchedAt, setFetchedAt] = useState<string | null>(null)
+
+  // Real recurring agent jobs (OpenClaw + Hermes cron) for the Always Running strip.
+  const [cronJobs, setCronJobs]   = useState<AgentCronJob[]>([])
+  const [cronLoading, setCronLoading] = useState(true)
+  const [busyJob, setBusyJob]     = useState<string | null>(null)
+
+  const loadCron = useCallback(async () => {
+    setCronLoading(true)
+    try {
+      const [oc, hm] = await Promise.allSettled([agentCron.openclaw(), agentCron.hermes()])
+      const jobs: AgentCronJob[] = []
+      if (oc.status === 'fulfilled') jobs.push(...oc.value.jobs)
+      if (hm.status === 'fulfilled') jobs.push(...hm.value.jobs)
+      // Enabled first, then by name.
+      jobs.sort((a, b) => (a.enabled === b.enabled ? a.name.localeCompare(b.name) : a.enabled ? -1 : 1))
+      setCronJobs(jobs)
+    } catch { /* leave whatever we have */ } finally { setCronLoading(false) }
+  }, [])
+
+  const toggleJob = async (job: AgentCronJob) => {
+    const action: CronAction = job.enabled ? 'pause' : 'resume'
+    setBusyJob(job.id)
+    setCronJobs(prev => prev.map(j => j.id === job.id ? { ...j, enabled: !j.enabled } : j)) // optimistic
+    try {
+      const r = await agentCron.action(job.source, job.rawId || job.id, action)
+      if (!r.ok) throw new Error(r.error || 'failed')
+    } catch {
+      setCronJobs(prev => prev.map(j => j.id === job.id ? { ...j, enabled: job.enabled } : j)) // revert
+    } finally { setBusyJob(null) }
+  }
 
   const today     = new Date()
   const weekStart = startOfWeek(today)
@@ -138,7 +193,9 @@ export function ScheduledTasks() {
     }
   }
 
-  useEffect(() => { loadEvents() }, [])
+  useEffect(() => { loadEvents(); loadCron() }, [loadCron])
+
+  const refreshAll = () => { loadEvents(); loadCron() }
 
   const getEventsForDay = (dayIndex: number) =>
     events
@@ -166,12 +223,12 @@ export function ScheduledTasks() {
         </div>
         <div className="flex items-center gap-2">
           <button
-            onClick={loadEvents}
+            onClick={refreshAll}
             disabled={loading}
             className="flex items-center gap-1 px-2 py-1 rounded border border-border bg-card text-text-muted hover:text-text-secondary transition-colors text-xs"
             title="Refresh"
           >
-            <RefreshCw size={12} className={loading ? 'animate-spin' : ''} />
+            <RefreshCw size={12} className={loading || cronLoading ? 'animate-spin' : ''} />
           </button>
           <div className="flex items-center gap-1 bg-card rounded border border-border p-0.5">
             {(['week', 'today'] as const).map(mode => (
@@ -190,24 +247,29 @@ export function ScheduledTasks() {
         </div>
       </div>
 
-      {/* Always Running */}
+      {/* Always Running — real recurring agent jobs (OpenClaw / Hermes cron) */}
       <div className="flex items-center gap-3 px-6 py-3 border-b border-border shrink-0 bg-surface/50">
-        <div className="flex items-center gap-1.5 text-text-muted">
+        <div className="flex items-center gap-1.5 text-text-muted shrink-0">
           <Zap size={12} className="text-accent-amber" />
           <span className="text-xs font-medium text-text-secondary">Always Running</span>
+          {!cronLoading && cronJobs.length > 0 && (
+            <span className="text-xxs text-text-muted tabular-nums">
+              {cronJobs.filter(j => j.enabled).length}/{cronJobs.length}
+            </span>
+          )}
         </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          {alwaysRunningTasks.map(task => (
-            <div
-              key={task.id}
-              className={clsx('flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-medium', alwaysRunningColors[task.color])}
-            >
-              <span className="w-1.5 h-1.5 rounded-full bg-current opacity-70 shrink-0" />
-              <span>{task.name}</span>
-              <span className="opacity-50">·</span>
-              <span className="opacity-70">{task.frequency}</span>
-            </div>
-          ))}
+        <div className="flex items-center gap-2 flex-wrap min-w-0">
+          {cronLoading ? (
+            Array.from({ length: 3 }).map((_, i) => (
+              <div key={i} className="h-[26px] w-32 rounded-full bg-card border border-border animate-pulse" />
+            ))
+          ) : cronJobs.length === 0 ? (
+            <span className="text-xxs text-text-muted italic">No recurring agent jobs — connect OpenClaw or Hermes in Settings to schedule them.</span>
+          ) : (
+            cronJobs.map(job => (
+              <CronPill key={`${job.source}:${job.id}`} job={job} busy={busyJob === job.id} onToggle={() => toggleJob(job)} />
+            ))
+          )}
         </div>
       </div>
 

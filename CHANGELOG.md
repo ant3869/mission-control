@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.7.9] — 2026-06-07
+
+### Changed
+
+- **Calendar (landing page) "Always Running" strip now shows REAL recurring agent jobs.** It was hardcoded mock (`Reaction Pulse`, `Trend Radar`, …). It now pulls live OpenClaw + Hermes cron jobs (`/api/{openclaw,hermes}/cron`), showing each job's name, next-run/schedule, source badge (Claw/Hermes), and a live enabled/paused dot — with **pause/resume on hover** (real `cron action`). Enabled jobs sort first; loading skeletons + an empty state ("connect OpenClaw/Hermes in Settings") included. Removes the last mock data from the default landing page and makes it actionable.
+
 ## [0.7.8] — 2026-06-07
 
 ### Fixed
