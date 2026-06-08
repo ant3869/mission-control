@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.7.20] — 2026-06-08
+
+### Added
+
+- **Alerts: one-click starter rules.** The Alerts view (surfaced in 0.7.12) shipped empty, so the feature looked inert. The empty state now offers **"Add recommended rules"** which creates a curated set evaluated against real agent events — error spike (5/30m), tool-loop detection (8/15m), agents idle (120m), session stalled (30m), and token-usage spike (500k/60m) — plus a "Create custom rule" shortcut. Seeding is idempotent (skips rules that already exist by name). Verified: one click creates all 5 real, persisted rules.
+
 ## [0.7.19] — 2026-06-08
 
 ### Fixed

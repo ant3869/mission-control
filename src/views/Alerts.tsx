@@ -3,7 +3,7 @@ import { clsx } from 'clsx'
 import {
   BellRing, RefreshCw, AlertCircle, Plus, Trash2, Edit2, Check, X,
   ShieldAlert, AlertTriangle, Info, Activity, ToggleLeft, ToggleRight, CheckCircle,
-  BarChart3, ListChecks,
+  BarChart3, ListChecks, Sparkles, Loader2,
 } from 'lucide-react'
 import { MiniStat, SegmentBar, HBar, ChartCard } from '../components/charts'
 
@@ -65,6 +65,15 @@ async function deleteRule(id: string): Promise<void> {
   const res = await fetch(`/api/alerts/rules/${id}`, { method: 'DELETE' })
   if (!res.ok) throw new Error(await res.text())
 }
+
+// Curated starter rules — sensible defaults so the page is useful out of the box.
+const PRESET_RULES: Array<Partial<AlertRule> & { name: string; condition: Condition }> = [
+  { name: 'Error spike',        condition: 'error_rate',      threshold: 5,      windowMinutes: 30,  severity: 'warning',  source: 'all' },
+  { name: 'Tool loop detected', condition: 'loop_detected',   threshold: 8,      windowMinutes: 15,  severity: 'warning',  source: 'all' },
+  { name: 'Agents idle',        condition: 'no_activity',     threshold: 0,      windowMinutes: 120, severity: 'info',     source: 'all' },
+  { name: 'Session stalled',    condition: 'session_stalled', threshold: 30,     windowMinutes: 60,  severity: 'warning',  source: 'all' },
+  { name: 'Token usage spike',  condition: 'token_spike',     threshold: 500000, windowMinutes: 60,  severity: 'info',     source: 'all' },
+]
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -256,6 +265,7 @@ export default function Alerts() {
   const [error, setError]                     = useState<string | null>(null)
   const [editingId, setEditingId]             = useState<string | null>(null)
   const [showNewForm, setShowNewForm]         = useState(false)
+  const [seeding, setSeeding]                 = useState(false)
   const pollRef                               = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const load = useCallback(async () => {
@@ -289,6 +299,21 @@ export default function Alerts() {
     if (!confirm('Delete this rule?')) return
     await deleteRule(id)
     setRules(rs => rs.filter(r => r.id !== id))
+  }
+
+  // One-click: create any preset rules that don't already exist (by name).
+  async function handleSeed() {
+    setSeeding(true); setError(null)
+    try {
+      const existing = new Set(rules.map(r => r.name.toLowerCase()))
+      const created: AlertRule[] = []
+      for (const p of PRESET_RULES) {
+        if (existing.has(p.name.toLowerCase())) continue
+        const r = await createRule(p)
+        created.push(r.rule)
+      }
+      if (created.length) setRules(rs => [...rs, ...created])
+    } catch (e: any) { setError(e.message) } finally { setSeeding(false) }
   }
 
   async function handleToggle(rule: AlertRule) {
@@ -389,10 +414,22 @@ export default function Alerts() {
             )}
 
             {rules.length === 0 && !showNewForm ? (
-              <div className="flex flex-col items-center justify-center py-20 text-text-muted gap-3 bg-bg-secondary border border-white/10 rounded-xl">
+              <div className="flex flex-col items-center justify-center py-16 text-text-muted gap-3 bg-bg-secondary border border-white/10 rounded-xl">
                 <Activity size={40} className="opacity-30" />
                 <p className="text-sm">No alert rules configured</p>
-                <p className="text-xs opacity-60">Create a rule to start monitoring agent activity</p>
+                <p className="text-xs opacity-60">Add the recommended set to start monitoring agent activity, or create your own.</p>
+                <div className="flex items-center gap-2 mt-1">
+                  <button onClick={handleSeed} disabled={seeding}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-violet-500/15 border border-violet-500/40 text-violet-300 hover:bg-violet-500/25 disabled:opacity-50 text-xs font-medium">
+                    {seeding ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
+                    Add recommended rules
+                  </button>
+                  <button onClick={() => setShowNewForm(true)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-white/10 hover:bg-white/5 text-text-secondary text-xs">
+                    <Plus size={13} /> Create custom rule
+                  </button>
+                </div>
+                <p className="text-[10px] opacity-50 mt-1">Recommended: error spike · tool loop · agents idle · session stalled · token spike</p>
               </div>
             ) : (
               <div className="bg-bg-secondary border border-white/10 rounded-xl overflow-hidden">
