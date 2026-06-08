@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.7.21] — 2026-08-08
+
+### Docs
+
+- **Refreshed the README to match reality.** Added the missing **Harness Benchmarks** page; rewrote the now-real **Factory** (agent idea board), **Content** (agent-published feed), **People** (real participants), and **Feedback** (inbound feed w/ sentiment) descriptions that still described mock data; corrected the DB line (`node:sqlite` `DatabaseSync`, not `better-sqlite3`); and noted the ⌘K command palette + lazy-loaded views. Also confirmed the test suite is green (90/90 — an earlier "1 fail" was a flaky date-dependent run).
+
 ## [0.7.20] — 2026-06-08
 
 ### Added

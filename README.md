@@ -4,6 +4,8 @@ A command-center dashboard for orchestrating AI agents, projects, content pipeli
 
 Built with **React 18 + TypeScript + Tailwind CSS** on the frontend and an **Express 5** API server on the backend.
 
+Press **⌘K** (Ctrl+K) anywhere for the command palette — jump to any page or search notes, docs, and tasks. Every view runs on real data from your connected agents; views lazy-load on demand.
+
 ---
 
 ## What's Inside
@@ -26,7 +28,7 @@ Built with **React 18 + TypeScript + Tailwind CSS** on the frontend and an **Exp
 | **Watch** | Live feed of exactly what your AI agents are doing right now — tool calls, file reads, terminal commands — streamed from both OpenClaw and Hermes. |
 | **Chats** | Browse Claude conversation sessions. See token counts, cost per session, and open the full message history for any conversation. |
 | **Memory** | Inspect and manage agent memory stores. Read, search, and update memory entries across all connected agents. |
-| **Factory** | Micro-SaaS factory dashboard for tracking AI-powered product builds. |
+| **Factory** | Idea Factory — browse and triage the buildable project ideas the agents generate from your inventory (confidence/coolness scores, difficulty, cost/time, parts lists). Like / snooze / reject, filter by status, and trigger a new generation run. |
 
 ### Platform Monitoring
 
@@ -42,12 +44,13 @@ Built with **React 18 + TypeScript + Tailwind CSS** on the frontend and an **Exp
 | **Security** | Connector security posture at a glance. Each connector shows token health (ok / missing / disabled / auth_error / unreachable), reachability latency, recent auth error count, and an overall risk level badge. Run live diagnostics probes from this page. |
 | **Alerts** | Create and manage alert rules for your agent platforms. Five condition types: error rate, loop detected, session stalled, token spike, and no activity. Set severity (info / warning / critical), thresholds, time windows, and source scope. See all currently fired alerts in one panel. |
 | **Evaluations** | Agent performance evaluation hub. Model scorecard leaderboard, agent-model matrix, session trend chart, benchmark task runner (dispatched to the Hermes API server), memory benchmark panel (recall / multihop / temporal / conflict / applied / negative), and a scoring methodology reference. |
+| **Harness Benchmarks** | Benchmark how a model performs *through* OpenClaw/Hermes (App → harness → model → tools/context/routing → result), not raw model APIs. 9 behaviour lanes, 4 task packs, deterministic scoring with normalized failure types, multi-sample **reliability** scoring, a per-task detail drawer, and a model/provider **Compare** view with a fingerprint (reliability, speed ± stdev, verbosity/tokens, est. cost, fences). Runs real dispatches via the Hermes API server, OpenClaw WS, or any OpenAI-compatible `/v1` endpoint (LM Studio / Ollama / vLLM) for true cross-model comparison. |
 
 ### Knowledge & Content
 
 | View | What you can do |
 |------|----------------|
-| **Content** | Manage drafts, scripts, newsletters, and publishing pipelines. Track items from draft through published. |
+| **Content** | A real feed of what the agents actually publish — morning briefings, status reports, digests, and replies — with a type badge, channel, word count, and an expandable full body. Filter by type and search. |
 | **Docs** | Documentation browser connected to your agent knowledge base. |
 | **Notes** | Quick-capture scratchpad. Jot down ideas, snippets, or follow-ups without leaving the dashboard. |
 
@@ -55,7 +58,7 @@ Built with **React 18 + TypeScript + Tailwind CSS** on the frontend and an **Exp
 
 | View | What you can do |
 |------|----------------|
-| **People** | Contact and collaborator directory. |
+| **People** | A real contacts directory derived from who actually messages the agents (Discord/Telegram senders) — name, platform, channels, message count, and last-seen. Grows automatically; filter by platform and search. |
 | **Office** | Virtual office — spaces, resources, and shared links. |
 
 ### Infrastructure & Settings
@@ -65,7 +68,7 @@ Built with **React 18 + TypeScript + Tailwind CSS** on the frontend and an **Exp
 | **Inventory** | Hardware catalog with SQLite-backed persistence. Search and filter items, view status (available / in-use / reserved), trigger per-item agent research, and inline-edit any field. |
 | **System** | Server health, uptime, memory file browser, and connector diagnostics. |
 | **Settings** | Configure connectors, API keys, and application preferences. |
-| **Feedback** | Collected feedback and ratings from deployed products. |
+| **Feedback** | A real inbound-message feed — what people actually send the agents — with a transparent keyword **sentiment** tag (labelled heuristic, not an LLM judge), a sentiment proportion bar, positive/neutral/negative filters, and sender/channel/time. |
 
 ---
 
@@ -73,7 +76,7 @@ Built with **React 18 + TypeScript + Tailwind CSS** on the frontend and an **Exp
 
 - **Frontend** — React 18, TypeScript, Tailwind CSS, Vite, Lucide icons
 - **Backend** — Express 5, tsx (TypeScript execution), dotenv, Node.js ≥ 18
-- **Database** — SQLite (`better-sqlite3`) for inventory and event stores
+- **Database** — SQLite via Node's built-in `node:sqlite` (`DatabaseSync`) for inventory, agent-event, and benchmark stores; JSON files for lighter stores (notes, alerts, connectors)
 - **Integrations** — Google Calendar API (OAuth 2), Anthropic API, OpenClaw WebSocket, Hermes REST
 
 ---
