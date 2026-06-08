@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.7.24] — 2026-06-08
+
+### Fixed
+
+- **Watch no longer shows a red "disconnected" badge when paused.** Pausing closes the SSE stream, which previously read as an error state. The live indicator now has a distinct amber **"paused"** state (vs. green "live" / red "disconnected"), so a deliberate pause doesn't look like a fault.
+
 ## [0.7.23] — 2026-06-08
 
 ### Changed

@@ -3,7 +3,7 @@ import { clsx } from 'clsx'
 import {
   Terminal, FileText, FilePen, Globe, Search, Bot,
   MessageSquare, Send, Activity, AlertTriangle,
-  Wifi, WifiOff, Brain, Zap, Clock, Cpu,
+  Wifi, WifiOff, Brain, Zap, Clock, Cpu, Pause,
 } from 'lucide-react'
 import { WATCH_STREAM_URL, type WatchEvent, type WatchSource } from '../lib/api'
 import { usePaused } from '../lib/refreshBus'
@@ -261,10 +261,12 @@ export function Watch() {
           <h1 className="text-base font-semibold text-text-primary">Watch</h1>
           <p className="text-xs text-text-muted mt-0.5">Live agent status</p>
         </div>
-        <div className={clsx('flex items-center gap-1.5 text-xxs font-medium', connected ? 'text-green-400' : 'text-red-400')}>
-          {connected
-            ? <><Wifi size={12} /> live</>
-            : <><WifiOff size={12} /> disconnected</>
+        <div className={clsx('flex items-center gap-1.5 text-xxs font-medium', paused ? 'text-amber-400' : connected ? 'text-green-400' : 'text-red-400')}>
+          {paused
+            ? <><Pause size={12} /> paused</>
+            : connected
+              ? <><Wifi size={12} /> live</>
+              : <><WifiOff size={12} /> disconnected</>
           }
         </div>
       </div>
