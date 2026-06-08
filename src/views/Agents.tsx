@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { useEscapeKey } from '../hooks/useEscapeKey'
 import { clsx } from 'clsx'
 import { X, Activity, Cpu, DollarSign, Clock, ChevronRight, RefreshCw, AlertCircle, Terminal, FolderOpen } from 'lucide-react'
 import { agents as agentsApi, type LiveAgent, type AgentState } from '../lib/api'
@@ -157,6 +158,7 @@ function AgentCard({ agent, onClick }: { agent: LiveAgent; onClick: () => void }
 // ─── Detail drawer ─────────────────────────────────────────────────────────────
 
 function AgentDrawer({ agent, onClose }: { agent: LiveAgent; onClose: () => void }) {
+  useEscapeKey(onClose)
   const s = STATE_CFG[agent.state]
 
   return (

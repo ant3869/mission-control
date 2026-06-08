@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { useEscapeKey } from '../hooks/useEscapeKey'
 import { clsx } from 'clsx'
 import {
   Activity, DollarSign, MessageSquare, Cpu, Clock, RefreshCw, AlertCircle,
@@ -236,6 +237,7 @@ function TranscriptBubble({ msg, badge }: { msg: LiveChatMessage; badge: string 
 function TranscriptDrawer({ source, session, badge, onClose }: {
   source: ConnectorId; session: MetricSessionRow; badge: string; onClose: () => void
 }) {
+  useEscapeKey(onClose)
   const [messages, setMessages] = useState<LiveChatMessage[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)

@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
+import { useEscapeKey } from '../hooks/useEscapeKey'
 import { clsx } from 'clsx'
 import {
   Shield, RefreshCw, AlertCircle, CheckCircle, AlertTriangle, ShieldAlert,
@@ -197,6 +198,7 @@ function SecurityOverview({ posture }: { posture: PostureResponse }) {
 // ─── Diagnostics panel ───────────────────────────────────────────────────────
 
 function DiagPanel({ source, onClose }: { source: string; onClose: () => void }) {
+  useEscapeKey(onClose)
   const [probes, setProbes]   = useState<DiagProbe[] | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError]     = useState<string | null>(null)

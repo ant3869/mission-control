@@ -1,4 +1,5 @@
 import React from 'react';
+import { useEscapeKey } from '../../hooks/useEscapeKey'
 import { ProjectIdea, type ProjectIdeaInfluence } from '../../lib/api';
 import { X, Package, Wrench, DollarSign, Clock, ChevronRight, Star, Zap, ThumbsUp } from 'lucide-react';
 
@@ -36,6 +37,7 @@ function ScoreBar({ label, value, max = 10, color = 'blue' }: { label: string; v
 }
 
 export function ProjectIdeaPanel({ idea, onClose, onSave, onReject, onSnooze, onComplete }: ProjectIdeaPanelProps) {
+  useEscapeKey(onClose)
   const [showRejectInput, setShowRejectInput] = React.useState(false);
   const [rejectReason, setRejectReason] = React.useState('');
 

@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { useEscapeKey } from '../hooks/useEscapeKey'
 import { clsx } from 'clsx'
 import {
   Plus, MoreHorizontal, TrendingUp, Clock, User, Loader2,
@@ -68,6 +69,7 @@ interface NewProjectModalProps {
 }
 
 function NewProjectModal({ onClose, onSave }: NewProjectModalProps) {
+  useEscapeKey(onClose)
   const [name, setName]           = useState('')
   const [desc, setDesc]           = useState('')
   const [status, setStatus]       = useState<ProjectStatus>('planning')

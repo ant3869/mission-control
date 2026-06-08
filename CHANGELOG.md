@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.7.36] — 2026-06-08
+
+### Accessibility
+
+- **Modals & drawers now close on Escape.** Only 3 of ~16 overlays handled the Escape key (most closed only on backdrop click) — a basic a11y/UX expectation. Added a shared `useEscapeKey(onClose)` hook and wired it into the rest: Harness detail drawer, Approvals (note + new-request), New Project, Add Task, Inventory detail, Platform Metrics transcript, Agents drawer, Flow run panel, Flow Map inspector, Security diagnostics, and the Project-Idea panel. Verified: tsc compiles the hook in every target (onClose in scope) + build clean.
+
 ## [0.7.35] — 2026-06-08
 
 ### Added

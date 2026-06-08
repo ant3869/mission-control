@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useEscapeKey } from '../hooks/useEscapeKey'
 import { clsx } from 'clsx'
 import {
   GitBranch, RefreshCw, AlertCircle, ChevronRight,
@@ -181,6 +182,7 @@ function FlowOverview({ data, summary }: { data: FlowRunsResponse; summary: Flow
 // ─── Run detail panel ────────────────────────────────────────────────────────
 
 function RunDetailPanel({ run, source, onClose }: { run: FlowRun; source: string; onClose: () => void }) {
+  useEscapeKey(onClose)
   const [detail, setDetail]   = useState<FlowDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError]     = useState<string | null>(null)

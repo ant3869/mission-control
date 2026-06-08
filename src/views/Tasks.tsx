@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { useEscapeKey } from '../hooks/useEscapeKey'
 import { clsx } from 'clsx'
 import { Plus, Clock, AlertCircle, ChevronRight, Tag, Loader2, Trash2, X, Check } from 'lucide-react'
 import { tasks as tasksApi } from '../lib/api'
@@ -38,6 +39,7 @@ interface AddTaskModalProps {
 }
 
 function AddTaskModal({ onClose, onSave }: AddTaskModalProps) {
+  useEscapeKey(onClose)
   const [title, setTitle]       = useState('')
   const [desc, setDesc]         = useState('')
   const [priority, setPriority] = useState<TaskPriority>('medium')

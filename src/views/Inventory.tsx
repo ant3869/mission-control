@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { useEscapeKey } from '../hooks/useEscapeKey'
 import { clsx } from 'clsx'
 import {
   Boxes, Clock, Plus, Minus, Search, RefreshCw, X, Trash2, Pencil, ExternalLink,
@@ -142,6 +143,7 @@ function ItemRow({ item, active, onClick }: { item: InventoryItem; active: boole
 function DetailDrawer({ item, onClose, onEdit, onDelete, onQty, onResearch, onStatus }: {
   item: InventoryItem; onClose: () => void; onEdit: () => void; onDelete: () => void; onQty: (delta: number) => void; onResearch: () => void; onStatus: (s: string) => void
 }) {
+  useEscapeKey(onClose)
   const cm = catMeta(item.category)
   const cond = condMeta(item.condition)
   const specEntries = Object.entries(item.specs ?? {})

@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { useEscapeKey } from '../hooks/useEscapeKey'
 import { clsx } from 'clsx'
 import {
   Check, X, AlertCircle, GitMerge, Send, ShoppingCart, Zap, Upload,
@@ -55,6 +56,7 @@ interface NoteModalProps {
 }
 
 function NoteModal({ action, onClose, onConfirm, loading }: NoteModalProps) {
+  useEscapeKey(onClose)
   const [note, setNote] = useState('')
   const ref = useRef<HTMLTextAreaElement>(null)
   useEffect(() => { ref.current?.focus() }, [])
@@ -109,6 +111,7 @@ interface NewRequestModalProps {
 }
 
 function NewRequestModal({ onClose, onSave }: NewRequestModalProps) {
+  useEscapeKey(onClose)
   const [type, setType]       = useState<ApprovalType>('action')
   const [urgency, setUrgency] = useState<ApprovalUrgency>('normal')
   const [title, setTitle]     = useState('')

@@ -6,6 +6,7 @@
 //          across 9 agent-behavior lanes, scored deterministically.
 
 import { useState, useEffect, useCallback } from 'react'
+import { useEscapeKey } from '../hooks/useEscapeKey'
 import { clsx } from 'clsx'
 import {
   FlaskConical, Play, Square, RotateCcw, Download, X, Loader2, CheckCircle2,
@@ -156,6 +157,7 @@ function LaneCard({ meta, results, active, onClick }: {
 function DetailDrawer({ result, laneLabel, onClose }: {
   result: HbTaskResult; laneLabel: (l: string) => string; onClose: () => void
 }) {
+  useEscapeKey(onClose)
   const s = displayStyle(result)
   const raw = result.rawHarnessOutput != null ? JSON.stringify(result.rawHarnessOutput, null, 2) : ''
   const tool = result.parsedToolCall != null ? JSON.stringify(result.parsedToolCall, null, 2) : ''

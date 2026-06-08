@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useEscapeKey } from '../hooks/useEscapeKey'
 import { clsx } from 'clsx'
 import {
   Workflow, RefreshCw, AlertCircle, X, ArrowRight,
@@ -132,6 +133,7 @@ function InspectShell({ title, subtitle, subtitleColor, onClose, children }: {
   title: string; subtitle: string; subtitleColor?: string
   onClose: () => void; children: React.ReactNode
 }) {
+  useEscapeKey(onClose)
   return (
     <div className="w-[320px] flex-shrink-0 flex flex-col border-l border-border bg-bg-primary min-h-0">
       <div className="flex items-start justify-between px-4 py-3 border-b border-border flex-shrink-0">
