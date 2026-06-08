@@ -234,7 +234,7 @@ function mergeTurns(t1: DispatchResult, t2: DispatchResult): DispatchResult {
     reportedCost: t1.reportedCost + t2.reportedCost,
     toolCalls: t1.toolCalls + t2.toolCalls,
     resolvedModel: t2.resolvedModel || t1.resolvedModel,
-    raw: { turn1: t1.raw, turn2: t2.raw },
+    raw: { multiTurn: true, turn1: { answer: t1.answer, raw: t1.raw }, turn2: { answer: t2.answer, raw: t2.raw } },
     error: t2.error ?? t1.error,
   }
 }

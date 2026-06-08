@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.7.30] — 2026-06-08
+
+### Changed
+
+- **Harness Benchmarks: multi-turn results show the full conversation in the detail drawer.** Completes the 0.7.28 multi-turn feature — the runner now keeps each turn's reply text (not just raw transcripts), and the drawer renders a **"Turn 1 reply · before the follow-up"** section above the scored **"Turn 2 reply · final, judged"** output, so a reviewer can see how the model *revised* its answer after new information (the whole point of the lane) instead of digging through raw JSON. Verified: runner captures `turn1.answer` (e.g. the model's initial diagnosis), tsc + build clean.
+
 ## [0.7.29] — 2026-06-08
 
 ### Added

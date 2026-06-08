@@ -159,6 +159,9 @@ function DetailDrawer({ result, laneLabel, onClose }: {
   const s = displayStyle(result)
   const raw = result.rawHarnessOutput != null ? JSON.stringify(result.rawHarnessOutput, null, 2) : ''
   const tool = result.parsedToolCall != null ? JSON.stringify(result.parsedToolCall, null, 2) : ''
+  const ro = result.rawHarnessOutput as any
+  const isMulti = ro && typeof ro === 'object' && ro.multiTurn === true
+  const turn1Answer = isMulti ? String(ro.turn1?.answer ?? '') : ''
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-black/50 backdrop-blur-sm" onClick={onClose}>
       <div className="w-full max-w-xl h-full bg-surface border-l border-border overflow-y-auto" onClick={e => e.stopPropagation()}>
@@ -186,7 +189,13 @@ function DetailDrawer({ result, laneLabel, onClose }: {
 
           <Section title="Prompt"><pre className="whitespace-pre-wrap break-words text-xxs text-text-secondary font-mono">{result.prompt || '—'}</pre></Section>
           <Section title="Expected behavior"><p className="text-xs text-text-secondary leading-relaxed">{result.expectedBehavior || '—'}</p></Section>
-          <Section title="Scored model output  ·  judged">
+          {isMulti && (
+            <Section title="Turn 1 reply  ·  before the follow-up">
+              <p className="text-xxs text-text-muted -mt-0.5 mb-1">This task is multi-turn: the model answered, then got new information. Only the final (turn 2) reply below is scored.</p>
+              <pre className="whitespace-pre-wrap break-words text-xxs text-text-secondary font-mono bg-base rounded border border-border p-2.5 max-h-56 overflow-y-auto">{turn1Answer || '(empty)'}</pre>
+            </Section>
+          )}
+          <Section title={isMulti ? 'Turn 2 reply  ·  final, judged' : 'Scored model output  ·  judged'}>
             <p className="text-xxs text-text-muted -mt-0.5 mb-1">The model is scored on this — OpenClaw’s <code className="text-accent-teal">&lt;final&gt;</code> wrapper is stripped so the wrapper isn’t penalized.</p>
             <pre className="whitespace-pre-wrap break-words text-xxs text-text-primary font-mono bg-base rounded border border-green-900/30 p-2.5 max-h-72 overflow-y-auto">{result.modelResponse || '(empty)'}</pre>
           </Section>
