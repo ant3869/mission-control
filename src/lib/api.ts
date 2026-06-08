@@ -688,11 +688,25 @@ export interface InfluenceMetadata {
   contextualFactors: string[];
 }
 
+export interface ProjectIdeaInfluence {
+  inventoryFactors?:       string[]
+  matchedCategories?:      string[]
+  priorLikedInfluence?:    string[]
+  priorRejectedInfluence?: string[]
+  rejectionNotes?:         string[]
+  preferenceSignals?:      string[]
+  contextualFactors?:      string[]
+}
+export interface ProjectIdeaStatusEntry { status: string; timestamp: string; reason?: string; note?: string }
+
 export interface ProjectIdea {
   id:              string
   title:           string
   description:     string
   whyFit:          string
+  usefulnessScore?: number                       // optional richer-shape fields (present when the
+  influenceMetadata?: ProjectIdeaInfluence        // generator emits them; the panel renders them if so)
+  statusHistory?:  ProjectIdeaStatusEntry[]
   haveParts:       string[]
   missingParts:    string[]
   difficulty:      string    // easy | medium | hard | expert

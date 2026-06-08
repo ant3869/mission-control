@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.7.19] — 2026-06-08
+
+### Fixed
+
+- **`tsc --noEmit` is now fully clean (22 errors → 0).** The recovered inventory/evaluations WIP had type errors that built under Vite but failed a strict typecheck. Fixed: `synthesis.ts` now sets `scoringSource` on the "next tests" via the existing `taskScoringSource` helper (which also consumes the previously-unused `autoGradedSlugs`); and `ProjectIdea` gained optional richer-shape fields (`usefulnessScore`, `influenceMetadata`, `statusHistory`) so `ProjectIdeaPanel` typechecks and its map callbacks infer types (no more implicit-any). The backend's simpler shape still works — the panel renders the extra sections only when present. Verified: 0 tsc errors + `vite build` succeeds.
+
 ## [0.7.18] — 2026-06-08
 
 ### Performance

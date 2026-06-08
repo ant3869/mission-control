@@ -1,5 +1,5 @@
 import React from 'react';
-import { ProjectIdea } from '../../lib/api';
+import { ProjectIdea, type ProjectIdeaInfluence } from '../../lib/api';
 import { X, Package, Wrench, DollarSign, Clock, ChevronRight, Star, Zap, ThumbsUp } from 'lucide-react';
 
 interface ProjectIdeaPanelProps {
@@ -46,7 +46,7 @@ export function ProjectIdeaPanel({ idea, onClose, onSave, onReject, onSnooze, on
 
   if (!idea) return null;
 
-  const influence = idea.influenceMetadata ?? {};
+  const influence: ProjectIdeaInfluence = idea.influenceMetadata ?? {};
   const haveParts: string[] = Array.isArray(idea.haveParts) ? idea.haveParts : [];
   const missingParts: string[] = Array.isArray(idea.missingParts) ? idea.missingParts : [];
   const tools: string[] = Array.isArray(idea.requiredTools) ? idea.requiredTools : [];

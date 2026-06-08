@@ -207,6 +207,7 @@ export function synthesizeModel(args: {
     nextTests.push({
       taskId: t.id, taskTitle: t.title, builtIn: t.builtIn,
       reason: t.builtIn ? 'Never dispatched · auto-grades on run' : 'Never dispatched',
+      scoringSource: taskScoringSource(t, autoGradedSlugs),
     })
     if (nextTests.length >= 6) break
   }
@@ -216,7 +217,7 @@ export function synthesizeModel(args: {
       const cid = aliasOf.get(r.taskId) ?? r.taskId
       const t = canonical.find(x => x.id === cid)
       if (!t) continue
-      nextTests.push({ taskId: t.id, taskTitle: t.title, builtIn: t.builtIn, reason: `Last score ${r.rubricScore} · re-run to confirm` })
+      nextTests.push({ taskId: t.id, taskTitle: t.title, builtIn: t.builtIn, reason: `Last score ${r.rubricScore} · re-run to confirm`, scoringSource: taskScoringSource(t, autoGradedSlugs) })
       if (nextTests.length >= 4) break
     }
   }
