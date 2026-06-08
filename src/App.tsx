@@ -19,6 +19,10 @@ import { Inventory } from './views/Inventory'
 import { FlowMap } from './views/FlowMap'
 import { Evaluations } from './views/Evaluations'
 import { HarnessBenchmarks } from './views/HarnessBenchmarks'
+import Brain from './views/Brain'
+import Flow from './views/Flow'
+import Alerts from './views/Alerts'
+import Security from './views/Security'
 import type { View } from './types'
 
 const VIEW_TITLES: Record<View, string> = {
@@ -40,6 +44,10 @@ const VIEW_TITLES: Record<View, string> = {
   flowmap:     'Flow Map',
   evaluations: 'Evaluations',
   harness:     'Harness Benchmarks',
+  brain:       'Brain',
+  flow:        'Flow',
+  alerts:      'Alerts',
+  security:    'Security',
 }
 
 // Render each view once (on first visit) and keep it mounted — hidden via CSS.
@@ -92,6 +100,10 @@ export default function App() {
           <ViewPane view="flowmap"     active={activeView} mounted={mounted}><FlowMap /></ViewPane>
           <ViewPane view="evaluations" active={activeView} mounted={mounted}><Evaluations /></ViewPane>
           <ViewPane view="harness"     active={activeView} mounted={mounted}><HarnessBenchmarks /></ViewPane>
+          <ViewPane view="brain"       active={activeView} mounted={mounted}><Brain /></ViewPane>
+          <ViewPane view="flow"        active={activeView} mounted={mounted}><Flow /></ViewPane>
+          <ViewPane view="alerts"      active={activeView} mounted={mounted}><Alerts /></ViewPane>
+          <ViewPane view="security"    active={activeView} mounted={mounted}><Security /></ViewPane>
 
         </main>
       </div>

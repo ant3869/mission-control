@@ -4,6 +4,7 @@ import {
   MessageSquare, Calendar, Brain, FileText, ThumbsUp,
   Activity, Gauge, Target, Workflow, Package,
   Users, Cog, ChevronLeft, ChevronRight, FlaskConical,
+  BrainCircuit, GitBranch, Bell, Shield,
 } from 'lucide-react'
 import { clsx } from 'clsx'
 import type { View } from '../../types'
@@ -51,6 +52,15 @@ const NAV: NavSection[] = [
       { id: 'evaluations', label: 'Evaluations', icon: <Target       size={iconSize} /> },
       { id: 'harness',     label: 'Harness Bench', icon: <FlaskConical size={iconSize} /> },
       { id: 'flowmap',     label: 'Flow Map',    icon: <Workflow     size={iconSize} /> },
+    ],
+  },
+  {
+    label: 'Monitoring',
+    items: [
+      { id: 'brain',    label: 'Brain',    icon: <BrainCircuit size={iconSize} /> },
+      { id: 'flow',     label: 'Flow',     icon: <GitBranch    size={iconSize} /> },
+      { id: 'alerts',   label: 'Alerts',   icon: <Bell         size={iconSize} /> },
+      { id: 'security', label: 'Security', icon: <Shield       size={iconSize} /> },
     ],
   },
   {

@@ -29,6 +29,10 @@ export type View =
   | 'flowmap'
   | 'evaluations'
   | 'harness'      // Harness Benchmarks (OpenClaw/Hermes)
+  | 'brain'        // Agent event brain / activity stream
+  | 'flow'         // Agent run flow
+  | 'alerts'       // Alert rules + active alerts
+  | 'security'     // Security posture + diagnostics
 
 export type TaskColor =
   | 'red'

@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.7.12] — 2026-06-07
+
+### Added
+
+- **Surfaced four fully-built but orphaned views into a new "Monitoring" nav section** — Brain, Flow, Alerts, and Security existed as complete views (380–453 lines each) with live backends (`/api/brain`, `/api/flow`, `/api/alerts`, `/api/security`) but were never wired into navigation, so they were unreachable. Now accessible:
+  - **Security** — connector security posture (token hints, reachability, auth-error/error-rate analysis, posture score) + a security-events tab.
+  - **Alerts** — alert-rule CRUD + active alerts.
+  - **Brain** — agent event stream with type/source filters and stats (151 real events).
+  - **Flow** — agent run flow with summary + per-run detail (109 real runs).
+
 ## [0.7.11] — 2026-06-07
 
 ### Changed
