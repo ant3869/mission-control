@@ -3,6 +3,7 @@ import { clsx } from 'clsx'
 import { Loader2 } from 'lucide-react'
 import { Sidebar } from './components/layout/Sidebar'
 import { TopBar } from './components/layout/TopBar'
+import { ErrorBoundary } from './components/ErrorBoundary'
 import { ScheduledTasks } from './views/ScheduledTasks'   // eager — default landing view
 import type { View } from './types'
 
@@ -65,9 +66,11 @@ function ViewPane({
   if (!mounted.has(view)) return null
   return (
     <div className={clsx('absolute inset-0 overflow-hidden', active !== view && 'hidden')}>
-      <Suspense fallback={<div className="flex items-center justify-center h-full"><Loader2 size={20} className="animate-spin text-text-muted" /></div>}>
-        {children}
-      </Suspense>
+      <ErrorBoundary label={VIEW_TITLES[view]}>
+        <Suspense fallback={<div className="flex items-center justify-center h-full"><Loader2 size={20} className="animate-spin text-text-muted" /></div>}>
+          {children}
+        </Suspense>
+      </ErrorBoundary>
     </div>
   )
 }

@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.7.25] — 2026-06-08
+
+### Added
+
+- **Per-view error boundary.** Previously a runtime exception in any view would white-screen the entire dashboard (sidebar, top bar, and all other views included). Each view pane is now wrapped in an `ErrorBoundary` that catches render errors and shows a recoverable fallback ("This <view> view hit an error" + the message + a "Try again" button) while the rest of the app keeps working. Verified `tsc` clean + `vite build` succeeds. (The runtime console is otherwise clean — earlier TopBar errors were stale HMR artifacts from mid-edit reloads.)
+
 ## [0.7.24] — 2026-06-08
 
 ### Fixed
