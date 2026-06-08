@@ -5,7 +5,8 @@
 
 import { Router } from 'express'
 import { getConnectors, isLive, toPublic } from '../lib/connectors.js'
-import { fetchStatus, fetchDiagnostics } from '../lib/gateway.js'
+import { fetchDiagnostics } from '../lib/gateway.js'
+import { getPlatformMetrics } from '../lib/metrics.js'
 import { getRawEvents, type AgentSource } from '../lib/agentEvents.js'
 
 export const securityRouter = Router()
@@ -20,8 +21,14 @@ securityRouter.get('/posture', async (_req, res) => {
     const pub     = toPublic(c)
     const live    = isLive(c.id)
 
-    // Always probe status endpoint for reachability
-    const statusR = live ? await fetchStatus(c.id) : null
+    // Reachability via the transport-aware metrics layer (OpenClaw = WebSocket,
+    // Hermes = REST). The old HTTP /api/status probe always 404'd for OpenClaw's
+    // WS gateway and reported it falsely "unreachable".
+    const metricsR = live ? await getPlatformMetrics(c.id).catch(() => null) : null
+    const reachable = !!metricsR?.reachable
+    // Live auth signal: a reachable service whose authed calls fail (e.g. a
+    // rotated Hermes token) shows up as an error string here.
+    const authErrorLive = !!(metricsR?.error && /\b(401|403|unauthor|invalid.?(api.?)?key|invalid.?token|forbidden|re-?enter token)\b/i.test(metricsR.error))
 
     // Count recent auth errors from the event store
     const cutoff = new Date(now - windowMs).toISOString()
@@ -31,12 +38,12 @@ securityRouter.get('/posture', async (_req, res) => {
     const totalEvents  = events.length
 
     const tokenStatus =
-      !c.enabled               ? 'disabled' :
-      !pub.hasToken            ? 'missing' :
-      authErrors > 0           ? 'auth_error' :
-      !live                    ? 'no_url' :
-      statusR?.reachable       ? 'ok' :
-                                 'unreachable'
+      !c.enabled                          ? 'disabled' :
+      !pub.hasToken                       ? 'missing' :
+      (authErrors > 0 || authErrorLive)   ? 'auth_error' :
+      !live                               ? 'no_url' :
+      reachable                           ? 'ok' :
+                                            'unreachable'
 
     return {
       id:           c.id,
@@ -47,9 +54,9 @@ securityRouter.get('/posture', async (_req, res) => {
       baseUrl:      pub.baseUrl,
       live,
       tokenStatus,
-      reachable:    statusR?.reachable ?? null,
-      latencyMs:    statusR?.latencyMs ?? null,
-      version:      statusR?.version ?? null,
+      reachable:    metricsR ? metricsR.reachable : null,
+      latencyMs:    metricsR?.latencyMs ?? null,
+      version:      metricsR?.version ?? null,
       recentErrors: errorEvents,
       authErrors,
       totalEvents,

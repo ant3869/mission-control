@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.7.15] — 2026-06-08
+
+### Fixed
+
+- **Security posture falsely reported OpenClaw as "unreachable."** The posture check probed an HTTP `/api/status` endpoint, but OpenClaw is a WebSocket gateway with no such REST route (always 404), so the primary connector showed as down even while live. It now uses the transport-aware `getPlatformMetrics` (WebSocket for OpenClaw, REST for Hermes) — the same reachability signal the rest of the app uses — so OpenClaw correctly shows OK/Connected with its real version, and the posture score reflects reality. Also adds a live auth-error signal (a reachable connector whose authed calls 401/403, e.g. a rotated Hermes token, now surfaces as `auth_error`).
+
 ## [0.7.14] — 2026-06-08
 
 ### Changed
