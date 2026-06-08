@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { clsx } from 'clsx'
-import { CheckCircle2, AlertCircle, WifiOff, Clock, RefreshCw, AlertTriangle, Loader2, Plug } from 'lucide-react'
+import { CheckCircle2, AlertCircle, WifiOff, Clock, RefreshCw, AlertTriangle, Loader2, Plug, ChevronDown } from 'lucide-react'
 import { office } from '../lib/api'
 import type { LiveIntegration, IntegrationCategory, IntegrationStatus } from '../lib/api'
 
@@ -31,70 +31,87 @@ const statusMeta: Record<IntegrationStatus, { label: string; icon: React.ReactNo
 // ─── Row ──────────────────────────────────────────────────────────────────────
 
 function IntegrationRow({ item }: { item: LiveIntegration }) {
+  const [open, setOpen] = useState(false)
   const sm = statusMeta[item.status]
-  return (
-    <div className="flex items-center gap-3 px-4 py-3 border-b border-border-subtle last:border-0 hover:bg-base/40 transition-colors group">
-      <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-base border border-border shrink-0 text-base select-none">
-        {item.icon}
-      </div>
+  // Full diagnostic details to reveal on expand (the inline line truncates these).
+  const details: Array<[string, string]> = [
+    ['Status', sm.label],
+    ['Category', item.category],
+    ...(item.version    ? [['Version', `v${item.version}`] as [string, string]] : []),
+    ...(item.connectedAs ? [['Connected as', item.connectedAs] as [string, string]] : []),
+    ...(item.lastSync   ? [['Last sync', item.lastSync] as [string, string]] : []),
+  ]
+  const hasMore = details.length > 2 || !!item.error || !!item.detail
 
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-medium text-text-primary">{item.name}</span>
-          {item.version && (
-            <span className="text-xxs text-text-muted bg-base px-1.5 py-0.5 rounded border border-border-subtle">
-              v{item.version}
-            </span>
-          )}
-          {item.status === 'error' && (
-            <span className="flex items-center gap-1 text-xxs text-red-400">
-              <AlertTriangle size={9} />Error
-            </span>
-          )}
+  return (
+    <div className="border-b border-border-subtle last:border-0">
+      <button
+        type="button"
+        onClick={() => hasMore && setOpen(o => !o)}
+        aria-expanded={hasMore ? open : undefined}
+        className={clsx('w-full flex items-center gap-3 px-4 py-3 text-left transition-colors', hasMore ? 'hover:bg-base/40 cursor-pointer' : 'cursor-default')}
+      >
+        <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-base border border-border shrink-0 text-base select-none">
+          {item.icon}
         </div>
 
-        {item.connectedAs ? (
-          <p className="text-xxs text-text-muted mt-0.5 truncate">
-            {item.connectedAs}
-          </p>
-        ) : item.detail ? (
-          <p className="text-xxs text-text-muted mt-0.5 truncate">
-            {item.detail}
-          </p>
-        ) : item.error ? (
-          <p className="text-xxs text-red-400/80 mt-0.5 truncate">{item.error}</p>
-        ) : item.status === 'disconnected' ? (
-          <p className="text-xxs text-text-muted mt-0.5">Not connected</p>
-        ) : item.status === 'pending' ? (
-          <p className="text-xxs text-amber-400/80 mt-0.5">Awaiting configuration</p>
-        ) : null}
-      </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium text-text-primary">{item.name}</span>
+            {item.version && (
+              <span className="text-xxs text-text-muted bg-base px-1.5 py-0.5 rounded border border-border-subtle">v{item.version}</span>
+            )}
+            {item.status === 'error' && (
+              <span className="flex items-center gap-1 text-xxs text-red-400"><AlertTriangle size={9} />Error</span>
+            )}
+          </div>
 
-      {item.lastSync && (
-        <div className="flex items-center gap-1 text-xxs text-text-muted shrink-0 hidden sm:flex">
-          <RefreshCw size={9} />
-          {item.lastSync}
+          {item.connectedAs ? (
+            <p className="text-xxs text-text-muted mt-0.5 truncate">{item.connectedAs}</p>
+          ) : item.detail ? (
+            <p className="text-xxs text-text-muted mt-0.5 truncate">{item.detail}</p>
+          ) : item.error ? (
+            <p className="text-xxs text-red-400/80 mt-0.5 truncate">{item.error}</p>
+          ) : item.status === 'disconnected' ? (
+            <p className="text-xxs text-text-muted mt-0.5">Not connected</p>
+          ) : item.status === 'pending' ? (
+            <p className="text-xxs text-amber-400/80 mt-0.5">Awaiting configuration</p>
+          ) : null}
+        </div>
+
+        {item.lastSync && (
+          <div className="flex items-center gap-1 text-xxs text-text-muted shrink-0 hidden sm:flex">
+            <RefreshCw size={9} />{item.lastSync}
+          </div>
+        )}
+
+        <div className={clsx('flex items-center gap-1.5 text-xxs font-medium shrink-0', sm.color)}>
+          <span className={clsx('w-1.5 h-1.5 rounded-full', sm.dot)} />
+          {sm.label}
+        </div>
+
+        {hasMore && <ChevronDown size={14} className={clsx('text-text-muted shrink-0 transition-transform', open && 'rotate-180')} />}
+      </button>
+
+      {open && hasMore && (
+        <div className="px-4 pb-3 pl-[3.75rem] grid grid-cols-2 gap-x-6 gap-y-1.5 text-xxs">
+          {details.map(([k, v]) => (
+            <div key={k} className="flex gap-2 min-w-0">
+              <span className="text-text-muted shrink-0">{k}</span>
+              <span className="text-text-secondary truncate" title={v}>{v}</span>
+            </div>
+          ))}
+          {item.error && (
+            <div className="col-span-2 mt-1">
+              <span className="text-text-muted">Error</span>
+              <pre className="whitespace-pre-wrap break-words text-red-300/90 font-mono mt-0.5 bg-red-950/20 border border-red-900/40 rounded p-2">{item.error}</pre>
+            </div>
+          )}
+          {!item.error && item.detail && (
+            <div className="col-span-2 text-text-secondary"><span className="text-text-muted mr-2">Detail</span>{item.detail}</div>
+          )}
         </div>
       )}
-
-      <div className={clsx('flex items-center gap-1.5 text-xxs font-medium shrink-0', sm.color)}>
-        <span className={clsx('w-1.5 h-1.5 rounded-full', sm.dot)} />
-        {sm.label}
-      </div>
-
-      <button className={clsx(
-        'px-2.5 py-1 rounded border text-xxs font-medium transition-all shrink-0',
-        item.status === 'connected'
-          ? 'border-border text-text-muted bg-base hover:bg-card hover:text-text-secondary opacity-0 group-hover:opacity-100'
-          : item.status === 'error'
-          ? 'border-red-900/50 bg-red-950/30 text-red-400 hover:bg-red-950/60'
-          : 'border-border text-text-secondary bg-card hover:bg-card-hover',
-      )}>
-        {item.status === 'connected'    ? 'Manage'    :
-         item.status === 'error'        ? 'Fix'       :
-         item.status === 'disconnected' ? 'Connect'   :
-                                          'Configure' }
-      </button>
     </div>
   )
 }

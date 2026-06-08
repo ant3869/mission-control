@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.7.31] — 2026-06-08
+
+### Changed
+
+- **Office: replaced the dead per-row buttons with real expandable details.** Each integration row had a Manage/Fix/Connect/Configure button that did nothing (these statuses are read-only/derived — there's no connect action to call), which was misleading. Rows are now click-to-expand disclosures that reveal full diagnostics — status, category, version, connected-as, last sync, and the **full untruncated error** (the inline line truncates it) — which is what you actually need when an integration is failing. Verified: 0 dead buttons, rows expand with `aria-expanded`, tsc + build clean.
+
 ## [0.7.30] — 2026-06-08
 
 ### Changed
