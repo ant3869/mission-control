@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.7.27] — 2026-06-08
+
+### Changed
+
+- **The browser tab title now reflects the active view** (e.g. "Harness Benchmarks · Mission Control"), instead of a static "Mission Control". Improves browser-history readability and tab identification when several views/tabs are open. Verified it updates on navigation.
+
+### Notes
+
+- Health check this cycle: no failed network requests across a full view tour, no remaining unlabeled icon-only buttons, `tsc` clean, build succeeds. The app is in a solid steady state — remaining work is incremental.
+
 ## [0.7.26] — 2026-06-08
 
 ### Accessibility

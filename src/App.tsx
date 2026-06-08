@@ -1,4 +1,4 @@
-import { useState, lazy, Suspense } from 'react'
+import { useState, useEffect, lazy, Suspense } from 'react'
 import { clsx } from 'clsx'
 import { Loader2 } from 'lucide-react'
 import { Sidebar } from './components/layout/Sidebar'
@@ -83,6 +83,9 @@ export default function App() {
     setMounted(prev => new Set([...prev, view]))
     setActiveView(view)
   }
+
+  // Reflect the active view in the browser tab title (history + tab identification).
+  useEffect(() => { document.title = `${VIEW_TITLES[activeView]} · Mission Control` }, [activeView])
 
   return (
     <div className="flex h-full w-full bg-base overflow-hidden">
