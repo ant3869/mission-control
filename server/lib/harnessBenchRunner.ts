@@ -222,16 +222,46 @@ async function dispatchOpenClaw(prompt: string, sessionKey: string, timeoutMs: n
   }
 }
 
+// Combine two turns into one result: score the FINAL reply, but sum latency/
+// tokens/cost and keep both transcripts for inspection.
+function mergeTurns(t1: DispatchResult, t2: DispatchResult): DispatchResult {
+  return {
+    ...t2,
+    answer: t2.answer || t1.answer,
+    latencyMs: t1.latencyMs + t2.latencyMs,
+    outputTokens: t1.outputTokens + t2.outputTokens,
+    inputTokens: t1.inputTokens + t2.inputTokens,
+    reportedCost: t1.reportedCost + t2.reportedCost,
+    toolCalls: t1.toolCalls + t2.toolCalls,
+    resolvedModel: t2.resolvedModel || t1.resolvedModel,
+    raw: { turn1: t1.raw, turn2: t2.raw },
+    error: t2.error ?? t1.error,
+  }
+}
+
 async function dispatch(req: StartRunRequest, task: BenchmarkTask, runId: string, sampleIdx = 0): Promise<DispatchResult> {
   const model = req.model ?? ''
   const perTaskTimeout = req.harness === 'openclaw' ? 150_000 : 120_000
-  if (req.endpoint?.trim()) {
-    return openaiCompatChat(req.endpoint.trim(), req.token ?? '', model, task.prompt, perTaskTimeout)
-  }
-  if (req.harness === 'hermes') return dispatchHermes(task.prompt, model, perTaskTimeout)
   // Unique session per sample so chat.history of one sample never mixes into the next.
   const sessionKey = `agent:main:dashboard-benchmark:${runId.slice(0, 8)}-${task.id}-s${sampleIdx}`
-  return dispatchOpenClaw(task.prompt, sessionKey, perTaskTimeout, model)
+
+  const one = (msg: string, timeoutMs: number): Promise<DispatchResult> => {
+    if (req.endpoint?.trim()) return openaiCompatChat(req.endpoint.trim(), req.token ?? '', model, msg, timeoutMs)
+    if (req.harness === 'hermes') return dispatchHermes(msg, model, timeoutMs)
+    return dispatchOpenClaw(msg, sessionKey, timeoutMs, model)
+  }
+
+  if (!task.followUp?.trim()) return one(task.prompt, perTaskTimeout)
+
+  // Real second turn. OpenClaw keeps context via the shared sessionKey; stateless
+  // harnesses get the prior exchange folded into the follow-up message.
+  const half = Math.round(perTaskTimeout * 0.6)
+  const t1 = await one(task.prompt, half)
+  const follow = req.harness === 'openclaw' && !req.endpoint?.trim()
+    ? task.followUp
+    : `Earlier I asked: ${task.prompt}\nYou answered: ${t1.answer}\n\nFollow-up: ${task.followUp}`
+  const t2 = await one(follow, half)
+  return mergeTurns(t1, t2)
 }
 
 // ─── orchestration ──────────────────────────────────────────────────────────────

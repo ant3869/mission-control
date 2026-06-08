@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.7.28] — 2026-06-08
+
+### Changed
+
+- **Harness Benchmarks: multi-turn troubleshooting is now a real 2-turn exchange.** Previously the multi-turn lane crammed both turns into a single prompt (a documented v1 limitation). Tasks can now declare a `followUp`; the runner dispatches turn 1, then a real turn 2, and scores the **final** reply (latency/tokens/cost summed, both transcripts kept under `turn1`/`turn2`). OpenClaw keeps context natively via the shared session key; stateless harnesses get the prior exchange folded into the follow-up. The `ocr-multiturn` task now genuinely tests *revising* a diagnosis after new output. Verified: real 2-turn dispatch, model updates its diagnosis correctly (10/10).
+
 ## [0.7.27] — 2026-06-08
 
 ### Changed

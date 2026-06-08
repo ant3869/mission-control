@@ -282,8 +282,11 @@ const OPENCLAW_ROUTING_ACTIONS: BenchmarkTask[] = [
     harnesses: OC, scoringMode: 'regex',
     requiredSubstrings: ['(tunnel|ssh|not (running|listening|up)|start|restart)'],
     forbiddenSubstrings: ['api key', 'token expired', 'invalid model'],
-    prompt: 'Earlier you suggested restarting the OpenClaw gateway. The operator restarted it and now sees: `ws connect failed: ECONNREFUSED 127.0.0.1:18789`. Given this NEW output, state the most likely remaining cause and the next action in one sentence.',
-    expectedBehavior: 'Recognizes the gateway is up but the local SSH tunnel / port 18789 is not reachable; next action = (re)start the tunnel. Must NOT revert to auth/token/model causes.',
+    // Real 2-turn exchange: the model proposes a fix, then must REVISE its
+    // diagnosis given new output rather than repeat itself. The 2nd reply is scored.
+    prompt: 'The OpenClaw dashboard cannot connect to the gateway over WebSocket. In one sentence, what is your first diagnostic step or most likely cause?',
+    followUp: 'I tried that and restarted the gateway; it is running, but the dashboard now shows `ws connect failed: ECONNREFUSED 127.0.0.1:18789`. Given this NEW output, state the most likely remaining cause and the next action in one sentence.',
+    expectedBehavior: 'After the new output, recognizes the gateway is up but the local SSH tunnel / port 18789 is not reachable; next action = (re)start the tunnel. Must NOT revert to auth/token/model causes.',
     maxPoints: 10, tags: ['openclaw', 'multiturn', 'diagnosis'],
   },
   {

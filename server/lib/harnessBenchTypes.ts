@@ -83,6 +83,7 @@ export interface BenchmarkTask {
   lane:               BenchmarkLane
   harnesses:          BenchmarkHarness[]      // which harnesses this task is meaningful for
   prompt:             string
+  followUp?:          string                  // when set → a real 2nd turn; the final reply is scored
   expectedBehavior:   string
   scoringMode:        ScoringMode
   expectedAnswer?:    unknown                 // exact string OR concrete object for json_schema deep-equal
