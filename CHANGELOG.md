@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.7.33] — 2026-06-08
+
+### Added
+
+- **Harness Benchmarks → Compare: Export CSV.** The per-run results already had an export, but the cross-model **Compare** table — the most shareable view — had none. Added an **Export CSV** button that downloads the full comparison (harness, model/provider, family, task pack, runs, overall %, pass %, reliability, speed ± stdev, tokens, cost, fence %, fails, and every per-lane score) for spreadsheet analysis. Pure client-side from data already loaded; filename encodes group-by + mode + date. Verified: 26-row CSV with the correct header.
+
 ## [0.7.32] — 2026-06-08
 
 ### Changed

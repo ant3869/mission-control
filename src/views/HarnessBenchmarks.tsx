@@ -657,6 +657,23 @@ export function HarnessBenchmarks() {
 
 // ─── compare tab ──────────────────────────────────────────────────────────────
 
+// Build a spreadsheet-friendly CSV of the cross-model comparison (everything the
+// table shows: headline metrics + per-lane scores), for sharing / offline analysis.
+function comparisonToCsv(rows: HbComparisonRow[], lanes: HbLaneMeta[], groupBy: 'model' | 'provider'): string {
+  const esc = (v: unknown) => { const s = v == null ? '' : String(v); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s }
+  const head = ['Harness', groupBy === 'provider' ? 'Provider' : 'Model', 'Family', 'Models', 'Task pack',
+    'Runs used', 'Runs', 'Overall %', 'Pass %', 'Reliability %', 'Speed ms', 'Speed stdev ms',
+    'Avg tokens', 'Tokens estimated', 'Cost USD', 'Cost estimated', 'Fence %', 'Fails', ...lanes.map(l => l.short)]
+  const lines = [head.map(esc).join(',')]
+  for (const r of rows) {
+    lines.push([r.harness, r.modelName, r.family, r.modelCount, r.taskPackName,
+      r.runsUsed, r.runs, r.overallPct, r.passRate, r.reliabilityPct, r.avgLatencyMs, r.latencyStdevMs,
+      r.avgOutputTokens, r.tokensEstimated, r.estCostUsd, r.costEstimated, r.fenceRate, r.failureCount,
+      ...lanes.map(l => r.laneScores[l.id])].map(esc).join(','))
+  }
+  return lines.join('\n')
+}
+
 function ComparisonTab({ rows, lanes, mode, onMode, groupBy, onGroupBy }: {
   rows: HbComparisonRow[]; lanes: HbLaneMeta[]
   mode: 'latest' | 'average' | 'best'; onMode: (m: 'latest' | 'average' | 'best') => void
@@ -678,6 +695,14 @@ function ComparisonTab({ rows, lanes, mode, onMode, groupBy, onGroupBy }: {
       ))}
     </div>
   )
+  const exportCsv = () => {
+    const url = URL.createObjectURL(new Blob([comparisonToCsv(rows, lanes, groupBy)], { type: 'text/csv;charset=utf-8' }))
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `harness-comparison-${groupBy}-${mode}-${new Date().toISOString().slice(0, 10)}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
   return (
     <div className="flex-1 overflow-auto p-6">
       <div className="flex items-center justify-between mb-3 gap-3 flex-wrap">
@@ -702,6 +727,12 @@ function ComparisonTab({ rows, lanes, mode, onMode, groupBy, onGroupBy }: {
             <span className="text-xxs uppercase tracking-wide text-text-muted">Compare by</span>
             {ModeToggle}
           </div>
+          {rows.length > 0 && (
+            <button onClick={exportCsv} title="Download this comparison as CSV"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border bg-card hover:bg-card-hover text-text-secondary text-xs">
+              <Download size={12} /> Export CSV
+            </button>
+          )}
         </div>
       </div>
       {rows.length === 0 ? (
