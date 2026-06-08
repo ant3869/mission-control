@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.7.32] — 2026-06-08
+
+### Changed
+
+- **Dead-control sweep: removed the last no-op button.** Scanned every view/component for `<button>`s with no `onClick`/handler. The only one left (after the 0.7.31 Office fix) was the System view's per-component **Power (Enable/Disable)** toggle — there's no endpoint to enable/disable a plugin/MCP from the dashboard (that lives in Claude settings), so the button was misleading. Removed it; the working **Recheck** button stays (now with an `aria-label`) and the status badge already shows healthy/offline. The app now has **zero decorative no-op buttons**.
+
 ## [0.7.31] — 2026-06-08
 
 ### Changed

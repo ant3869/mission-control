@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { clsx } from 'clsx'
-import { AlertCircle, CheckCircle2, WifiOff, AlertTriangle, RefreshCw, Power, Server, Cpu, HardDrive, Clock, Monitor, Terminal } from 'lucide-react'
+import { AlertCircle, CheckCircle2, WifiOff, AlertTriangle, RefreshCw, Server, Cpu, HardDrive, Clock, Monitor, Terminal } from 'lucide-react'
 import { system, type SystemComponentLive, type SystemHostInfo } from '../lib/api'
 import type { SystemComponentType, SystemStatus } from '../types'
 
@@ -136,15 +136,9 @@ function ComponentRow({ component, onRecheck }: { component: SystemComponentLive
       </span>
 
       <div className="flex items-center gap-1 shrink-0">
-        <button onClick={onRecheck}
+        <button onClick={onRecheck} aria-label="Recheck"
           className="p-1.5 rounded hover:bg-card border border-transparent hover:border-border text-text-muted hover:text-text-secondary transition-all" title="Recheck">
           <RefreshCw size={12} />
-        </button>
-        <button className={clsx(
-          'p-1.5 rounded hover:bg-card border border-transparent hover:border-border transition-all',
-          component.status === 'offline' ? 'text-green-400 hover:text-green-300' : 'text-text-muted hover:text-red-400',
-        )} title={component.status === 'offline' ? 'Enable' : 'Disable'}>
-          <Power size={12} />
         </button>
       </div>
     </div>
