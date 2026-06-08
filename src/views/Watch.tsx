@@ -6,6 +6,7 @@ import {
   Wifi, WifiOff, Brain, Zap, Clock, Cpu,
 } from 'lucide-react'
 import { WATCH_STREAM_URL, type WatchEvent, type WatchSource } from '../lib/api'
+import { usePaused } from '../lib/refreshBus'
 
 // ─── Status classification ────────────────────────────────────────────────────
 
@@ -219,8 +220,10 @@ const ACTIVITY_KINDS: WatchEvent['kind'][] = ['tool', 'message', 'cron', 'sessio
 export function Watch() {
   const [latestBySource, setLatestBySource] = useState<Partial<Record<WatchSource, WatchEvent>>>({})
   const [connected, setConnected] = useState(false)
+  const paused = usePaused()
 
   useEffect(() => {
+    if (paused) { setConnected(false); return }   // Pause freezes the live stream
     const es = new EventSource(WATCH_STREAM_URL)
 
     es.onmessage = (ev) => {
@@ -248,7 +251,7 @@ export function Watch() {
     es.onopen  = () => setConnected(true)
     es.onerror = () => setConnected(false)
     return () => es.close()
-  }, [])
+  }, [paused])
 
   return (
     <div className="flex flex-col h-full overflow-hidden">

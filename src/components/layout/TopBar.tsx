@@ -216,7 +216,12 @@ export function TopBar({ title, onNavigate, views }: TopBarProps) {
             <span>Ping Ant</span>
           </button>
 
-          <div className="w-7 h-7 rounded-full bg-gradient-to-br from-emerald-500 to-green-600 shrink-0 cursor-pointer" />
+          <button
+            onClick={() => onNavigate('settings')}
+            title="Open Settings"
+            aria-label="Open Settings"
+            className="w-7 h-7 rounded-full bg-gradient-to-br from-emerald-500 to-green-600 shrink-0 cursor-pointer hover:ring-2 hover:ring-white/20 transition-shadow"
+          />
         </div>
       </header>
 

@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.7.23] — 2026-06-08
+
+### Changed
+
+- **Pause now also freezes the Watch live feed.** The Watch view's SSE event stream is the noisiest live source; it now closes when auto-refresh is paused and reopens on resume, so Pause genuinely halts all background activity. (The 1s relative-time tick is cosmetic and left running.)
+- **The top-right avatar now opens Settings.** It was a decorative `<div>` with a pointer cursor that did nothing; it's now a real button (with aria-label + hover ring) that navigates to Settings.
+
 ## [0.7.22] — 2026-06-08
 
 ### Changed
