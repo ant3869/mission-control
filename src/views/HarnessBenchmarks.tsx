@@ -86,6 +86,27 @@ function Stat({ label, value, accent }: { label: string; value: React.ReactNode;
   )
 }
 
+// ─── sparkline (per-model score trend across runs) ──────────────────────────────
+
+function Sparkline({ data }: { data: number[] }) {
+  if (!data?.length) return <span className="text-text-muted/40">·</span>
+  if (data.length === 1) return <span className="text-text-muted tabular-nums text-xxs" title="one run — no trend yet">{data[0]}%</span>
+  const w = 54, h = 16, n = data.length
+  const xy = (v: number, i: number) => [ (i / (n - 1)) * (w - 2) + 1, h - 1 - (Math.max(0, Math.min(100, v)) / 100) * (h - 2) ] as const
+  const pts = data.map((v, i) => xy(v, i).map(z => z.toFixed(1)).join(',')).join(' ')
+  const [lx, ly] = xy(data[n - 1], n - 1)
+  const delta = data[n - 1] - data[0]
+  const col = delta > 0 ? '#34d399' : delta < 0 ? '#f87171' : '#9ca3af'
+  return (
+    <svg width={w} height={h} className="inline-block align-middle" role="img"
+      aria-label={`score trend over ${n} runs`}>
+      <title>{`overall % per run (oldest → newest): ${data.join('% → ')}%`}</title>
+      <polyline points={pts} fill="none" stroke={col} strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
+      <circle cx={lx} cy={ly} r="1.7" fill={col} />
+    </svg>
+  )
+}
+
 // ─── lane card ────────────────────────────────────────────────────────────────
 
 function LaneCard({ meta, results, active, onClick }: {
@@ -697,6 +718,7 @@ function ComparisonTab({ rows, lanes, mode, onMode, groupBy, onGroupBy }: {
                   <th className="text-right font-medium px-3 py-2" title="Share of responses wrapped in ``` code fences (format/markdown tendency)">Fences</th>
                   <th className="text-right font-medium px-3 py-2">Fails</th>
                   <th className="text-right font-medium px-3 py-2" title="runs used / runs available">Runs</th>
+                  <th className="text-center font-medium px-3 py-2" title="Overall % of each completed run over time (oldest → newest) — spot improvement or regression">Trend</th>
                   {lanes.map(l => <th key={l.id} className="text-right font-medium px-2 py-2 whitespace-nowrap" title={l.label}>{l.short}</th>)}
                 </tr>
               </thead>
@@ -727,6 +749,7 @@ function ComparisonTab({ rows, lanes, mode, onMode, groupBy, onGroupBy }: {
                     <td className={clsx('px-3 py-2 text-right tabular-nums', r.fenceRate === 0 ? 'text-text-muted' : 'text-amber-400')}>{r.fenceRate}%</td>
                     <td className={clsx('px-3 py-2 text-right tabular-nums', r.failureCount ? 'text-red-400' : 'text-text-muted')}>{r.failureCount}</td>
                     <td className="px-3 py-2 text-right tabular-nums text-text-muted">{mode === 'average' ? r.runs : `${r.runsUsed}/${r.runs}`}</td>
+                    <td className="px-3 py-2 text-center"><Sparkline data={r.trend} /></td>
                     {lanes.map(l => {
                       const v = r.laneScores[l.id]
                       return <td key={l.id} className={clsx('px-2 py-2 text-right tabular-nums', v == null ? 'text-text-muted/40' : v >= 80 ? 'text-green-400' : v >= 50 ? 'text-amber-400' : 'text-red-400')}>{v == null ? '·' : v}</td>

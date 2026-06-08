@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.7.29] — 2026-06-08
+
+### Added
+
+- **Harness Benchmarks → Compare: per-model score trend sparkline.** Each row now shows a small inline sparkline of that model+pack's overall % across every completed run (oldest → newest), coloured green/red by net direction, with the exact sequence on hover. Makes regressions/improvements visible at a glance — e.g. a model that swings `100 → 0 → 0 → 0 → 100` reads very differently from a steady `83 → 92`. Computed server-side in `modelComparison` (both Model and Provider group-by); single-run rows show the value instead of a flat line. Verified: API returns trend arrays, 8 multi-run sparklines render.
+
 ## [0.7.28] — 2026-06-08
 
 ### Changed

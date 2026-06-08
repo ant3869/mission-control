@@ -234,6 +234,7 @@ export interface ModelComparisonRow {
   estCostUsd: number | null       // est USD per run (one pack pass)
   costEstimated: boolean          // true → from pricing table (no harness-reported cost)
   maxSamples: number              // largest samples/task used (1 → reliability == pass rate)
+  trend: number[]                 // overall % of each completed run in the group, oldest → newest
   lastRunAt: string
 }
 
@@ -338,6 +339,7 @@ export function modelComparison(mode: CompareMode = 'latest', groupBy: CompareGr
         harness: ref.harness, modelName: family, provider: family, family, modelCount: byModel.size,
         taskPackId: ref.taskPackId, taskPackName: ref.taskPackName,
         runs: rs.length, runsUsed, ...metricsFor(entries, runsUsed),
+        trend: [...rs].sort((a, b) => a.startedAt.localeCompare(b.startedAt)).map(r => r.maxScore > 0 ? Math.round((r.totalScore / r.maxScore) * 100) : 0),
         lastRunAt: ref.startedAt,
       })
     }
@@ -359,6 +361,7 @@ export function modelComparison(mode: CompareMode = 'latest', groupBy: CompareGr
       family: deriveFamily(model), modelCount: 1,
       taskPackId: ref.taskPackId, taskPackName: ref.taskPackName,
       runs: rs.length, runsUsed: chosen.length, ...metricsFor(entries, chosen.length),
+      trend: [...rs].sort((a, b) => a.startedAt.localeCompare(b.startedAt)).map(r => r.maxScore > 0 ? Math.round((r.totalScore / r.maxScore) * 100) : 0),
       lastRunAt: ref.startedAt,
     })
   }

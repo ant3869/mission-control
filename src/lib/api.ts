@@ -1659,7 +1659,7 @@ export interface HbComparisonRow {
   reliabilityPct: number | null; latencyStdevMs: number | null
   avgResponseChars: number; avgOutputTokens: number; tokensEstimated: boolean
   fenceRate: number; estCostUsd: number | null; costEstimated: boolean
-  maxSamples: number; lastRunAt: string
+  maxSamples: number; trend: number[]; lastRunAt: string
 }
 export interface HbStartBody {
   harness: BenchmarkHarness; taskPackId: string; model?: string
