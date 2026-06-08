@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.7.13] — 2026-06-08
+
+### Changed
+
+- **Content is now a real feed of agent-published output** instead of a mock social-media pipeline. It shows the substantial content the agents actually produce and deliver — morning briefings, status reports, digests, and replies — via a new `derivePublications()` aggregation + `GET /api/{openclaw,hermes}/publications`. Each item shows a type badge (briefing/status/heartbeat/digest/reply), channel, word count, time, and an expandable full body with light markdown rendering; with type filter and search. Grows automatically as the agents publish. (Only the Feedback view remains on mock data.)
+
 ## [0.7.12] — 2026-06-07
 
 ### Added

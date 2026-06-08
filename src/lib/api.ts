@@ -400,6 +400,25 @@ export const peopleApi = {
   hermes:   () => get<PeopleResponse>('/hermes/people'),
 }
 
+export interface AgentPublication {
+  id:        string
+  title:     string
+  type:      string
+  preview:   string
+  content:   string
+  wordCount: number
+  channel:   string
+  ts:        string
+  tsAgo:     string
+  source:    ConnectorId
+}
+export interface PublicationsResponse { publications: AgentPublication[]; fetchedAt: string; error?: string }
+
+export const publicationsApi = {
+  openclaw: () => get<PublicationsResponse>('/openclaw/publications'),
+  hermes:   () => get<PublicationsResponse>('/hermes/publications'),
+}
+
 export const openclawChats = {
   sessions: (limit = 50) => get<ChatsListResponse>('/openclaw/sessions', { limit }),
   session:  (id: string) => get<ChatSessionResponse>(`/openclaw/sessions/${encodeURIComponent(id)}`),

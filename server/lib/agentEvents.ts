@@ -489,6 +489,54 @@ export function derivePeople(source: AgentSource): AgentPerson[] {
     .sort((x, y) => new Date(y.lastSeen).getTime() - new Date(x.lastSeen).getTime())
 }
 
+// ─── Publications (real agent-published content) ─────────────────────────────
+// Substantial outbound messages the agents produced and delivered — briefings,
+// status reports, digests and replies. This is the "content" the agents publish,
+// distinct from raw conversation transcripts.
+
+export interface AgentPublication {
+  id:        string
+  title:     string
+  type:      string         // Morning briefing | Status sync | Digest | Reply | …
+  preview:   string
+  content:   string
+  wordCount: number
+  channel:   string
+  ts:        string
+  tsAgo:     string
+  source:    AgentSource
+}
+
+export function derivePublications(source: AgentSource, limit = 80): AgentPublication[] {
+  const rows = allRows(source).filter(r => r.event_type === 'message:sent')
+  const out: AgentPublication[] = []
+  for (const row of rows) {
+    let payload: any
+    try { payload = JSON.parse(row.payload_json || '{}') } catch { continue }
+    const content = extractContent(payload)            // already TTS-stripped/cleaned
+    if (!content || content.length < 12 || content.startsWith('[message:')) continue
+
+    const cron = isCronKey(row.session_key)
+    const firstLine = content.split('\n').map(l => l.trim()).find(Boolean) ?? ''
+    const type = cron ? classifyCron(content) : 'Reply'
+    const channelType = parseChannelType(row.session_key || '')
+    out.push({
+      id:        `${source}-pub-${row.id}`,
+      title:     cron ? classifyCron(content) : (firstLine.slice(0, 72) || 'Reply'),
+      type,
+      preview:   content.replace(/\s+/g, ' ').slice(0, 200),
+      content,
+      wordCount: content.split(/\s+/).filter(Boolean).length,
+      channel:   channelType !== 'unknown' ? channelType : (deepFindString(payload, ['channelId', 'channel']) || source),
+      ts:        row.ts,
+      tsAgo:     fmtAgo(row.ts),
+      source,
+    })
+  }
+  out.sort((a, b) => new Date(b.ts).getTime() - new Date(a.ts).getTime())
+  return out.slice(0, limit)
+}
+
 // ─── Health + stats ────────────────────────────────────────────────────────
 
 export interface SourceHealth {
