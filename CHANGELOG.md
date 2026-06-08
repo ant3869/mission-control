@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.7.10] — 2026-06-07
+
+### Changed
+
+- **People is now a real contacts directory** instead of mock collaborators/clients. It derives distinct humans who have actually interacted with the agents from event payloads (Discord/Telegram senders) via a new `derivePeople()` aggregation + `GET /api/{openclaw,hermes}/people`. Each card shows the person's name, platform badge, channels (e.g. `#general`), message count, last-seen, and since-date; with platform filter, search, and live refresh. Grows automatically as new people message the agents — no more fake data.
+
 ## [0.7.9] — 2026-06-07
 
 ### Changed

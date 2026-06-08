@@ -6,7 +6,7 @@
 //          Settings; pushed events are also accepted for parity with OpenClaw.
 
 import { Router } from 'express'
-import { ingestEvent, getRawEvents } from '../lib/agentEvents.js'
+import { ingestEvent, getRawEvents, derivePeople } from '../lib/agentEvents.js'
 import { getSessions, getSessionDetail, getAgents, getCron } from '../lib/agentSources.js'
 import { isLive, getConnector } from '../lib/connectors.js'
 import { cronAction, fetchDiagnostics, fetchMemoryFileContent, type CronAction } from '../lib/gateway.js'
@@ -83,6 +83,10 @@ hermesRouter.get('/stream', (req, res) => {
 
 hermesRouter.get('/events', (_req, res) => {
   res.json({ events: getRawEvents(SOURCE), fetchedAt: new Date().toISOString() })
+})
+
+hermesRouter.get('/people', (_req, res) => {
+  res.json({ people: derivePeople(SOURCE), fetchedAt: new Date().toISOString() })
 })
 
 // ─── Memory file read/write ────────────────────────────────────────────────────

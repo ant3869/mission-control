@@ -380,6 +380,26 @@ export const chats = {
   session:  (id: string) => get<ChatSessionResponse>(`/chats/sessions/${id}`),
 }
 
+// ─── People (real conversation participants, derived from agent events) ────────
+
+export interface AgentPerson {
+  id:           string
+  name:         string
+  platform:     string
+  channels:     string[]
+  messageCount: number
+  firstSeen:    string
+  lastSeen:     string
+  lastSeenAgo:  string
+  source:       ConnectorId
+}
+export interface PeopleResponse { people: AgentPerson[]; fetchedAt: string; error?: string }
+
+export const peopleApi = {
+  openclaw: () => get<PeopleResponse>('/openclaw/people'),
+  hermes:   () => get<PeopleResponse>('/hermes/people'),
+}
+
 export const openclawChats = {
   sessions: (limit = 50) => get<ChatsListResponse>('/openclaw/sessions', { limit }),
   session:  (id: string) => get<ChatSessionResponse>(`/openclaw/sessions/${encodeURIComponent(id)}`),

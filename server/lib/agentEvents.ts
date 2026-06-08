@@ -439,6 +439,56 @@ export function deriveMemoryEntries(source: AgentSource) {
   return entries
 }
 
+// ─── People (real conversation participants) ─────────────────────────────────
+// Distinct humans who interacted with the agents, derived from event payloads
+// (Discord/Telegram senders). Names/channels are public handles, not secrets.
+
+export interface AgentPerson {
+  id:           string
+  name:         string
+  platform:     string         // e.g. 'discord', 'telegram'
+  channels:     string[]       // channel names the person was seen in (e.g. '#general')
+  messageCount: number
+  firstSeen:    string
+  lastSeen:     string
+  lastSeenAgo:  string
+  source:       AgentSource
+}
+
+export function derivePeople(source: AgentSource): AgentPerson[] {
+  const rows = allRows(source)
+  interface Agg { id: string; name: string; platform: string; channels: Set<string>; messageCount: number; firstSeen: string; lastSeen: string }
+  const byId = new Map<string, Agg>()
+
+  for (const row of rows) {
+    let payload: any
+    try { payload = JSON.parse(row.payload_json || '{}') } catch { continue }
+    const name = deepFindString(payload, ['senderName', 'authorName', 'username', 'displayName', 'fromName'])
+    if (!name) continue
+    const id = deepFindString(payload, ['senderId', 'authorId', 'userId', 'fromId']) || name.toLowerCase()
+    const channelId = deepFindString(payload, ['channelId'])
+    const channelName = deepFindString(payload, ['channelName'])
+    const platform = channelId && channelId !== 'heartbeat' && channelId !== 'cron' ? channelId : 'unknown'
+
+    const agg = byId.get(id) ?? { id, name, platform, channels: new Set<string>(), messageCount: 0, firstSeen: row.ts, lastSeen: row.ts }
+    agg.name = name
+    if (platform !== 'unknown') agg.platform = platform
+    if (channelName) agg.channels.add(channelName)
+    if (row.event_type === 'message:received') agg.messageCount++
+    if (row.ts < agg.firstSeen) agg.firstSeen = row.ts
+    if (row.ts > agg.lastSeen) agg.lastSeen = row.ts
+    byId.set(id, agg)
+  }
+
+  return [...byId.values()]
+    .map(a => ({
+      id: a.id, name: a.name, platform: a.platform, channels: [...a.channels],
+      messageCount: a.messageCount, firstSeen: a.firstSeen, lastSeen: a.lastSeen,
+      lastSeenAgo: fmtAgo(a.lastSeen), source,
+    }))
+    .sort((x, y) => new Date(y.lastSeen).getTime() - new Date(x.lastSeen).getTime())
+}
+
 // ─── Health + stats ────────────────────────────────────────────────────────
 
 export interface SourceHealth {
