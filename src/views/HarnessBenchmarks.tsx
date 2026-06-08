@@ -146,7 +146,7 @@ function DetailDrawer({ result, laneLabel, onClose }: {
             <s.Icon size={15} className={s.text} />
             <span className="text-sm font-semibold text-text-primary truncate">{result.taskTitle}</span>
           </div>
-          <button onClick={onClose} className="text-text-muted hover:text-text-primary"><X size={16} /></button>
+          <button aria-label="Close" onClick={onClose} className="text-text-muted hover:text-text-primary"><X size={16} /></button>
         </div>
 
         <div className="p-5 flex flex-col gap-4">

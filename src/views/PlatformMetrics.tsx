@@ -264,7 +264,7 @@ function TranscriptDrawer({ source, session, badge, onClose }: {
             {session.runtimeMs > 0 && <span>{fmtDur(session.runtimeMs)}</span>}
           </div>
         </div>
-        <button onClick={onClose} className="p-1 rounded hover:bg-card text-text-muted hover:text-text-primary transition-colors shrink-0"><X size={15} /></button>
+        <button aria-label="Close" onClick={onClose} className="p-1 rounded hover:bg-card text-text-muted hover:text-text-primary transition-colors shrink-0"><X size={15} /></button>
       </div>
       <div className="flex-1 overflow-y-auto px-4 py-3">
         {loading ? <p className="text-xs text-text-muted animate-pulse text-center py-8">Loading transcript…</p>

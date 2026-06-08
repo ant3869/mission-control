@@ -97,7 +97,7 @@ function NewProjectModal({ onClose, onSave }: NewProjectModalProps) {
       <div className="w-full max-w-md rounded-xl border border-border bg-card shadow-2xl" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between px-5 py-4 border-b border-border">
           <h2 className="text-sm font-semibold text-text-primary">New Project</h2>
-          <button onClick={onClose} className="text-text-muted hover:text-text-secondary"><X size={16} /></button>
+          <button aria-label="Close" onClick={onClose} className="text-text-muted hover:text-text-secondary"><X size={16} /></button>
         </div>
 
         <div className="p-5 flex flex-col gap-4">

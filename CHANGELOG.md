@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.7.26] — 2026-06-08
+
+### Accessibility
+
+- **Labeled the icon-only close buttons.** Nine modal/drawer close (✕) buttons across 7 views (Tasks, Projects, Approvals ×2, Inventory ×2, Notes, Platform Metrics, Harness Benchmarks) were icon-only with no accessible name, so screen-reader users couldn't tell what they did — a real problem in focus-trapping modals. Added `aria-label="Close"` to each. Verified `tsc` clean + build.
+
 ## [0.7.25] — 2026-06-08
 
 ### Added

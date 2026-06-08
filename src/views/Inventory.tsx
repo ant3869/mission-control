@@ -156,7 +156,7 @@ function DetailDrawer({ item, onClose, onEdit, onDelete, onQty, onResearch, onSt
             <p className="text-xxs text-text-muted mt-0.5">{cm.label}{item.manufacturer ? ` · ${item.manufacturer}${item.model ? ` ${item.model}` : ''}` : ''}</p>
           </div>
         </div>
-        <button onClick={onClose} className="p-1 rounded hover:bg-card text-text-muted hover:text-text-primary shrink-0"><X size={15} /></button>
+        <button aria-label="Close" onClick={onClose} className="p-1 rounded hover:bg-card text-text-muted hover:text-text-primary shrink-0"><X size={15} /></button>
       </div>
 
       <div className="flex flex-col gap-4 p-5">
@@ -313,7 +313,7 @@ function ItemForm({ initial, categories, conditions, onSave, onClose }: {
       <div className="w-full max-w-lg max-h-full overflow-y-auto rounded-xl border border-border bg-surface p-5" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-sm font-semibold text-text-primary">{initial ? 'Edit item' : 'Add item'}</h2>
-          <button onClick={onClose} className="p-1 rounded hover:bg-card text-text-muted hover:text-text-primary"><X size={15} /></button>
+          <button aria-label="Close" onClick={onClose} className="p-1 rounded hover:bg-card text-text-muted hover:text-text-primary"><X size={15} /></button>
         </div>
         <div className="grid grid-cols-2 gap-3">
           <label className="col-span-2 flex flex-col gap-1"><span className="text-xxs text-text-muted">Name *</span><input className={input} value={f.name} onChange={set('name')} placeholder="e.g. Raspberry Pi 4 Model B" autoFocus /></label>

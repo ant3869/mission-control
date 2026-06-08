@@ -66,7 +66,7 @@ function NoteModal({ action, onClose, onConfirm, loading }: NoteModalProps) {
           <h2 className={clsx('text-sm font-semibold', action === 'approve' ? 'text-green-400' : 'text-red-400')}>
             {action === 'approve' ? 'Approve Request' : 'Reject Request'}
           </h2>
-          <button onClick={onClose} className="text-text-muted hover:text-text-secondary"><X size={16} /></button>
+          <button aria-label="Close" onClick={onClose} className="text-text-muted hover:text-text-secondary"><X size={16} /></button>
         </div>
         <div className="p-5">
           <label className="text-xxs text-text-muted uppercase tracking-wide font-medium mb-1.5 block">
@@ -136,7 +136,7 @@ function NewRequestModal({ onClose, onSave }: NewRequestModalProps) {
       <div className="w-full max-w-lg rounded-xl border border-border bg-card shadow-2xl" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between px-5 py-4 border-b border-border">
           <h2 className="text-sm font-semibold text-text-primary">New Approval Request</h2>
-          <button onClick={onClose} className="text-text-muted hover:text-text-secondary"><X size={16} /></button>
+          <button aria-label="Close" onClick={onClose} className="text-text-muted hover:text-text-secondary"><X size={16} /></button>
         </div>
 
         <div className="p-5 flex flex-col gap-4">

@@ -245,7 +245,7 @@ function NotebookModal({ onClose, onSave }: {
       <div className="w-full max-w-sm rounded-xl border border-border bg-card shadow-2xl" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between px-5 py-4 border-b border-border">
           <h2 className="text-sm font-semibold text-text-primary">New Notebook</h2>
-          <button onClick={onClose}><X size={16} className="text-text-muted hover:text-text-secondary" /></button>
+          <button aria-label="Close" onClick={onClose}><X size={16} className="text-text-muted hover:text-text-secondary" /></button>
         </div>
         <div className="p-5 flex flex-col gap-4">
           {/* Icon picker */}
