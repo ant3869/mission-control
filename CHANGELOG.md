@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.7.16] — 2026-06-08
+
+### Changed
+
+- **⌘K is now a real command palette.** The global search previously searched only notes and its results didn't navigate anywhere. It now (1) jumps to any page — live-filtered against all ~25 views — and (2) searches notes, docs, and tasks, with results that navigate to the relevant view. Full keyboard navigation (↑↓ to move, ↵ to open, esc to close), grouped sections (Pages / Notes / Docs / Tasks), and a hint footer. Wired `onNavigate` + the view list from `App` into `TopBar`.
+
 ## [0.7.15] — 2026-06-08
 
 ### Fixed

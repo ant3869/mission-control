@@ -79,7 +79,11 @@ export default function App() {
       <Sidebar activeView={activeView} onNavigate={navigate} />
 
       <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
-        <TopBar title={VIEW_TITLES[activeView]} />
+        <TopBar
+          title={VIEW_TITLES[activeView]}
+          onNavigate={navigate}
+          views={(Object.entries(VIEW_TITLES) as [View, string][]).map(([id, label]) => ({ id, label }))}
+        />
         <main className="flex-1 overflow-hidden bg-base relative">
 
           <ViewPane view="calendar"    active={activeView} mounted={mounted}><ScheduledTasks /></ViewPane>
