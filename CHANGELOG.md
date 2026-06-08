@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.7.35] — 2026-06-08
+
+### Added
+
+- **Harness Benchmarks → per-run results table: sortable columns.** Consistent with the Compare table — Status, Lane, Task, Score, Latency, and Failure headers are now click-to-sort (asc/desc + ▲/▼; latency nulls sink; status ranks passed→error). Default stays in task/pack order until you sort. Makes triaging a run easy — e.g. sort by Score to see the worst tasks first, or by Failure to group failure types. Verified: Task sort reorders alphabetically both directions; build clean.
+
 ## [0.7.34] — 2026-06-08
 
 ### Added

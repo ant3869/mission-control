@@ -254,6 +254,7 @@ export function HarnessBenchmarks() {
   const [starting, setStarting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [laneFilter, setLaneFilter] = useState<string | null>(null)
+  const [resSort, setResSort] = useState<{ key: 'status' | 'lane' | 'task' | 'score' | 'latency' | 'failure'; dir: 'asc' | 'desc' } | null>(null)
   const [detail, setDetail] = useState<HbTaskResult | null>(null)
 
   // comparison
@@ -374,6 +375,38 @@ export function HarnessBenchmarks() {
   const filtered = laneFilter ? results.filter(r => r.lane === laneFilter) : results
   const scored = results.filter(r => r.status === 'passed' || r.status === 'failed')
   const isRunning = run?.status === 'running' || run?.status === 'queued'
+
+  // Optional click-to-sort over the results table (default = task/pack order).
+  const RESULT_STATUS_RANK: Record<string, number> = { passed: 0, manual_review: 1, failed: 2, error: 3 }
+  const sortedFiltered = resSort ? [...filtered].sort((a, b) => {
+    const dir = resSort.dir === 'asc' ? 1 : -1
+    switch (resSort.key) {
+      case 'task':    return dir * a.taskTitle.localeCompare(b.taskTitle)
+      case 'lane':    return dir * a.lane.localeCompare(b.lane)
+      case 'failure': return dir * String(a.failureType ?? '').localeCompare(String(b.failureType ?? ''))
+      case 'status':  return dir * ((RESULT_STATUS_RANK[a.status] ?? 9) - (RESULT_STATUS_RANK[b.status] ?? 9))
+      case 'score': {
+        const av = a.maxPoints > 0 ? a.points / a.maxPoints : -1, bv = b.maxPoints > 0 ? b.points / b.maxPoints : -1
+        return dir * (av - bv)
+      }
+      default: { // latency — nulls sink to bottom
+        const al = a.latencyMs, bl = b.latencyMs
+        if (al == null && bl == null) return 0
+        if (al == null) return 1
+        if (bl == null) return -1
+        return dir * (al - bl)
+      }
+    }
+  }) : filtered
+  const resTh = (key: NonNullable<typeof resSort>['key'], label: string, align: 'left' | 'right' = 'left', w?: string) => (
+    <th className={clsx('font-medium px-3 py-2', align === 'left' ? 'text-left' : 'text-right', w)}>
+      <button
+        onClick={() => setResSort(s => (s && s.key === key ? { key, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: key === 'score' || key === 'latency' ? 'desc' : 'asc' }))}
+        className={clsx('inline-flex items-center gap-0.5 hover:text-text-secondary transition-colors', resSort?.key === key && 'text-text-primary')}>
+        {label}<span className="text-[8px] w-2">{resSort?.key === key ? (resSort.dir === 'asc' ? '▲' : '▼') : ''}</span>
+      </button>
+    </th>
+  )
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -598,19 +631,19 @@ export function HarnessBenchmarks() {
                 <table className="w-full text-xs">
                   <thead>
                     <tr className="border-b border-border bg-surface text-text-muted">
-                      <th className="text-left font-medium px-3 py-2 w-20">Status</th>
-                      <th className="text-left font-medium px-3 py-2">Lane</th>
-                      <th className="text-left font-medium px-3 py-2">Task</th>
-                      <th className="text-right font-medium px-3 py-2 w-16">Score</th>
-                      <th className="text-right font-medium px-3 py-2 w-20">Latency</th>
-                      <th className="text-left font-medium px-3 py-2 w-36">Failure</th>
+                      {resTh('status', 'Status', 'left', 'w-20')}
+                      {resTh('lane', 'Lane', 'left')}
+                      {resTh('task', 'Task', 'left')}
+                      {resTh('score', 'Score', 'right', 'w-16')}
+                      {resTh('latency', 'Latency', 'right', 'w-20')}
+                      {resTh('failure', 'Failure', 'left', 'w-36')}
                       <th className="px-3 py-2 w-16"></th>
                     </tr>
                   </thead>
                   <tbody>
                     {filtered.length === 0 ? (
                       <tr><td colSpan={7} className="px-3 py-6 text-center text-text-muted">{isRunning ? 'Running tasks…' : 'No results'}</td></tr>
-                    ) : filtered.map(r => {
+                    ) : sortedFiltered.map(r => {
                       const s = displayStyle(r)
                       return (
                         <tr key={r.id} className="border-b border-border-subtle hover:bg-card-hover cursor-pointer" onClick={() => setDetail(r)}>
