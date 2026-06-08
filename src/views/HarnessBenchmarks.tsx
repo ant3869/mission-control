@@ -703,6 +703,35 @@ function ComparisonTab({ rows, lanes, mode, onMode, groupBy, onGroupBy }: {
     a.click()
     URL.revokeObjectURL(url)
   }
+
+  // Click-to-sort the comparison so you can rank by speed, cost, reliability, etc.
+  type SortKey = 'modelName' | 'taskPackName' | 'overallPct' | 'passRate' | 'reliabilityPct' | 'avgLatencyMs' | 'avgOutputTokens' | 'estCostUsd' | 'fenceRate' | 'failureCount' | 'runsUsed'
+  const [sortKey, setSortKey] = useState<SortKey>('overallPct')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
+  const toggleSort = (k: SortKey) => {
+    if (k === sortKey) { setSortDir(d => (d === 'asc' ? 'desc' : 'asc')); return }
+    setSortKey(k); setSortDir(k === 'modelName' || k === 'taskPackName' ? 'asc' : 'desc')
+  }
+  const sortedRows = [...rows].sort((a, b) => {
+    const av = (a as any)[sortKey], bv = (b as any)[sortKey]
+    if (typeof av === 'string' || typeof bv === 'string') {
+      const c = String(av ?? '').localeCompare(String(bv ?? '')); return sortDir === 'asc' ? c : -c
+    }
+    if (av == null && bv == null) return 0
+    if (av == null) return 1            // nulls always sink to the bottom
+    if (bv == null) return -1
+    return sortDir === 'asc' ? av - bv : bv - av
+  })
+  // Plain function (not an inline component) so React reconciles the <th>s in
+  // place instead of remounting them every render.
+  const sortTh = (k: SortKey, label: string, title?: string, align: 'left' | 'right' = 'right') => (
+    <th className={clsx('font-medium px-3 py-2', align === 'left' ? 'text-left' : 'text-right')} title={title}>
+      <button onClick={() => toggleSort(k)}
+        className={clsx('inline-flex items-center gap-0.5 hover:text-text-secondary transition-colors', sortKey === k && 'text-text-primary')}>
+        {label}<span className="text-[8px] w-2">{sortKey === k ? (sortDir === 'asc' ? '▲' : '▼') : ''}</span>
+      </button>
+    </th>
+  )
   return (
     <div className="flex-1 overflow-auto p-6">
       <div className="flex items-center justify-between mb-3 gap-3 flex-wrap">
@@ -747,23 +776,23 @@ function ComparisonTab({ rows, lanes, mode, onMode, groupBy, onGroupBy }: {
             <table className="w-full text-xs">
               <thead>
                 <tr className="border-b border-border bg-surface text-text-muted">
-                  <th className="text-left font-medium px-3 py-2">{groupBy === 'provider' ? 'Provider' : 'Model'}</th>
-                  <th className="text-left font-medium px-3 py-2">Task pack</th>
-                  <th className="text-right font-medium px-3 py-2">Overall</th>
-                  <th className="text-right font-medium px-3 py-2">Pass</th>
-                  <th className="text-right font-medium px-3 py-2" title="Sample pass-consistency (Σpassed / Σsamples). At 1 sample this equals pass rate.">Reliab.</th>
-                  <th className="text-right font-medium px-3 py-2" title="Average latency per task (± standard deviation = speed consistency)">Speed</th>
-                  <th className="text-right font-medium px-3 py-2" title="Verbosity — mean output tokens per task (~ = estimated from chars when the harness reports no usage)">Tokens</th>
-                  <th className="text-right font-medium px-3 py-2" title="Estimated USD per run (one pack pass). ~ = from the pricing table; real harness-reported cost is used when available.">Cost</th>
-                  <th className="text-right font-medium px-3 py-2" title="Share of responses wrapped in ``` code fences (format/markdown tendency)">Fences</th>
-                  <th className="text-right font-medium px-3 py-2">Fails</th>
-                  <th className="text-right font-medium px-3 py-2" title="runs used / runs available">Runs</th>
+                  {sortTh('modelName', groupBy === 'provider' ? 'Provider' : 'Model', undefined, 'left')}
+                  {sortTh('taskPackName', 'Task pack', undefined, 'left')}
+                  {sortTh('overallPct', 'Overall')}
+                  {sortTh('passRate', 'Pass')}
+                  {sortTh('reliabilityPct', 'Reliab.', 'Sample pass-consistency (Σpassed / Σsamples). At 1 sample this equals pass rate.')}
+                  {sortTh('avgLatencyMs', 'Speed', 'Average latency per task (± standard deviation = speed consistency)')}
+                  {sortTh('avgOutputTokens', 'Tokens', 'Verbosity — mean output tokens per task (~ = estimated from chars when the harness reports no usage)')}
+                  {sortTh('estCostUsd', 'Cost', 'Estimated USD per run (one pack pass). ~ = from the pricing table; real harness-reported cost is used when available.')}
+                  {sortTh('fenceRate', 'Fences', 'Share of responses wrapped in ``` code fences (format/markdown tendency)')}
+                  {sortTh('failureCount', 'Fails')}
+                  {sortTh('runsUsed', 'Runs', 'runs used / runs available')}
                   <th className="text-center font-medium px-3 py-2" title="Overall % of each completed run over time (oldest → newest) — spot improvement or regression">Trend</th>
                   {lanes.map(l => <th key={l.id} className="text-right font-medium px-2 py-2 whitespace-nowrap" title={l.label}>{l.short}</th>)}
                 </tr>
               </thead>
               <tbody>
-                {rows.map((r, i) => (
+                {sortedRows.map((r, i) => (
                   <tr key={`${r.harness}-${r.modelName}-${r.taskPackId}-${i}`} className="border-b border-border-subtle hover:bg-card-hover">
                     <td className="px-3 py-2 font-medium">
                       {groupBy === 'provider' ? (

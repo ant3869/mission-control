@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.7.34] — 2026-06-08
+
+### Added
+
+- **Harness Benchmarks → Compare: sortable columns.** The comparison was locked to overall-% descending, so you couldn't rank models by what you actually care about. Every headline column (Model/Provider, Task pack, Overall, Pass, Reliability, Speed, Tokens, Cost, Fences, Fails, Runs) is now click-to-sort with an asc/desc toggle and a ▲/▼ indicator; nulls always sink to the bottom. Now you can ask "cheapest model that still passes?" or "fastest?" directly. Verified: Cost↓ surfaces the priciest, Cost↑ the cheapest, toggle + arrow work.
+
 ## [0.7.33] — 2026-06-08
 
 ### Added
