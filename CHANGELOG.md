@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.7.18] — 2026-06-08
+
+### Performance
+
+- **Code-split the views — initial JS bundle 815 kB → ~219 kB (~73% smaller).** Every view was imported eagerly into one chunk; now all ~25 views are `React.lazy` chunks fetched on first navigation (the landing Calendar view stays eager to avoid a first-paint flash), wrapped in per-pane `Suspense` with a spinner fallback. Heavy views (Evaluations, Harness Benchmarks, PlatformMetrics, Brain/Flow/Alerts/Security) no longer load until visited; the build now emits 68 small chunks and the >500 kB chunk warning is gone. Verified `tsc` clean, `vite build` succeeds, and lazy navigation works at runtime.
+
 ## [0.7.17] — 2026-06-08
 
 ### Removed

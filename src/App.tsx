@@ -1,29 +1,34 @@
-import { useState } from 'react'
+import { useState, lazy, Suspense } from 'react'
 import { clsx } from 'clsx'
+import { Loader2 } from 'lucide-react'
 import { Sidebar } from './components/layout/Sidebar'
 import { TopBar } from './components/layout/TopBar'
-import { ScheduledTasks } from './views/ScheduledTasks'
-import { Memory } from './views/Memory'
-import { Chats } from './views/Chats'
-import { TasksApprovals } from './views/TasksApprovals'
-import { WatchAgents } from './views/WatchAgents'
-import { DocsNotes } from './views/DocsNotes'
-import { ProjectsPipeline } from './views/ProjectsPipeline'
-import { SystemOps } from './views/SystemOps'
-import { WorkspaceHub } from './views/WorkspaceHub'
-import { Content } from './views/Content'
-import { Feedback } from './views/Feedback'
-import { Settings } from './views/Settings'
-import { OpenClawMetrics, HermesMetrics } from './views/PlatformMetrics'
-import { Inventory } from './views/Inventory'
-import { FlowMap } from './views/FlowMap'
-import { Evaluations } from './views/Evaluations'
-import { HarnessBenchmarks } from './views/HarnessBenchmarks'
-import Brain from './views/Brain'
-import Flow from './views/Flow'
-import Alerts from './views/Alerts'
-import Security from './views/Security'
+import { ScheduledTasks } from './views/ScheduledTasks'   // eager — default landing view
 import type { View } from './types'
+
+// Lazy views: each becomes its own chunk, fetched on first navigation, so the
+// initial bundle is just the shell + landing page instead of all ~25 views.
+const Memory            = lazy(() => import('./views/Memory').then(m => ({ default: m.Memory })))
+const Chats             = lazy(() => import('./views/Chats').then(m => ({ default: m.Chats })))
+const TasksApprovals    = lazy(() => import('./views/TasksApprovals').then(m => ({ default: m.TasksApprovals })))
+const WatchAgents       = lazy(() => import('./views/WatchAgents').then(m => ({ default: m.WatchAgents })))
+const DocsNotes         = lazy(() => import('./views/DocsNotes').then(m => ({ default: m.DocsNotes })))
+const ProjectsPipeline  = lazy(() => import('./views/ProjectsPipeline').then(m => ({ default: m.ProjectsPipeline })))
+const SystemOps         = lazy(() => import('./views/SystemOps').then(m => ({ default: m.SystemOps })))
+const WorkspaceHub      = lazy(() => import('./views/WorkspaceHub').then(m => ({ default: m.WorkspaceHub })))
+const Content           = lazy(() => import('./views/Content').then(m => ({ default: m.Content })))
+const Feedback          = lazy(() => import('./views/Feedback').then(m => ({ default: m.Feedback })))
+const Settings          = lazy(() => import('./views/Settings').then(m => ({ default: m.Settings })))
+const OpenClawMetrics   = lazy(() => import('./views/PlatformMetrics').then(m => ({ default: m.OpenClawMetrics })))
+const HermesMetrics     = lazy(() => import('./views/PlatformMetrics').then(m => ({ default: m.HermesMetrics })))
+const Inventory         = lazy(() => import('./views/Inventory').then(m => ({ default: m.Inventory })))
+const FlowMap           = lazy(() => import('./views/FlowMap').then(m => ({ default: m.FlowMap })))
+const Evaluations       = lazy(() => import('./views/Evaluations').then(m => ({ default: m.Evaluations })))
+const HarnessBenchmarks = lazy(() => import('./views/HarnessBenchmarks').then(m => ({ default: m.HarnessBenchmarks })))
+const Brain             = lazy(() => import('./views/Brain'))
+const Flow              = lazy(() => import('./views/Flow'))
+const Alerts            = lazy(() => import('./views/Alerts'))
+const Security          = lazy(() => import('./views/Security'))
 
 const VIEW_TITLES: Record<View, string> = {
   tasks:       'Tasks & Approvals',
@@ -60,7 +65,9 @@ function ViewPane({
   if (!mounted.has(view)) return null
   return (
     <div className={clsx('absolute inset-0 overflow-hidden', active !== view && 'hidden')}>
-      {children}
+      <Suspense fallback={<div className="flex items-center justify-center h-full"><Loader2 size={20} className="animate-spin text-text-muted" /></div>}>
+        {children}
+      </Suspense>
     </div>
   )
 }
