@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.7.8] — 2026-06-07
+
+### Fixed
+
+- **Endpoint override now works without `/v1`.** The OpenAI-compatible override built `<base>/chat/completions`, so a base URL like `http://host:1234` (LM Studio / Ollama) hit `/chat/completions` and got an empty 200 (every task `empty_response`). It now normalizes the URL — bare host, `/v1`, or full endpoint all resolve to `/v1/chat/completions`. Verified against LM Studio (gemma4-12b) → real responses, 50/50. This is the valid path for comparing *real distinct* models (it honors the model + returns real token usage), unlike OpenClaw chat.send.
+
 ## [0.7.7] — 2026-06-07
 
 ### Fixed — important benchmark-validity finding

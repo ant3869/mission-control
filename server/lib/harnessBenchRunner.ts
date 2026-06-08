@@ -115,10 +115,21 @@ function countToolCalls(messages: any[]): { count: number; first: any } {
   return { count, first }
 }
 
+/** Build the chat-completions URL whether the user gave us the base host, a
+ *  `/v1` base, or the full endpoint — so LM Studio / Ollama / vLLM "just work"
+ *  regardless of whether `/v1` was included. */
+export function chatCompletionsUrl(baseUrl: string): string {
+  const b = baseUrl.trim().replace(/\/+$/, '')
+  if (/\/chat\/completions$/i.test(b)) return b                 // already the full endpoint
+  if (/\/v\d+$/i.test(b)) return `${b}/chat/completions`        // ends in /v1, /v2 …
+  if (/\/(openai|api)$/i.test(b)) return `${b}/v1/chat/completions`
+  return `${b}/v1/chat/completions`                             // bare host → assume /v1
+}
+
 /** Generic OpenAI-compatible POST /chat/completions — used for endpoint overrides
  *  (OSS/local models on Ollama/LM Studio/vLLM, or a manual Hermes API URL). */
 async function openaiCompatChat(baseUrl: string, token: string, model: string, prompt: string, timeoutMs: number): Promise<DispatchResult> {
-  const url = `${baseUrl.replace(/\/+$/, '')}/chat/completions`
+  const url = chatCompletionsUrl(baseUrl)
   const start = Date.now()
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)
