@@ -7,6 +7,7 @@ import {
   X, ChevronRight, HeartPulse, GitBranch, Bot, Send, ArrowRight,
   Brain, Network, FileText, Gauge, Shield, LayoutGrid, Edit2, Save, Loader,
 } from 'lucide-react'
+import { isRefreshPaused } from '../lib/refreshBus'
 import {
   metrics as metricsApi, memoryFile as memoryFileApi, openclawChats, hermesChats,
   type PlatformMetrics, type ConnectorId, type MetricBreakdown, type MetricSessionRow, type LiveChatMessage,
@@ -1024,7 +1025,7 @@ export function PlatformMetrics({ source, onNavigate }: { source: ConnectorId; o
   // Keep the boards live: periodic refresh + a debounced refresh on real activity.
   useEffect(() => {
     if (!m?.reachable) return
-    const t = setInterval(() => load(), 15_000)
+    const t = setInterval(() => { if (!isRefreshPaused()) load() }, 15_000)
     return () => clearInterval(t)
   }, [m?.reachable, load])
 

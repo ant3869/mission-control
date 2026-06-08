@@ -5,6 +5,7 @@ import {
   Zap, Wifi, WifiOff, Key, Activity, ShieldCheck, Timer,
 } from 'lucide-react'
 import { MiniStat, Gauge, HBar, ChartCard } from '../components/charts'
+import { isRefreshPaused } from '../lib/refreshBus'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -333,7 +334,7 @@ export default function Security() {
 
   useEffect(() => {
     load()
-    pollRef.current = setInterval(load, 60_000)
+    pollRef.current = setInterval(() => { if (!isRefreshPaused()) load() }, 60_000)
     return () => { if (pollRef.current) clearInterval(pollRef.current) }
   }, [load])
 

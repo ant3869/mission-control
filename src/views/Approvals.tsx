@@ -6,6 +6,7 @@ import {
 } from 'lucide-react'
 import { approvals as approvalsApi } from '../lib/api'
 import type { LiveApproval, ApprovalStatus, ApprovalType, ApprovalUrgency, ApprovalCreateBody } from '../lib/api'
+import { isRefreshPaused } from '../lib/refreshBus'
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
@@ -388,7 +389,7 @@ export function Approvals() {
 
   // Poll every 15s to pick up new requests submitted by agents
   useEffect(() => {
-    const t = setInterval(() => load(true), 15_000)
+    const t = setInterval(() => { if (!isRefreshPaused()) load(true) }, 15_000)
     return () => clearInterval(t)
   }, [load])
 

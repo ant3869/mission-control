@@ -6,6 +6,7 @@ import {
   BarChart3, ListChecks, Sparkles, Loader2,
 } from 'lucide-react'
 import { MiniStat, SegmentBar, HBar, ChartCard } from '../components/charts'
+import { isRefreshPaused } from '../lib/refreshBus'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -279,7 +280,7 @@ export default function Alerts() {
 
   useEffect(() => {
     load()
-    pollRef.current = setInterval(load, 30_000)
+    pollRef.current = setInterval(() => { if (!isRefreshPaused()) load() }, 30_000)
     return () => { if (pollRef.current) clearInterval(pollRef.current) }
   }, [load])
 

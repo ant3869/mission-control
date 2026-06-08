@@ -6,6 +6,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { clsx } from 'clsx'
 import { MessageSquare, Clock, Hash, Search, Activity, FolderOpen, RefreshCw, AlertCircle, HeartPulse, ChevronRight } from 'lucide-react'
 import { chats, openclawChats, hermesChats, type LiveSession, type LiveChatMessage } from '../lib/api'
+import { isRefreshPaused } from '../lib/refreshBus'
 
 // if you already have CombinedSession / openclawChats, keep those types/imports
 type SessionSource = 'claude' | 'openclaw' | 'hermes'
@@ -498,7 +499,7 @@ export function Chats() {
     loadSessions(false)
 
     const timer = window.setInterval(() => {
-      loadSessions(true)
+      if (!isRefreshPaused()) loadSessions(true)
     }, POLL_MS)
 
     return () => window.clearInterval(timer)

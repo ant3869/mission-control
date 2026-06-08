@@ -6,7 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
-## [0.7.21] — 2026-08-08
+## [0.7.22] — 2026-06-08
+
+### Changed
+
+- **The TopBar "Pause" button now works** — it was decorative. It toggles a global "pause auto-refresh" bus (`src/lib/refreshBus.ts`); while paused, the dashboard's background polling stops (Alerts, Approvals, Chats, Platform Metrics, Security all guard their intervals with `isRefreshPaused()`), so you can read a live view without it shifting and cut idle network churn. The button shows an active amber state + "Paused" label. Cosmetic animation ticks are unaffected.
+- Fixed a changelog date typo (0.7.21 was dated 2026-08-08).
+
+## [0.7.21] — 2026-06-08
 
 ### Docs
 

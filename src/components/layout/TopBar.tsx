@@ -5,8 +5,9 @@
 //          only search whose results didn't navigate anywhere.)
 
 import { useState, useEffect, useRef, useMemo } from 'react'
-import { Search, Bell, Loader2, X, FileText, BookOpen, CheckSquare, CornerDownLeft, ArrowRight } from 'lucide-react'
+import { Search, Bell, Loader2, X, FileText, BookOpen, CheckSquare, CornerDownLeft, ArrowRight, Pause, Play } from 'lucide-react'
 import type { View } from '../../types'
+import { usePaused, toggleRefreshPaused } from '../../lib/refreshBus'
 
 interface NavView { id: View; label: string }
 interface TopBarProps {
@@ -148,6 +149,15 @@ function GlobalSearch({ onClose, onNavigate, views }: { onClose: () => void; onN
   )
 }
 
+function clsxBtn(active: boolean): string {
+  return [
+    'flex items-center gap-1.5 px-3 py-1.5 rounded border transition-colors text-xs',
+    active
+      ? 'border-amber-500/40 bg-amber-500/15 text-amber-300 hover:bg-amber-500/25'
+      : 'border-border bg-card hover:bg-card-hover text-text-secondary hover:text-text-primary',
+  ].join(' ')
+}
+
 function clsxRow(active: boolean): string {
   return [
     'w-full text-left flex items-center gap-3 px-4 py-2 transition-colors',
@@ -159,6 +169,7 @@ function clsxRow(active: boolean): string {
 
 export function TopBar({ title, onNavigate, views }: TopBarProps) {
   const [searchOpen, setSearchOpen] = useState(false)
+  const paused = usePaused()
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -190,8 +201,13 @@ export function TopBar({ title, onNavigate, views }: TopBarProps) {
             <span className="flex items-center justify-center px-1 rounded bg-border text-text-muted font-mono text-xxs">⌘K</span>
           </button>
 
-          <button className="flex items-center gap-1.5 px-3 py-1.5 rounded border border-border bg-card hover:bg-card-hover text-text-secondary hover:text-text-primary transition-colors text-xs">
-            <span>Pause</span>
+          <button
+            onClick={toggleRefreshPaused}
+            title={paused ? 'Auto-refresh paused — resume background polling' : 'Pause all background auto-refresh'}
+            className={clsxBtn(paused)}
+          >
+            {paused ? <Play size={12} /> : <Pause size={12} />}
+            <span>{paused ? 'Paused' : 'Pause'}</span>
           </button>
 
           <button onClick={handlePing}
