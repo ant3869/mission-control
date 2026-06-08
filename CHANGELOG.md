@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.7.11] — 2026-06-07
+
+### Changed
+
+- **Factory is now a real "Idea Factory"** wired to the agent-generated project ideas (`/api/inventory/project-ideas`) instead of mock startup ideas. It shows the real buildable ideas the agents derive from your inventory — title, category, confidence/coolness scores, difficulty, time/cost estimates, have/missing parts, and next step — with status filters (new/liked/snoozed/rejected/completed), hover triage actions (Like / Snooze / Reject / Done via `update`), best-first sorting, and a **Generate ideas** button that triggers a run and polls until it completes. This makes all three Workspace tabs (People, Office, Factory) real.
+
 ## [0.7.10] — 2026-06-07
 
 ### Changed

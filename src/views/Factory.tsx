@@ -1,254 +1,242 @@
-import { useState } from 'react'
+// title: Idea Factory — real agent-generated project ideas
+// path: src/views/Factory.tsx
+// purpose: Browse + triage the project ideas the agents generate from your
+//          inventory (real data via /api/inventory/project-ideas), replacing the
+//          old mock idea list. Like / snooze / reject ideas and trigger a new
+//          generation run.
+
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { clsx } from 'clsx'
-import { Plus, ChevronDown, ChevronRight, Zap, TrendingUp, Flame, Target, Cpu } from 'lucide-react'
-import { factoryIdeas } from '../data/mockData'
-import type { IdeaStatus, FactoryIdea } from '../types'
+import {
+  Sparkles, RefreshCw, ThumbsUp, ThumbsDown, Clock, DollarSign, Check,
+  Loader2, Lightbulb, Zap, Flame, ArrowRight, Moon,
+} from 'lucide-react'
+import { projectIdeas, type ProjectIdea, type ProjectIdeaStatus } from '../lib/api'
 
-// ─── Config ────────────────────────────────────────────────────────────────────
+const STATUSES: ProjectIdeaStatus[] = ['new', 'liked', 'snoozed', 'rejected', 'completed']
 
-const statusConfig: Record<IdeaStatus, { label: string; badge: string; dot: string }> = {
-  researching: { label: 'Researching', badge: 'bg-blue-950/50 border-blue-900/50 text-blue-400',     dot: 'bg-blue-400'   },
-  qualified:   { label: 'Qualified',   badge: 'bg-violet-950/50 border-violet-900/50 text-violet-400', dot: 'bg-violet-400' },
-  building:    { label: 'Building',    badge: 'bg-green-950/50 border-green-900/50 text-green-400',    dot: 'bg-green-400'  },
-  parked:      { label: 'Parked',      badge: 'bg-card border-border text-text-muted',                 dot: 'bg-slate-500'  },
-  killed:      { label: 'Killed',      badge: 'bg-red-950/50 border-red-900/50 text-red-400',          dot: 'bg-red-500'    },
+const statusConfig: Record<ProjectIdeaStatus, { label: string; badge: string; dot: string }> = {
+  new:       { label: 'New',       badge: 'bg-blue-950/50 border-blue-900/50 text-blue-300',     dot: 'bg-blue-400'   },
+  liked:     { label: 'Liked',     badge: 'bg-green-950/50 border-green-900/50 text-green-300',   dot: 'bg-green-400'  },
+  snoozed:   { label: 'Snoozed',   badge: 'bg-amber-950/50 border-amber-900/50 text-amber-300',   dot: 'bg-amber-400'  },
+  rejected:  { label: 'Rejected',  badge: 'bg-red-950/40 border-red-900/40 text-red-300',         dot: 'bg-red-500'    },
+  completed: { label: 'Completed', badge: 'bg-violet-950/50 border-violet-900/50 text-violet-300', dot: 'bg-violet-400' },
 }
 
-const STATUSES: IdeaStatus[] = ['researching', 'qualified', 'building', 'parked', 'killed']
-
-type FilterStatus = IdeaStatus | 'all'
-
-function agentColor(name?: string) {
-  const map: Record<string, string> = {
-    Claude: 'from-violet-500 to-indigo-600',
-    Scout:  'from-teal-500 to-cyan-600',
-    Quill:  'from-blue-500 to-sky-600',
-    Forge:  'from-emerald-500 to-green-600',
-  }
-  return name ? (map[name] ?? 'from-slate-600 to-slate-700') : 'from-slate-700 to-slate-800'
+function difficultyColor(d: string) {
+  const k = (d || '').toLowerCase()
+  if (k.startsWith('easy'))   return 'text-green-400'
+  if (k.startsWith('medium')) return 'text-amber-400'
+  if (k.startsWith('hard'))   return 'text-orange-400'
+  if (k.startsWith('expert')) return 'text-red-400'
+  return 'text-text-muted'
 }
 
-// ─── Score bar ──────────────────────────────────────────────────────────────────
-
-function ScoreBar({ label, value, invert = false }: { label: string; value: number; invert?: boolean }) {
-  const display = invert ? 11 - value : value
-  const pct = (display / 10) * 100
-  const color = display >= 8
-    ? 'bg-green-500'
-    : display >= 5
-    ? 'bg-amber-500'
-    : 'bg-red-500'
-
+function ScorePill({ icon, label, value }: { icon: React.ReactNode; label: string; value: number }) {
+  const color = value >= 75 ? 'text-green-400' : value >= 45 ? 'text-amber-400' : 'text-red-400'
   return (
-    <div className="flex items-center gap-2">
-      <span className="text-xxs text-text-muted w-20 shrink-0">{label}</span>
-      <div className="flex-1 h-1 rounded-full bg-base overflow-hidden">
-        <div className={clsx('h-full rounded-full transition-all', color)} style={{ width: `${pct}%` }} />
-      </div>
-      <span className="text-xxs tabular-nums text-text-secondary w-4 text-right">{value}</span>
+    <span className="flex items-center gap-1 text-xxs" title={`${label}: ${value}/100`}>
+      <span className="text-text-muted">{icon}</span>
+      <span className={clsx('tabular-nums font-semibold', color)}>{value}</span>
+    </span>
+  )
+}
+
+function PartChips({ parts, kind }: { parts: string[]; kind: 'have' | 'missing' }) {
+  if (!parts || parts.length === 0) return null
+  const cls = kind === 'have'
+    ? 'bg-green-950/30 border-green-900/40 text-green-300/80'
+    : 'bg-amber-950/30 border-amber-900/40 text-amber-300/80'
+  return (
+    <div className="flex items-center gap-1 flex-wrap">
+      {parts.slice(0, 6).map((p, i) => (
+        <span key={i} className={clsx('px-1.5 py-0.5 rounded border text-[10px]', cls)}>{p}</span>
+      ))}
+      {parts.length > 6 && <span className="text-[10px] text-text-muted">+{parts.length - 6}</span>}
     </div>
   )
 }
 
-// ─── Viability badge ────────────────────────────────────────────────────────────
-
-function ViabilityBadge({ score }: { score: number }) {
-  const color = score >= 8
-    ? 'text-green-400 border-green-900/50 bg-green-950/40'
-    : score >= 6
-    ? 'text-amber-400 border-amber-900/50 bg-amber-950/40'
-    : 'text-red-400 border-red-900/50 bg-red-950/40'
-
+function IdeaCard({ idea, busy, onSet }: {
+  idea: ProjectIdea; busy: boolean; onSet: (s: ProjectIdeaStatus) => void
+}) {
+  const sc = statusConfig[idea.status] ?? statusConfig.new
   return (
-    <div className={clsx('flex flex-col items-center justify-center w-11 h-11 rounded-lg border shrink-0', color)}>
-      <span className="text-sm font-bold leading-none">{score}</span>
-      <span className="text-xxs opacity-70 mt-0.5">score</span>
-    </div>
-  )
-}
-
-// ─── Idea card ──────────────────────────────────────────────────────────────────
-
-function IdeaCard({ idea }: { idea: FactoryIdea }) {
-  const [expanded, setExpanded] = useState(false)
-  const st = statusConfig[idea.status]
-
-  return (
-    <div className={clsx(
-      'flex flex-col gap-3 p-4 rounded-lg border transition-all',
-      idea.status === 'killed' || idea.status === 'parked'
-        ? 'bg-card border-border opacity-60'
-        : 'bg-card border-border',
-    )}>
-      {/* Header */}
-      <div className="flex items-start gap-3">
-        <ViabilityBadge score={idea.scores.viability} />
-
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap mb-1">
-            <span className={clsx('flex items-center gap-1 px-1.5 py-0.5 rounded border text-xxs font-semibold', st.badge)}>
-              <span className={clsx('w-1.5 h-1.5 rounded-full', st.dot)} />
-              {st.label}
-            </span>
-            {idea.status === 'building' && (
-              <span className="flex items-center gap-1 text-xxs text-green-400">
-                <Zap size={9} />Active build
-              </span>
-            )}
-          </div>
-          <p className="text-xs font-semibold text-text-primary leading-snug">{idea.name}</p>
-          <p className="text-xxs text-text-muted mt-0.5 leading-relaxed">{idea.tagline}</p>
+    <div className={clsx('group flex flex-col gap-2.5 p-4 rounded-lg border bg-card hover:bg-card-hover transition-all', busy && 'opacity-60 pointer-events-none')}>
+      {/* Title row */}
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-text-primary leading-snug">{idea.title}</p>
+          {idea.category && <span className="text-xxs text-text-muted">{idea.category.replace(/-/g, ' ')}</span>}
         </div>
+        <span className={clsx('shrink-0 px-1.5 py-0.5 rounded border text-xxs font-medium', sc.badge)}>{sc.label}</span>
       </div>
 
-      {/* Scores */}
-      <div className="flex flex-col gap-1.5 px-3 py-2.5 rounded bg-base border border-border-subtle">
-        <ScoreBar label="Market size"   value={idea.scores.market}      />
-        <ScoreBar label="Competition"   value={idea.scores.competition} invert />
-        <ScoreBar label="Build effort"  value={idea.scores.effort}      invert />
+      {/* Scores + meta */}
+      <div className="flex items-center gap-3 flex-wrap">
+        <ScorePill icon={<Zap size={11} />} label="Confidence" value={idea.confidence} />
+        <ScorePill icon={<Flame size={11} />} label="Coolness" value={idea.coolness} />
+        {idea.difficulty && <span className={clsx('text-xxs font-medium capitalize', difficultyColor(idea.difficulty))}>{idea.difficulty}</span>}
+        {idea.timeEstimate && <span className="flex items-center gap-0.5 text-xxs text-text-muted"><Clock size={10} />{idea.timeEstimate}</span>}
+        {idea.costEstimate && <span className="flex items-center gap-0.5 text-xxs text-text-muted"><DollarSign size={10} />{idea.costEstimate}</span>}
       </div>
 
-      {/* Tags */}
-      {idea.tags && idea.tags.length > 0 && (
-        <div className="flex items-center gap-1 flex-wrap">
-          {idea.tags.map(t => (
-            <span key={t} className="px-1.5 py-0.5 rounded bg-base border border-border-subtle text-xxs text-text-muted">#{t}</span>
-          ))}
+      {/* Description / why it fits */}
+      <p className="text-xxs text-text-muted leading-relaxed line-clamp-3">{idea.whyFit || idea.description}</p>
+
+      {/* Parts */}
+      {(idea.haveParts?.length > 0 || idea.missingParts?.length > 0) && (
+        <div className="flex flex-col gap-1">
+          <PartChips parts={idea.haveParts} kind="have" />
+          <PartChips parts={idea.missingParts} kind="missing" />
         </div>
       )}
 
-      {/* Research summary toggle */}
-      {idea.researchSummary && (
-        <div>
-          <button
-            onClick={() => setExpanded(v => !v)}
-            className="flex items-center gap-1 text-xxs text-text-muted hover:text-text-secondary transition-colors"
-          >
-            {expanded ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
-            Research summary
-          </button>
-          {expanded && (
-            <p className="mt-2 text-xxs text-text-secondary leading-relaxed px-3 py-2 rounded bg-base border border-border-subtle">
-              {idea.researchSummary}
-            </p>
-          )}
-        </div>
+      {/* Next step */}
+      {idea.nextStep && (
+        <p className="flex items-start gap-1 text-xxs text-text-secondary border-t border-border-subtle pt-2">
+          <ArrowRight size={11} className="text-accent-blue shrink-0 mt-0.5" />
+          <span className="line-clamp-2">{idea.nextStep}</span>
+        </p>
       )}
 
-      {/* Footer */}
-      <div className="flex items-center justify-between gap-2 pt-1 border-t border-border-subtle">
-        <div className="flex items-center gap-1.5">
-          {idea.agentName && (
-            <div className={clsx('w-4 h-4 rounded-full flex items-center justify-center text-white text-xxs font-bold bg-gradient-to-br', agentColor(idea.agentName))}>
-              {idea.agentName[0]}
-            </div>
-          )}
-          {idea.agentName && <span className="text-xxs text-text-muted">{idea.agentName}</span>}
-        </div>
-        <span className="text-xxs text-text-muted">{idea.createdAgo}</span>
+      {/* Actions */}
+      <div className="flex items-center gap-1.5 pt-1 opacity-0 group-hover:opacity-100 transition-opacity">
+        {busy && <Loader2 size={12} className="animate-spin text-text-muted" />}
+        {idea.status !== 'liked' && (
+          <button onClick={() => onSet('liked')} className="flex items-center gap-1 px-2 py-1 rounded border border-green-900/40 bg-green-950/20 text-green-300 text-xxs hover:bg-green-950/40"><ThumbsUp size={10} />Like</button>
+        )}
+        {idea.status === 'liked' && (
+          <button onClick={() => onSet('completed')} className="flex items-center gap-1 px-2 py-1 rounded border border-violet-900/40 bg-violet-950/20 text-violet-300 text-xxs hover:bg-violet-950/40"><Check size={10} />Done</button>
+        )}
+        {idea.status !== 'snoozed' && (
+          <button onClick={() => onSet('snoozed')} className="flex items-center gap-1 px-2 py-1 rounded border border-border bg-card text-text-muted text-xxs hover:text-text-secondary"><Moon size={10} />Snooze</button>
+        )}
+        {idea.status !== 'rejected' && (
+          <button onClick={() => onSet('rejected')} className="flex items-center gap-1 px-2 py-1 rounded border border-red-900/40 bg-red-950/20 text-red-300 text-xxs hover:bg-red-950/40"><ThumbsDown size={10} />Reject</button>
+        )}
       </div>
     </div>
   )
 }
-
-// ─── Main view ──────────────────────────────────────────────────────────────────
 
 export function Factory() {
-  const [statusFilter, setStatusFilter] = useState<FilterStatus>('all')
+  const [ideas, setIdeas]     = useState<ProjectIdea[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError]     = useState<string | null>(null)
+  const [filter, setFilter]   = useState<ProjectIdeaStatus | 'all'>('all')
+  const [busyId, setBusyId]   = useState<string | null>(null)
+  const [generating, setGenerating] = useState(false)
+  const pollRef = useRef<number | null>(null)
 
-  const filtered = factoryIdeas.filter(idea =>
-    statusFilter === 'all' || idea.status === statusFilter
-  )
+  const load = useCallback(async () => {
+    setLoading(true); setError(null)
+    try {
+      const r = await projectIdeas.list()
+      setIdeas(r.ideas)
+    } catch (e: any) { setError(e.message) } finally { setLoading(false) }
+  }, [])
 
-  const counts = Object.fromEntries(
-    STATUSES.map(s => [s, factoryIdeas.filter(i => i.status === s).length])
-  ) as Record<IdeaStatus, number>
+  useEffect(() => {
+    load()
+    projectIdeas.genStatus().then(r => { if (r.run?.status === 'pending') startPolling() }).catch(() => {})
+    return () => { if (pollRef.current) window.clearInterval(pollRef.current) }
+  }, [load])
 
-  const avgViability = factoryIdeas.length > 0
-    ? (factoryIdeas.reduce((sum, i) => sum + i.scores.viability, 0) / factoryIdeas.length).toFixed(1)
-    : '—'
+  const startPolling = () => {
+    setGenerating(true)
+    if (pollRef.current) window.clearInterval(pollRef.current)
+    pollRef.current = window.setInterval(async () => {
+      try {
+        const r = await projectIdeas.genStatus()
+        if (!r.run || r.run.status !== 'pending') {
+          window.clearInterval(pollRef.current!); pollRef.current = null
+          setGenerating(false); load()
+        }
+      } catch { /* keep polling */ }
+    }, 4000)
+  }
 
-  const building = factoryIdeas.filter(i => i.status === 'building').length
-  const qualified = factoryIdeas.filter(i => i.status === 'qualified').length
+  const generate = async () => {
+    setGenerating(true)
+    try { await projectIdeas.generate(); startPolling() }
+    catch (e: any) { setError(e.message); setGenerating(false) }
+  }
+
+  const setStatus = async (idea: ProjectIdea, status: ProjectIdeaStatus) => {
+    setBusyId(idea.id)
+    setIdeas(prev => prev.map(i => i.id === idea.id ? { ...i, status } : i)) // optimistic
+    try { await projectIdeas.update(idea.id, { status }) }
+    catch { setIdeas(prev => prev.map(i => i.id === idea.id ? { ...i, status: idea.status } : i)) }
+    finally { setBusyId(null) }
+  }
+
+  const counts = Object.fromEntries(STATUSES.map(s => [s, ideas.filter(i => i.status === s).length])) as Record<ProjectIdeaStatus, number>
+  const filtered = filter === 'all' ? ideas : ideas.filter(i => i.status === filter)
+  // Sort by coolness then confidence so the best ideas surface first.
+  const sorted = [...filtered].sort((a, b) => (b.coolness + b.confidence) - (a.coolness + a.confidence))
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
       {/* Header */}
       <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-border shrink-0">
-        <div>
-          <h1 className="text-base font-semibold text-text-primary">Factory</h1>
-          <p className="text-xs text-text-muted mt-0.5">
-            <span className="text-text-secondary">{factoryIdeas.length} ideas tracked</span>
-            {building > 0 && <>&nbsp;·&nbsp;<span className="text-green-400">{building} building</span></>}
-            {qualified > 0 && <>&nbsp;·&nbsp;<span className="text-violet-400">{qualified} qualified</span></>}
-          </p>
+        <div className="flex items-center gap-2.5">
+          <Sparkles size={17} className="text-accent-purple" />
+          <div>
+            <h1 className="text-base font-semibold text-text-primary">Idea Factory</h1>
+            <p className="text-xs text-text-muted mt-0.5">
+              {loading ? 'Loading…' : error ? <span className="text-red-400">{error}</span>
+                : <>{ideas.length} agent-generated project ideas · <span className="text-green-400">{counts.liked} liked</span></>}
+            </p>
+          </div>
         </div>
-        <button className="flex items-center gap-1.5 px-3 py-1.5 rounded border border-border bg-card hover:bg-card-hover text-text-secondary hover:text-text-primary transition-colors text-xs font-medium">
-          <Plus size={13} />New Idea
-        </button>
-      </div>
-
-      {/* Stat strip */}
-      <div className="flex items-center gap-5 px-6 py-3 border-b border-border shrink-0 overflow-x-auto">
-        <div className="flex items-center gap-1.5 shrink-0">
-          <Target size={12} className="text-violet-400" />
-          <span className="text-xxs text-text-muted">Avg viability</span>
-          <span className="text-xs font-semibold text-text-primary">{avgViability}</span>
-        </div>
-        <div className="w-px h-3.5 bg-border" />
-        <div className="flex items-center gap-1.5 shrink-0">
-          <Flame size={12} className="text-green-400" />
-          <span className="text-xxs text-text-muted">Active builds</span>
-          <span className="text-xs font-semibold text-green-400">{building}</span>
-        </div>
-        <div className="w-px h-3.5 bg-border" />
-        <div className="flex items-center gap-1.5 shrink-0">
-          <TrendingUp size={12} className="text-amber-400" />
-          <span className="text-xxs text-text-muted">Qualified</span>
-          <span className="text-xs font-semibold text-amber-400">{qualified}</span>
-        </div>
-        <div className="w-px h-3.5 bg-border" />
-        <div className="flex items-center gap-1.5 shrink-0">
-          <Cpu size={12} className="text-text-muted" />
-          <span className="text-xxs text-text-muted">Researching</span>
-          <span className="text-xs font-semibold text-text-secondary">{counts.researching}</span>
+        <div className="flex items-center gap-2">
+          <button onClick={generate} disabled={generating}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-accent-purple/20 border border-accent-purple/40 text-accent-purple hover:bg-accent-purple/30 disabled:opacity-50 text-xs font-medium">
+            {generating ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
+            {generating ? 'Generating…' : 'Generate ideas'}
+          </button>
+          <button onClick={load} disabled={loading}
+            className="flex items-center gap-1 px-2 py-1.5 rounded border border-border bg-card text-text-muted hover:text-text-secondary text-xs" title="Refresh">
+            <RefreshCw size={12} className={loading ? 'animate-spin' : ''} />
+          </button>
         </div>
       </div>
 
       {/* Filter tabs */}
-      <div className="flex items-center gap-1 px-6 py-3 border-b border-border shrink-0">
-        <button
-          onClick={() => setStatusFilter('all')}
-          className={clsx('px-2.5 py-1 rounded text-xs font-medium transition-all',
-            statusFilter === 'all' ? 'bg-card-hover text-text-primary' : 'text-text-muted hover:text-text-secondary')}
-        >
-          All
-          <span className="ml-1 text-xxs opacity-60">{factoryIdeas.length}</span>
+      <div className="flex items-center gap-1 px-6 py-3 border-b border-border shrink-0 overflow-x-auto">
+        <button onClick={() => setFilter('all')}
+          className={clsx('px-2.5 py-1 rounded text-xs font-medium transition-all shrink-0',
+            filter === 'all' ? 'bg-card-hover text-text-primary' : 'text-text-muted hover:text-text-secondary')}>
+          All <span className="ml-1 text-xxs opacity-60">{ideas.length}</span>
         </button>
         {STATUSES.map(s => (
-          <button
-            key={s}
-            onClick={() => setStatusFilter(s === statusFilter ? 'all' : s)}
-            className={clsx('flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium transition-all',
-              statusFilter === s ? 'bg-card-hover text-text-primary' : 'text-text-muted hover:text-text-secondary')}
-          >
+          <button key={s} onClick={() => setFilter(s === filter ? 'all' : s)}
+            className={clsx('flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium transition-all shrink-0',
+              filter === s ? 'bg-card-hover text-text-primary' : 'text-text-muted hover:text-text-secondary')}>
             <span className={clsx('w-1.5 h-1.5 rounded-full', statusConfig[s].dot)} />
-            {statusConfig[s].label}
-            <span className="text-xxs opacity-60">{counts[s]}</span>
+            {statusConfig[s].label} <span className="text-xxs opacity-60">{counts[s]}</span>
           </button>
         ))}
       </div>
 
       {/* Grid */}
       <div className="flex-1 overflow-y-auto px-6 py-5">
-        {filtered.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-40">
-            <Zap size={20} className="text-text-muted mb-2" />
-            <span className="text-sm text-text-muted">No ideas match this filter</span>
+        {loading ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+            {Array.from({ length: 6 }).map((_, i) => <div key={i} className="h-56 rounded-lg border border-border bg-card animate-pulse" />)}
+          </div>
+        ) : sorted.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-48 gap-2 text-center">
+            <Lightbulb size={22} className="text-text-muted" />
+            <p className="text-sm text-text-secondary">{ideas.length === 0 ? 'No ideas generated yet' : 'No ideas in this status'}</p>
+            <p className="text-xs text-text-muted max-w-sm">The agents generate buildable project ideas from your inventory. Hit <span className="text-accent-purple">Generate ideas</span> to create more.</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
-            {filtered.map(idea => <IdeaCard key={idea.id} idea={idea} />)}
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+            {sorted.map(idea => (
+              <IdeaCard key={idea.id} idea={idea} busy={busyId === idea.id} onSet={s => setStatus(idea, s)} />
+            ))}
           </div>
         )}
       </div>
