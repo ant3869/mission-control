@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.7.14] — 2026-06-08
+
+### Changed
+
+- **Feedback is now a real inbound-message feed** instead of mock testimonials. It shows what people actually send the agents (real `message:received` events) with a **transparent keyword sentiment** tag (clearly labelled "heuristic sentiment", not an LLM judge): a sentiment proportion bar, positive/neutral/negative filters, sender + channel + time, and full message text. New `deriveInbound()` aggregation + `GET /api/{openclaw,hermes}/inbound`.
+- **Milestone: every view now runs on real data** — no mock-data views remain. The five former mock pages (Calendar's Always-Running strip, People, Factory, Content, Feedback) are all wired to live agent data, and four orphaned views (Brain/Flow/Alerts/Security) were surfaced into the nav.
+
 ## [0.7.13] — 2026-06-08
 
 ### Changed

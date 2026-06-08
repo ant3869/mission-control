@@ -419,6 +419,25 @@ export const publicationsApi = {
   hermes:   () => get<PublicationsResponse>('/hermes/publications'),
 }
 
+export type InboundSentiment = 'positive' | 'negative' | 'neutral'
+export interface InboundMessage {
+  id:        string
+  sender:    string
+  channel:   string
+  content:   string
+  preview:   string
+  sentiment: InboundSentiment
+  ts:        string
+  tsAgo:     string
+  source:    ConnectorId
+}
+export interface InboundResponse { inbound: InboundMessage[]; fetchedAt: string; error?: string }
+
+export const inboundApi = {
+  openclaw: () => get<InboundResponse>('/openclaw/inbound'),
+  hermes:   () => get<InboundResponse>('/hermes/inbound'),
+}
+
 export const openclawChats = {
   sessions: (limit = 50) => get<ChatsListResponse>('/openclaw/sessions', { limit }),
   session:  (id: string) => get<ChatSessionResponse>(`/openclaw/sessions/${encodeURIComponent(id)}`),

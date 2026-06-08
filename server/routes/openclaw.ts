@@ -5,7 +5,7 @@
 //          Hermes (server/routes/hermes.ts) behaves identically.
 
 import { Router } from 'express'
-import { ingestEvent, getRawEvents, derivePeople, derivePublications } from '../lib/agentEvents.js'
+import { ingestEvent, getRawEvents, derivePeople, derivePublications, deriveInbound } from '../lib/agentEvents.js'
 import { getSessions, getSessionDetail, getAgents, getCron } from '../lib/agentSources.js'
 import { isLive, getConnector } from '../lib/connectors.js'
 import { cronAction, type CronAction } from '../lib/gateway.js'
@@ -96,6 +96,11 @@ openclawRouter.get('/people', (_req, res) => {
 // Real content the agents have published (briefings, status, digests, replies).
 openclawRouter.get('/publications', (_req, res) => {
   res.json({ publications: derivePublications(SOURCE), fetchedAt: new Date().toISOString() })
+})
+
+// Real inbound messages people send the agents (feedback), with heuristic sentiment.
+openclawRouter.get('/inbound', (_req, res) => {
+  res.json({ inbound: deriveInbound(SOURCE), fetchedAt: new Date().toISOString() })
 })
 
 // ─── Memory file read/write ────────────────────────────────────────────────────

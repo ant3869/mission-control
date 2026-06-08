@@ -537,6 +537,61 @@ export function derivePublications(source: AgentSource, limit = 80): AgentPublic
   return out.slice(0, limit)
 }
 
+// ─── Inbound feedback (real messages people send the agents) ─────────────────
+// Mirror of publications: what users actually say TO the agents. Sentiment is a
+// transparent keyword heuristic (labelled as such in the UI) — not a model judge.
+
+export type InboundSentiment = 'positive' | 'negative' | 'neutral'
+
+export interface InboundMessage {
+  id:        string
+  sender:    string
+  channel:   string
+  content:   string
+  preview:   string
+  sentiment: InboundSentiment
+  ts:        string
+  tsAgo:     string
+  source:    AgentSource
+}
+
+const NEG_RE = /(not\s*work|isn'?t\s*work|does\s*n'?t\s*work|did\s*n'?t|do\s*n'?t|can'?t|cannot|broke|broken|\berror\b|\bfail|wrong|\bbug\b|\bissue|problem|stuck|no\s*beep|not\s*beep|frustrat|annoying|hate|terrible|awful|\bbad\b|too\s*slow|👎|😤|😠|😞|😕)/i
+const POS_RE = /(thank|thanks|\bthx\b|great|awesome|perfect|\bnice\b|\blove\b|works\s*now|working\s*now|\bfixed\b|good\s*job|well\s*done|amazing|excellent|👍|❤️|🎉|😄|🙏|💪|🔥)/i
+
+function classifySentiment(text: string): InboundSentiment {
+  const isNeg = NEG_RE.test(text)
+  const isPos = POS_RE.test(text)
+  if (isPos && !isNeg) return 'positive'
+  if (isNeg && !isPos) return 'negative'
+  return 'neutral'
+}
+
+export function deriveInbound(source: AgentSource, limit = 80): InboundMessage[] {
+  const rows = allRows(source).filter(r => r.event_type === 'message:received')
+  const out: InboundMessage[] = []
+  for (const row of rows) {
+    let payload: any
+    try { payload = JSON.parse(row.payload_json || '{}') } catch { continue }
+    const content = extractContent(payload)
+    if (!content || content.length < 2 || content.startsWith('[message:')) continue
+    const sender = deepFindString(payload, ['senderName', 'authorName', 'username', 'displayName', 'fromName']) || 'User'
+    const channelType = parseChannelType(row.session_key || '')
+    out.push({
+      id:        `${source}-in-${row.id}`,
+      sender,
+      channel:   channelType !== 'unknown' ? channelType : (deepFindString(payload, ['channelId', 'channel']) || source),
+      content,
+      preview:   content.replace(/\s+/g, ' ').slice(0, 200),
+      sentiment: classifySentiment(content),
+      ts:        row.ts,
+      tsAgo:     fmtAgo(row.ts),
+      source,
+    })
+  }
+  out.sort((a, b) => new Date(b.ts).getTime() - new Date(a.ts).getTime())
+  return out.slice(0, limit)
+}
+
 // ─── Health + stats ────────────────────────────────────────────────────────
 
 export interface SourceHealth {
