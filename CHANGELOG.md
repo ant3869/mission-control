@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.7.45] — 2026-06-08
+
+### Fixed
+
+- **Calendar (landing view): friendly Google re-auth prompt instead of a raw error.** When the saved Google OAuth token expires/revokes, the API returns `invalid_grant` — which the view printed verbatim as a cryptic red "Error: invalid_grant" on the first screen users see. Auth failures (`invalid_grant`, expired/invalid token, unauthorized, etc.) are now treated like "not configured": the actionable **"Google Calendar needs reconnecting"** banner with the `/api/auth/google` link is shown, and the raw error is suppressed. Found via a screenshot review of the landing view. Verified: banner + re-auth link show, raw error gone; tsc + build clean.
+
 ## [0.7.44] — 2026-06-08
 
 ### Changed

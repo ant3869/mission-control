@@ -74,13 +74,14 @@ function ConnectBanner() {
     <div className="flex items-center gap-3 mx-4 my-3 px-4 py-3 rounded-lg border border-amber-900/40 bg-amber-950/20 text-amber-300">
       <AlertCircle size={14} className="shrink-0" />
       <div className="flex-1 min-w-0">
-        <p className="text-xs font-medium">Google Calendar not connected</p>
+        <p className="text-xs font-medium">Google Calendar needs reconnecting</p>
         <p className="text-xxs opacity-70 mt-0.5">
-          Add your credentials to <code className="font-mono">.env</code> then visit{' '}
+          Not connected, or the saved token expired. Ensure your credentials are in{' '}
+          <code className="font-mono">.env</code>, then visit{' '}
           <a href="/api/auth/google" target="_blank" rel="noreferrer" className="underline hover:opacity-100">
             /api/auth/google
           </a>{' '}
-          to authenticate.
+          to (re)authenticate.
         </p>
       </div>
     </div>
@@ -202,7 +203,9 @@ export function ScheduledTasks() {
       .filter(e => e.dayOfWeek === dayIndex)
       .sort((a, b) => a.timeMinutes - b.timeMinutes)
 
-  const notConfigured = error?.includes('not configured')
+  // "not configured" (no creds) AND auth failures like invalid_grant (token
+  // expired/revoked) both resolve the same way: re-authenticate at /api/auth/google.
+  const needsAuth = !!error && /not configured|invalid_grant|invalid_token|invalid_request|unauthorized|401|credential|refresh token|expired/i.test(error)
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -213,7 +216,7 @@ export function ScheduledTasks() {
           <p className="text-xs text-text-muted mt-0.5">
             {loading
               ? 'Loading events…'
-              : error && !notConfigured
+              : error && !needsAuth
               ? <span className="text-red-400">Error: {error}</span>
               : <><span className="text-text-secondary">{events.length} events this week</span>
                   {fetchedAt && <>&nbsp;·&nbsp;<span className="opacity-50">updated {new Date(fetchedAt).toLocaleTimeString()}</span></>}
@@ -274,7 +277,7 @@ export function ScheduledTasks() {
       </div>
 
       {/* Connect banner */}
-      {notConfigured && <ConnectBanner />}
+      {needsAuth && <ConnectBanner />}
 
       {/* Calendar grid */}
       <div className="flex-1 overflow-auto">
