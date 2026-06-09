@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
+import { isRefreshPaused } from '../lib/refreshBus'
 import { useEscapeKey } from '../hooks/useEscapeKey'
 import { clsx } from 'clsx'
 import {
@@ -182,14 +183,21 @@ export function FlowMap() {
   const [selNode, setSelNode]           = useState<string | null>(null)
   const [selEdge, setSelEdge]           = useState<string | null>(null)
 
-  const load = useCallback(async () => {
-    setLoading(true); setError(null)
+  const load = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true)
+    setError(null)
     try { setData(await fetchGraph(range)) }
     catch (e: any) { setError(e?.message ?? 'Failed to load flow map') }
-    finally { setLoading(false) }
+    finally { if (!silent) setLoading(false) }
   }, [range])
 
   useEffect(() => { load() }, [load])
+
+  // Keep the traffic graph live: silent auto-refresh every 20s (honours global Pause).
+  useEffect(() => {
+    const t = setInterval(() => { if (!isRefreshPaused()) load(true) }, 20_000)
+    return () => clearInterval(t)
+  }, [load])
 
   const selectedNode = useMemo(() => data?.nodes.find(n => n.id === selNode) ?? null, [data, selNode])
   const selectedEdge = useMemo(() => data?.edges.find(e => e.id === selEdge) ?? null, [data, selEdge])
@@ -227,7 +235,7 @@ export function FlowMap() {
               </button>
             ))}
           </div>
-          <button onClick={load} disabled={loading} className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-card hover:bg-card-hover border border-border rounded transition-colors">
+          <button onClick={() => load()} disabled={loading} className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-card hover:bg-card-hover border border-border rounded transition-colors">
             <RefreshCw size={12} className={clsx(loading && 'animate-spin')} /> Refresh
           </button>
         </div>

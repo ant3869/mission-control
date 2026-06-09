@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.7.40] — 2026-06-08
+
+### Changed
+
+- **Flow Map (traffic graph) now auto-refreshes**, completing the live-monitoring set (Watch, Brain, Flow, Flow Map). Silent re-fetch every 20s (no spinner flash, honours the global Pause), so the node-link graph reflects current traffic without a manual Refresh. Fixed the same latent Refresh-button bug (click event passed as the `silent` flag). tsc + build clean, view renders.
+
 ## [0.7.39] — 2026-06-08
 
 ### Changed
