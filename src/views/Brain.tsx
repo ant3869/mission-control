@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
+import { isRefreshPaused } from '../lib/refreshBus'
 import { clsx } from 'clsx'
 import {
   Brain as BrainIcon, RefreshCw, AlertTriangle, ChevronRight, ChevronDown,
@@ -248,19 +249,26 @@ export default function Brain() {
   const [loading, setLoading]       = useState(false)
   const [error, setError]           = useState<string | null>(null)
 
-  const loadEvents = useCallback(async () => {
-    setLoading(true); setError(null)
+  const loadEvents = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true)
+    setError(null)
     try {
       const [evR, stR] = await Promise.all([fetchBrainEvents(source, limit, typeFilter), fetchBrainStats()])
       setData(evR); setStats(stR)
     } catch (e: any) {
       setError(e.message ?? 'Failed to load')
     } finally {
-      setLoading(false)
+      if (!silent) setLoading(false)
     }
   }, [source, limit, typeFilter])
 
   useEffect(() => { loadEvents() }, [loadEvents])
+
+  // Keep the event brain live: silent auto-refresh every 10s (honours global Pause).
+  useEffect(() => {
+    const t = setInterval(() => { if (!isRefreshPaused()) loadEvents(true) }, 10_000)
+    return () => clearInterval(t)
+  }, [loadEvents])
 
   const typeOptions = ['all', ...Object.keys(data?.typeCounts ?? {}).sort()]
 
@@ -303,7 +311,7 @@ export default function Brain() {
             {[50, 100, 200, 500].map(n => <option key={n} value={n}>Last {n}</option>)}
           </select>
           <button
-            onClick={loadEvents}
+            onClick={() => loadEvents()}
             disabled={loading}
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-white/5 hover:bg-white/10 border border-white/10 rounded transition-colors"
           >

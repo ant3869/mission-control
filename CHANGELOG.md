@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.7.38] — 2026-06-08
+
+### Changed
+
+- **Brain (agent event stream) now auto-refreshes.** It's billed as a live event brain but only loaded once — you had to hit Refresh to see new agent activity. It now silently re-fetches every 10s (no spinner flash; honours the global Pause toggle), so new tool calls / messages / errors appear on their own. Manual Refresh still works. Verified tsc + build clean and the view renders.
+
 ## [0.7.37] — 2026-06-08
 
 ### Added
