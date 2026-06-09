@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.7.41] — 2026-06-08
+
+### Added
+
+- **"Live / Paused" indicator on the auto-refreshing views.** The 0.7.38–0.7.40 auto-refresh was silent, so there was no sign a view was updating itself — or that the global Pause had frozen it. Added a small reusable `LiveBadge` (pulsing green "Live" dot → amber "Paused" when the top-bar Pause is on) to the Brain, Flow, and Flow Map headers. Makes the live behaviour discoverable and surfaces the pause state consistently (matching Watch). Verified: shows "Live", flips to "Paused" on toggle; tsc + build clean.
+
 ## [0.7.40] — 2026-06-08
 
 ### Changed

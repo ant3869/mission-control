@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { isRefreshPaused } from '../lib/refreshBus'
+import { LiveBadge } from '../components/LiveBadge'
 import { useEscapeKey } from '../hooks/useEscapeKey'
 import { clsx } from 'clsx'
 import {
@@ -307,6 +308,7 @@ export default function Flow() {
           <span className="text-xs text-text-muted bg-white/5 px-2 py-0.5 rounded-full">session runs</span>
         </div>
         <div className="flex items-center gap-2">
+          <LiveBadge className="mr-1" />
           <select value={source} onChange={e => setSource(e.target.value as Source)} className="text-xs bg-bg-secondary border border-white/10 rounded px-2 py-1.5 text-text-primary">
             <option value="all">All sources</option>
             <option value="openclaw">OpenClaw</option>

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { isRefreshPaused } from '../lib/refreshBus'
+import { LiveBadge } from '../components/LiveBadge'
 import { clsx } from 'clsx'
 import {
   Brain as BrainIcon, RefreshCw, AlertTriangle, ChevronRight, ChevronDown,
@@ -310,6 +311,7 @@ export default function Brain() {
           >
             {[50, 100, 200, 500].map(n => <option key={n} value={n}>Last {n}</option>)}
           </select>
+          <LiveBadge className="mr-1" />
           <button
             onClick={() => loadEvents()}
             disabled={loading}

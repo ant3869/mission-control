@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { isRefreshPaused } from '../lib/refreshBus'
+import { LiveBadge } from '../components/LiveBadge'
 import { useEscapeKey } from '../hooks/useEscapeKey'
 import { clsx } from 'clsx'
 import {
@@ -221,6 +222,7 @@ export function FlowMap() {
           )}
         </div>
         <div className="flex items-center gap-2">
+          <LiveBadge className="mr-1" />
           <div className="flex items-center rounded border border-border overflow-hidden">
             {RANGES.map(r => (
               <button
