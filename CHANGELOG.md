@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.7.48] — 2026-06-09
+
+### Removed
+
+- **Deleted the orphaned `server/services/` directory (570 lines of dead code).** `inventory-enrichment.ts` (with a stale `// TODO: Update item in database`) and `obsidian-vault-sync.ts` had **zero references anywhere** — the real inventory research/sync is handled by `server/lib/research.ts` and the inventory route. Found via a TODO/dead-code sweep. Removing them clears a misleading half-finished service and the confusing TODO. Verified: `tsc` clean, server tests 90/90, `vite build` succeeds.
+
 ## [0.7.47] — 2026-06-08
 
 ### Changed
