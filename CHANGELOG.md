@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.7.51] — 2026-06-09
+
+### Removed
+
+- **Pruned the dead `ScoreBreakdown` cluster from `Scorecards.tsx` (~60 lines).** The exported `ScoreBreakdown` component (plus its private `Fact`/`SubScoreRow` helpers and `BreakdownProps`) had zero references anywhere. Removed the whole cluster and the now-unused imports it pulled in (`Layers`, `Wrench`, `EvalSubScore`) — `tsc` flagged them, confirming nothing else used them. The live exports (`ModelLeaderboard`, `PlatformFactorBar`, `MiniSummaryStat`) are untouched. Verified `tsc` clean, build succeeds, and Evaluations still renders.
+
 ## [0.7.50] — 2026-06-09
 
 ### Removed

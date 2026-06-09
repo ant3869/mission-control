@@ -2,8 +2,8 @@
 // path: src/components/evaluations/Scorecards.tsx
 
 import { clsx } from 'clsx'
-import { ChevronRight, Trophy, Layers, Wrench } from 'lucide-react'
-import type { ModelScorecard, EvalSubScore } from '../../lib/api'
+import { ChevronRight, Trophy } from 'lucide-react'
+import type { ModelScorecard } from '../../lib/api'
 import { fmtNum, fmtPct, scoreColor, scoreBg, HeuristicTag } from './shared'
 
 interface LeaderboardProps {
@@ -83,66 +83,6 @@ export function ModelLeaderboard({ scorecards, selectedModel, onSelect }: Leader
           </tbody>
         </table>
       </div>
-    </div>
-  )
-}
-
-interface BreakdownProps { scorecard: ModelScorecard }
-
-export function ScoreBreakdown({ scorecard }: BreakdownProps) {
-  const sub = scorecard.subScores
-  return (
-    <div className="bg-bg-secondary border border-white/10 rounded-xl p-4">
-      <div className="flex items-center gap-2 mb-4">
-        <Layers size={13} className="text-violet-400" />
-        <h3 className="text-xs font-semibold uppercase tracking-wider text-text-muted">Score breakdown — {scorecard.modelLabel}</h3>
-        <HeuristicTag />
-        <span className="ml-auto text-[10px] text-text-muted">overall {scorecard.overall} · {scorecard.evaluatedCount} evaluated runs</span>
-      </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        {sub.filter(s => s.key !== 'confidence').map(s => <SubScoreRow key={s.key} s={s} />)}
-      </div>
-      <div className="mt-4 pt-3 border-t border-white/5 grid grid-cols-2 md:grid-cols-4 gap-3 text-[11px]">
-        <Fact label="Successes" value={`${scorecard.outcomes.success + scorecard.outcomes.recovered}`} sub={`${scorecard.outcomes.recovered} recovered`} />
-        <Fact label="Failures"  value={`${scorecard.outcomes.failure}`} sub={scorecard.outcomes.stalled ? `${scorecard.outcomes.stalled} stalled` : 'no stalls'} />
-        <Fact label="Tools / success" value={scorecard.avgToolsPerSuccess?.toString() ?? '—'} sub={`fail: ${scorecard.avgToolsPerFailure ?? '—'}`} />
-        <Fact label="Wasted tool calls" value={`${scorecard.wastedToolCalls}/${scorecard.toolCalls || 0}`} sub={fmtPct(scorecard.wasteRate)} />
-        <Fact label="Loop-prone runs" value={`${scorecard.loopRuns}`} sub="repeats ≥ 3 or osc ≥ 4" />
-        <Fact label="Benchmark runs"  value={`${scorecard.benchmarkRuns}`} sub={scorecard.benchmarkScore != null ? `avg ${scorecard.benchmarkScore}` : 'no rubric scores yet'} />
-        <Fact label="Manual scores"   value={`${scorecard.manualScores}`} sub={scorecard.manualScore != null ? `avg ${scorecard.manualScore}` : 'none'} />
-        <Fact label="Confidence"      value={`${Math.round(scorecard.confidence)}%`} sub={scorecard.previousOverall != null ? `prev ${scorecard.previousOverall}` : 'no prior snapshot'} />
-      </div>
-    </div>
-  )
-}
-
-function Fact({ label, value, sub }: { label: string; value: string; sub?: string }) {
-  return (
-    <div className="flex flex-col gap-0.5">
-      <span className="text-[10px] uppercase tracking-wider text-text-muted">{label}</span>
-      <span className="text-sm font-semibold text-text-primary tabular-nums">{value}</span>
-      {sub && <span className="text-[10px] text-text-muted">{sub}</span>}
-    </div>
-  )
-}
-
-function SubScoreRow({ s }: { s: EvalSubScore }) {
-  const v = s.value
-  const pct = v ?? 0
-  return (
-    <div className="flex flex-col gap-1.5 p-3 bg-white/[0.02] rounded-lg border border-white/5">
-      <div className="flex items-center gap-2">
-        <Wrench size={11} className="text-text-muted" />
-        <span className="text-xs font-medium text-text-primary truncate flex-1">{s.label}</span>
-        <span className={clsx('text-sm font-semibold tabular-nums', scoreColor(v))}>{v == null ? '—' : Math.round(v)}</span>
-        <span className="text-[9px] text-text-muted tabular-nums">w {s.weight.toFixed(2)}</span>
-      </div>
-      <div className="h-1.5 bg-white/5 rounded-full overflow-hidden">
-        <div className={clsx('h-full rounded-full', v == null ? 'bg-white/5' : scoreBg(v).replace('/20', '/60'))}
-             style={{ width: `${Math.min(100, Math.max(v == null ? 0 : 3, pct))}%`,
-                      background: v == null ? undefined : v >= 80 ? '#4ade80' : v >= 60 ? '#2dd4bf' : v >= 45 ? '#fbbf24' : '#f87171' }} />
-      </div>
-      <p className="text-[10px] text-text-muted leading-snug">{s.detail}</p>
     </div>
   )
 }
