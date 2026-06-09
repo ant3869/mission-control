@@ -12,6 +12,7 @@ import {
   Loader2, Lightbulb, Zap, Flame, ArrowRight, Moon,
 } from 'lucide-react'
 import { projectIdeas, type ProjectIdea, type ProjectIdeaStatus } from '../lib/api'
+import { ProjectIdeaPanel } from '../components/inventory/ProjectIdeaPanel'
 
 const STATUSES: ProjectIdeaStatus[] = ['new', 'liked', 'snoozed', 'rejected', 'completed']
 
@@ -57,12 +58,13 @@ function PartChips({ parts, kind }: { parts: string[]; kind: 'have' | 'missing' 
   )
 }
 
-function IdeaCard({ idea, busy, onSet }: {
-  idea: ProjectIdea; busy: boolean; onSet: (s: ProjectIdeaStatus) => void
+function IdeaCard({ idea, busy, onSet, onOpen }: {
+  idea: ProjectIdea; busy: boolean; onSet: (s: ProjectIdeaStatus) => void; onOpen: () => void
 }) {
   const sc = statusConfig[idea.status] ?? statusConfig.new
   return (
-    <div className={clsx('group flex flex-col gap-2.5 p-4 rounded-lg border bg-card hover:bg-card-hover transition-all', busy && 'opacity-60 pointer-events-none')}>
+    <div onClick={onOpen} title="Open details"
+      className={clsx('group flex flex-col gap-2.5 p-4 rounded-lg border bg-card hover:bg-card-hover transition-all cursor-pointer', busy && 'opacity-60 pointer-events-none')}>
       {/* Title row */}
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
@@ -100,8 +102,8 @@ function IdeaCard({ idea, busy, onSet }: {
         </p>
       )}
 
-      {/* Actions */}
-      <div className="flex items-center gap-1.5 pt-1 opacity-0 group-hover:opacity-100 transition-opacity">
+      {/* Actions (stop propagation so they don't also open the detail panel) */}
+      <div onClick={e => e.stopPropagation()} className="flex items-center gap-1.5 pt-1 opacity-0 group-hover:opacity-100 transition-opacity">
         {busy && <Loader2 size={12} className="animate-spin text-text-muted" />}
         {idea.status !== 'liked' && (
           <button onClick={() => onSet('liked')} className="flex items-center gap-1 px-2 py-1 rounded border border-green-900/40 bg-green-950/20 text-green-300 text-xxs hover:bg-green-950/40"><ThumbsUp size={10} />Like</button>
@@ -127,6 +129,7 @@ export function Factory() {
   const [filter, setFilter]   = useState<ProjectIdeaStatus | 'all'>('all')
   const [busyId, setBusyId]   = useState<string | null>(null)
   const [generating, setGenerating] = useState(false)
+  const [selected, setSelected] = useState<ProjectIdea | null>(null)
   const pollRef = useRef<number | null>(null)
 
   const load = useCallback(async () => {
@@ -163,12 +166,18 @@ export function Factory() {
     catch (e: any) { setError(e.message); setGenerating(false) }
   }
 
-  const setStatus = async (idea: ProjectIdea, status: ProjectIdeaStatus) => {
+  const setStatus = async (idea: ProjectIdea, status: ProjectIdeaStatus, reason?: string) => {
     setBusyId(idea.id)
     setIdeas(prev => prev.map(i => i.id === idea.id ? { ...i, status } : i)) // optimistic
-    try { await projectIdeas.update(idea.id, { status }) }
+    try { await projectIdeas.update(idea.id, reason ? { status, rejectionReason: reason } : { status }) }
     catch { setIdeas(prev => prev.map(i => i.id === idea.id ? { ...i, status: idea.status } : i)) }
     finally { setBusyId(null) }
+  }
+
+  // Detail-panel actions: apply the status change, then close the panel.
+  const actOnSelected = (status: ProjectIdeaStatus, reason?: string) => {
+    if (selected) setStatus(selected, status, reason)
+    setSelected(null)
   }
 
   const counts = Object.fromEntries(STATUSES.map(s => [s, ideas.filter(i => i.status === s).length])) as Record<ProjectIdeaStatus, number>
@@ -235,11 +244,21 @@ export function Factory() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
             {sorted.map(idea => (
-              <IdeaCard key={idea.id} idea={idea} busy={busyId === idea.id} onSet={s => setStatus(idea, s)} />
+              <IdeaCard key={idea.id} idea={idea} busy={busyId === idea.id} onSet={s => setStatus(idea, s)} onOpen={() => setSelected(idea)} />
             ))}
           </div>
         )}
       </div>
+
+      {/* Detail panel for the selected idea (right-side drawer) */}
+      <ProjectIdeaPanel
+        idea={selected}
+        onClose={() => setSelected(null)}
+        onSave={() => actOnSelected('liked')}
+        onSnooze={() => actOnSelected('snoozed')}
+        onComplete={() => actOnSelected('completed')}
+        onReject={(_id, reason) => actOnSelected('rejected', reason)}
+      />
     </div>
   )
 }

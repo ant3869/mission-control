@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.7.49] — 2026-06-09
+
+### Added
+
+- **Idea Factory: click an idea to open a full detail panel.** A dead-code sweep found `ProjectIdeaPanel` — a fully-built 480px detail drawer (full description, why-it-fits, parts lists, confidence/coolness/usefulness scores, influence metadata, status history, reject-with-reason) — that was **never imported anywhere**. Wired it into Factory: clicking an idea card now opens the panel (cards were previously click-dead, showing only truncated info); the panel's Save/Snooze/Complete/Reject actions map to the real status updates, and Escape/backdrop closes it. (The iteration-11 type fixes that made this component compile finally pay off.)
+
+### Removed
+
+- Deleted `src/views/ComingSoon.tsx` — an orphaned "Coming next iteration" placeholder with zero imports (all views are real now).
+
 ## [0.7.48] — 2026-06-09
 
 ### Removed
