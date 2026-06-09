@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.7.44] — 2026-06-08
+
+### Changed
+
+- **Monitoring/integration filters now persist across reloads.** Applied the `usePersistedState` hook to the filter controls that previously reset on refresh: Brain (source + event-type), Flow (source), Flow Map (time range), and Office (category). Set a filter, reload, and it's still applied. Verified tsc + build clean; the per-view localStorage keys are written on mount.
+
 ## [0.7.43] — 2026-06-08
 
 ### Changed

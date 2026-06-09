@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { isRefreshPaused } from '../lib/refreshBus'
 import { LiveBadge } from '../components/LiveBadge'
+import { usePersistedState } from '../hooks/usePersistedState'
 import { useEscapeKey } from '../hooks/useEscapeKey'
 import { clsx } from 'clsx'
 import {
@@ -268,7 +269,7 @@ function RunRow({ run, selected, onClick }: { run: FlowRun; selected: boolean; o
 // ─── Main view ────────────────────────────────────────────────────────────────
 
 export default function Flow() {
-  const [source, setSource]                   = useState<Source>('all')
+  const [source, setSource]                   = usePersistedState<Source>('mc:flow:source', 'all')
   const [limit, setLimit]                     = useState(50)
   const [data, setData]                       = useState<FlowRunsResponse | null>(null)
   const [summary, setSummary]                 = useState<FlowSummary | null>(null)

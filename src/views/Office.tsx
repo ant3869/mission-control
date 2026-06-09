@@ -3,6 +3,7 @@ import { clsx } from 'clsx'
 import { CheckCircle2, AlertCircle, WifiOff, Clock, RefreshCw, AlertTriangle, Loader2, Plug, ChevronDown } from 'lucide-react'
 import { office } from '../lib/api'
 import type { LiveIntegration, IntegrationCategory, IntegrationStatus } from '../lib/api'
+import { usePersistedState } from '../hooks/usePersistedState'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -145,7 +146,7 @@ export function Office() {
   const [loading, setLoading] = useState(true)
   const [error, setError]     = useState<string | null>(null)
   const [refreshed, setRefreshed] = useState<string>('')
-  const [activeCategory, setActiveCategory] = useState<IntegrationCategory | 'all'>('all')
+  const [activeCategory, setActiveCategory] = usePersistedState<IntegrationCategory | 'all'>('mc:office:category', 'all')
 
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true)

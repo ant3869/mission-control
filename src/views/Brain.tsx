@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { isRefreshPaused } from '../lib/refreshBus'
 import { LiveBadge } from '../components/LiveBadge'
+import { usePersistedState } from '../hooks/usePersistedState'
 import { clsx } from 'clsx'
 import {
   Brain as BrainIcon, RefreshCw, AlertTriangle, ChevronRight, ChevronDown,
@@ -241,8 +242,8 @@ function EventRow({ e }: { e: BrainEvent }) {
 // ─── Main view ────────────────────────────────────────────────────────────────
 
 export default function Brain() {
-  const [source, setSource]         = useState<Source>('all')
-  const [typeFilter, setTypeFilter] = useState('all')
+  const [source, setSource]         = usePersistedState<Source>('mc:brain:source', 'all')
+  const [typeFilter, setTypeFilter] = usePersistedState('mc:brain:typeFilter', 'all')
   const [limit, setLimit]           = useState(200)
   const [tab, setTab]               = useState<'events' | 'stats' | 'loops'>('events')
   const [data, setData]             = useState<BrainResponse | null>(null)

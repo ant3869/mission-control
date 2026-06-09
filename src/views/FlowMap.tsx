@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { isRefreshPaused } from '../lib/refreshBus'
 import { LiveBadge } from '../components/LiveBadge'
+import { usePersistedState } from '../hooks/usePersistedState'
 import { useEscapeKey } from '../hooks/useEscapeKey'
 import { clsx } from 'clsx'
 import {
@@ -177,7 +178,7 @@ const RANGES: { id: FlowRange; label: string }[] = [
 ]
 
 export function FlowMap() {
-  const [range, setRange]               = useState<FlowRange>('24h')
+  const [range, setRange]               = usePersistedState<FlowRange>('mc:flowmap:range', '24h')
   const [data, setData]                 = useState<FlowGraphData | null>(null)
   const [loading, setLoading]           = useState(false)
   const [error, setError]               = useState<string | null>(null)
