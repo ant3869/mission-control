@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.7.47] — 2026-06-08
+
+### Changed
+
+- **Centralized friendly error messages.** Added a reusable `friendlyError(err, subject)` helper that maps raw API failures to short, actionable text — network errors → "Couldn't reach <subject>. Check it's running…", auth errors (401/invalid_grant/expired) → "Authentication failed for <subject>. Reconnect it in Settings." — while passing unrecognised errors through unchanged. Applied to the connection-dependent views that previously printed raw messages (Agents, Chats). Verified tsc + build clean.
+
 ## [0.7.46] — 2026-06-08
 
 ### Fixed

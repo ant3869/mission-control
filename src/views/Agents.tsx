@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useEscapeKey } from '../hooks/useEscapeKey'
+import { friendlyError } from '../lib/friendlyError'
 import { clsx } from 'clsx'
 import { X, Activity, Cpu, DollarSign, Clock, ChevronRight, RefreshCw, AlertCircle, Terminal, FolderOpen } from 'lucide-react'
 import { agents as agentsApi, type LiveAgent, type AgentState } from '../lib/api'
@@ -346,7 +347,7 @@ export function Agents() {
         {error && (
           <div className="flex items-start gap-2 mx-6 mt-4 px-4 py-3 rounded-lg border border-amber-900/40 bg-amber-950/20 text-amber-300">
             <AlertCircle size={13} className="shrink-0 mt-0.5" />
-            <p className="text-xs leading-snug">{error}</p>
+            <p className="text-xs leading-snug">{friendlyError(error, 'OpenClaw')}</p>
           </div>
         )}
 

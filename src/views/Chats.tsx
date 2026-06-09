@@ -7,6 +7,7 @@ import { clsx } from 'clsx'
 import { MessageSquare, Clock, Hash, Search, Activity, FolderOpen, RefreshCw, AlertCircle, HeartPulse, ChevronRight } from 'lucide-react'
 import { chats, openclawChats, hermesChats, type LiveSession, type LiveChatMessage } from '../lib/api'
 import { isRefreshPaused } from '../lib/refreshBus'
+import { friendlyError } from '../lib/friendlyError'
 
 // if you already have CombinedSession / openclawChats, keep those types/imports
 type SessionSource = 'claude' | 'openclaw' | 'hermes'
@@ -559,7 +560,7 @@ export function Chats() {
           ) : error && filtered.length === 0 ? (
             <div className="flex items-start gap-2 p-3 rounded border border-amber-900/40 bg-amber-950/20 text-amber-300">
               <AlertCircle size={13} className="shrink-0 mt-0.5" />
-              <p className="text-xs leading-snug">{error}</p>
+              <p className="text-xs leading-snug">{friendlyError(error, 'the agent platform')}</p>
             </div>
           ) : filtered.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-40 gap-2 text-center">
@@ -666,7 +667,7 @@ export function Chats() {
               {error && (
                 <div className="mt-2 flex items-start gap-2 p-3 rounded border border-amber-900/40 bg-amber-950/20 text-amber-300">
                   <AlertCircle size={13} className="shrink-0 mt-0.5" />
-                  <p className="text-xs leading-snug">{error}</p>
+                  <p className="text-xs leading-snug">{friendlyError(error, 'the agent platform')}</p>
                 </div>
               )}
             </div>
