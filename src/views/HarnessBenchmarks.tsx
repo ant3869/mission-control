@@ -7,6 +7,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useEscapeKey } from '../hooks/useEscapeKey'
+import { usePersistedState } from '../hooks/usePersistedState'
 import { clsx } from 'clsx'
 import {
   FlaskConical, Play, Square, RotateCcw, Download, X, Loader2, CheckCircle2,
@@ -237,14 +238,14 @@ export function HarnessBenchmarks() {
   const [harnesses, setHarnesses] = useState<Array<{ id: BenchmarkHarness; label: string; live: boolean; baseUrl: string; apiBaseUrl?: string }>>([])
 
   // controls
-  const [harness, setHarness] = useState<BenchmarkHarness>('hermes')
+  const [harness, setHarness] = usePersistedState<BenchmarkHarness>('mc:hb:harness', 'hermes')
   const [models, setModels] = useState<string[]>([])
   const [modelsErr, setModelsErr] = useState<string | null>(null)
   const [modelsStatus, setModelsStatus] = useState<'loading' | 'connected' | 'failed'>('loading')
   const [showModelsErr, setShowModelsErr] = useState(false)
   const [model, setModel] = useState('')
-  const [packId, setPackId] = useState('quick-smoke-pack')
-  const [samples, setSamples] = useState(1)
+  const [packId, setPackId] = usePersistedState('mc:hb:packId', 'quick-smoke-pack')
+  const [samples, setSamples] = usePersistedState('mc:hb:samples', 1)
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [endpoint, setEndpoint] = useState('')
   const [token, setToken] = useState('')
@@ -261,8 +262,8 @@ export function HarnessBenchmarks() {
 
   // comparison
   const [comparison, setComparison] = useState<HbComparisonRow[]>([])
-  const [compareMode, setCompareMode] = useState<'latest' | 'average' | 'best'>('latest')
-  const [groupBy, setGroupBy] = useState<'model' | 'provider'>('model')
+  const [compareMode, setCompareMode] = usePersistedState<'latest' | 'average' | 'best'>('mc:hb:compareMode', 'latest')
+  const [groupBy, setGroupBy] = usePersistedState<'model' | 'provider'>('mc:hb:groupBy', 'model')
 
   const laneLabel = useCallback((id: string) => lanes.find(l => l.id === id)?.label ?? id, [lanes])
 

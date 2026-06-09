@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.7.43] — 2026-06-08
+
+### Changed
+
+- **Harness Benchmarks remembers your setup across reloads.** Added a reusable `usePersistedState` hook (localStorage-backed `useState`) and applied it to the most-used controls — harness, task pack, sample count, and the Compare view's mode (latest/average/best) and group-by (model/provider). Previously every reload reset these to defaults; now your benchmark configuration and comparison view persist. Verified: changing group-by writes to storage and is restored on load. tsc + build clean.
+
 ## [0.7.42] — 2026-06-08
 
 ### Changed
