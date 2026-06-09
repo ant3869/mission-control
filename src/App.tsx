@@ -75,13 +75,20 @@ function ViewPane({
   )
 }
 
+const VIEW_STORAGE_KEY = 'mc:lastView'
+function initialView(): View {
+  try { const s = localStorage.getItem(VIEW_STORAGE_KEY); if (s && s in VIEW_TITLES) return s as View } catch { /* ignore */ }
+  return 'calendar'
+}
+
 export default function App() {
-  const [activeView, setActiveView] = useState<View>('calendar')
-  const [mounted, setMounted]       = useState<Set<View>>(new Set(['calendar' as View]))
+  const [activeView, setActiveView] = useState<View>(initialView)
+  const [mounted, setMounted]       = useState<Set<View>>(() => new Set([activeView]))
 
   const navigate = (view: View) => {
     setMounted(prev => new Set([...prev, view]))
     setActiveView(view)
+    try { localStorage.setItem(VIEW_STORAGE_KEY, view) } catch { /* ignore */ }
   }
 
   // Reflect the active view in the browser tab title (history + tab identification).

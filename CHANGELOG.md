@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.7.42] — 2026-06-08
+
+### Changed
+
+- **The app remembers your last view across reloads.** It always reset to Calendar on refresh, losing your place (annoying when working in a specific view like Harness Benchmarks). The active view is now persisted to `localStorage` and restored on load (validated against known views; falls back to Calendar). Verified: navigate to Memory → reload → still on Memory.
+
 ## [0.7.41] — 2026-06-08
 
 ### Added
