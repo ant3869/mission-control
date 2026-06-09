@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.7.46] — 2026-06-08
+
+### Fixed
+
+- **Platform Metrics (OpenClaw/Hermes): friendly "can't reach" message instead of raw "fetch failed".** The not-connected empty state printed the raw network error verbatim. Network-type errors now show actionable guidance — "Couldn't reach the <platform> server — check it's running and that the URL/token are set in Settings" — while non-network errors still show verbatim. (Continuation of the 0.7.45 error-message review.) Verified on the Hermes view (server down): friendly text shown, raw "fetch failed" gone; tsc + build clean.
+
 ## [0.7.45] — 2026-06-08
 
 ### Fixed

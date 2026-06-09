@@ -983,7 +983,13 @@ function NotConnected({ theme, error, onNav }: { theme: typeof THEME[ConnectorId
     <div className="flex flex-col items-center justify-center h-full gap-3 text-center px-6">
       <span className="text-4xl">{theme.icon}</span>
       <p className="text-sm text-text-primary font-medium">{theme.label} not connected</p>
-      <p className="text-xs text-text-muted max-w-sm">{error ?? 'Add a gateway URL + token in Settings to pull live metrics.'}</p>
+      <p className="text-xs text-text-muted max-w-sm">
+        {error
+          ? (/fetch|network|ECONNREFUSED|timeout|getaddr|refused|socket/i.test(error)
+              ? `Couldn't reach the ${theme.label} server — check it's running and that the URL/token are set in Settings.`
+              : error)
+          : 'Add a gateway URL + token in Settings to pull live metrics.'}
+      </p>
       {onNav && (
         <button onClick={onNav} className="mt-1 px-3 py-1.5 rounded-lg border border-border bg-card hover:bg-card-hover text-xs text-text-secondary hover:text-text-primary transition-colors">
           Open Settings
