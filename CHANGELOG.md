@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.7.37] — 2026-06-08
+
+### Added
+
+- **App version shown in the sidebar footer.** After many releases there was no way to tell which build you were viewing. The version (from `package.json`, injected at build via a Vite `define` → `__APP_VERSION__`) now appears in the sidebar footer — next to the user in the expanded state, under the avatar when collapsed. Helps confirm deploys and report issues against a specific build.
+
+### Verified
+
+- Runtime-confirmed the 0.7.36 Escape-to-close behaviour end to end (opened the New Project modal, pressed Escape, it closed). Also confirmed Escape coverage is complete — every overlay either uses the shared hook or its own handler; the evaluations task forms are inline (not overlays).
+
 ## [0.7.36] — 2026-06-08
 
 ### Accessibility

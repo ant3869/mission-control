@@ -230,7 +230,10 @@ export function Sidebar({ activeView, onNavigate }: SidebarProps) {
       {/* User footer */}
       <div className={clsx('shrink-0 border-t border-border py-3', collapsed ? 'px-1.5' : 'px-4')}>
         {collapsed ? (
-          <div className="w-7 h-7 rounded-full bg-gradient-to-br from-emerald-500 to-green-600 mx-auto" />
+          <div className="flex flex-col items-center gap-1">
+            <div className="w-7 h-7 rounded-full bg-gradient-to-br from-emerald-500 to-green-600" />
+            <span className="text-[9px] text-text-muted tabular-nums">v{__APP_VERSION__}</span>
+          </div>
         ) : (
           <div className="flex items-center gap-2">
             <div className="w-6 h-6 rounded-full bg-gradient-to-br from-emerald-500 to-green-600 shrink-0" />
@@ -238,6 +241,7 @@ export function Sidebar({ activeView, onNavigate }: SidebarProps) {
               <span className="text-xs font-medium text-text-primary truncate">Ant</span>
               <span className="text-xxs text-text-muted truncate">anthon3869@gmail.com</span>
             </div>
+            <span className="ml-auto text-xxs text-text-muted tabular-nums shrink-0" title="App version">v{__APP_VERSION__}</span>
           </div>
         )}
       </div>
