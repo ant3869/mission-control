@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.7.39] — 2026-06-08
+
+### Changed
+
+- **Flow (session run history) now auto-refreshes**, matching Brain (0.7.38). It loaded once; now it silently re-fetches every 15s (no spinner flash, honours the global Pause), so new agent sessions appear without a manual Refresh. Also fixed the same latent bug as Brain — the Refresh button was passing its click event as the new `silent` flag. tsc + build clean, view renders.
+
 ## [0.7.38] — 2026-06-08
 
 ### Changed

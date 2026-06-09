@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
+import { isRefreshPaused } from '../lib/refreshBus'
 import { useEscapeKey } from '../hooks/useEscapeKey'
 import { clsx } from 'clsx'
 import {
@@ -274,16 +275,23 @@ export default function Flow() {
   const [loading, setLoading]                 = useState(false)
   const [error, setError]                     = useState<string | null>(null)
 
-  const load = useCallback(async () => {
-    setLoading(true); setError(null)
+  const load = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true)
+    setError(null)
     try {
       const [runsR, sumR] = await Promise.all([fetchRuns(source, limit), fetchSummary()])
       setData(runsR); setSummary(sumR)
     } catch (e: any) { setError(e.message ?? 'Failed to load') }
-    finally { setLoading(false) }
+    finally { if (!silent) setLoading(false) }
   }, [source, limit])
 
   useEffect(() => { load() }, [load])
+
+  // Keep session history live: silent auto-refresh every 15s (honours global Pause).
+  useEffect(() => {
+    const t = setInterval(() => { if (!isRefreshPaused()) load(true) }, 15_000)
+    return () => clearInterval(t)
+  }, [load])
 
   const totalMessages = summary
     ? (summary.openclaw.messages + summary.hermes.messages).toLocaleString()
@@ -307,7 +315,7 @@ export default function Flow() {
           <select value={limit} onChange={e => setLimit(Number(e.target.value))} className="text-xs bg-bg-secondary border border-white/10 rounded px-2 py-1.5 text-text-primary">
             {[25, 50, 100, 200].map(n => <option key={n} value={n}>Last {n}</option>)}
           </select>
-          <button onClick={load} disabled={loading} className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-white/5 hover:bg-white/10 border border-white/10 rounded transition-colors">
+          <button onClick={() => load()} disabled={loading} className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-white/5 hover:bg-white/10 border border-white/10 rounded transition-colors">
             <RefreshCw size={12} className={clsx(loading && 'animate-spin')} /> Refresh
           </button>
         </div>
