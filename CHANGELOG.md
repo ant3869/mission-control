@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.7.50] — 2026-06-09
+
+### Removed
+
+- **Deleted the dead `Methodology.tsx` (`MethodologyPanel`, 8.7k chars).** A second dead-code sweep (unused exported symbols) found it was a duplicate of the live `InlineMethodology` that the Evaluations view actually uses — `MethodologyPanel` had zero references. Removed it. (Left `ScoreBreakdown` in Scorecards.tsx for now — also unused but its helper sub-components/imports would cascade; noted for a careful future prune.) Verified `tsc` clean + `vite build` succeeds.
+
 ## [0.7.49] — 2026-06-09
 
 ### Added
