@@ -5,7 +5,7 @@
 //          only search whose results didn't navigate anywhere.)
 
 import { useState, useEffect, useRef, useMemo } from 'react'
-import { Search, Bell, Loader2, X, FileText, BookOpen, CheckSquare, CornerDownLeft, ArrowRight, Pause, Play } from 'lucide-react'
+import { Search, Loader2, X, FileText, BookOpen, CheckSquare, CornerDownLeft, ArrowRight, Pause, Play } from 'lucide-react'
 import type { View } from '../../types'
 import { usePaused, toggleRefreshPaused } from '../../lib/refreshBus'
 
@@ -179,13 +179,6 @@ export function TopBar({ title, onNavigate, views }: TopBarProps) {
     return () => window.removeEventListener('keydown', handler)
   }, [])
 
-  const handlePing = () => {
-    if (!('Notification' in window)) return
-    const send = () => new Notification('Mission Control', { body: '👋 You pinged yourself!', icon: '/favicon.ico' })
-    if (Notification.permission === 'granted') send()
-    else if (Notification.permission !== 'denied') Notification.requestPermission().then(p => { if (p === 'granted') send() })
-  }
-
   return (
     <>
       <header className="flex items-center justify-between h-12 px-5 border-b border-border bg-surface shrink-0">
@@ -210,18 +203,6 @@ export function TopBar({ title, onNavigate, views }: TopBarProps) {
             <span>{paused ? 'Paused' : 'Pause'}</span>
           </button>
 
-          <button onClick={handlePing}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded border border-border bg-card hover:bg-card-hover text-text-secondary hover:text-text-primary transition-colors text-xs">
-            <Bell size={12} />
-            <span>Ping Ant</span>
-          </button>
-
-          <button
-            onClick={() => onNavigate('settings')}
-            title="Open Settings"
-            aria-label="Open Settings"
-            className="w-7 h-7 rounded-full bg-gradient-to-br from-emerald-500 to-green-600 shrink-0 cursor-pointer hover:ring-2 hover:ring-white/20 transition-shadow"
-          />
         </div>
       </header>
 

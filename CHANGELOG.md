@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.7.54] — 2026-06-10
+
+### Changed
+
+- **Sidebar header** — replaced the "N" placeholder square with the Mission Control badge icon (`public/icon.png`).
+- **Sidebar footer** — added version number (`vX.Y.Z`) next to the user name; moved "Mission Control" label below the user name so the app identity is surfaced at the bottom rather than crowding the header.
+- **TopBar cleanup** — removed the non-functional "Ping Ant" notification button and the redundant green avatar/Settings shortcut (Settings is accessible from the sidebar); Pause button retained as it controls the global auto-refresh bus.
+
 ## [0.7.53] — 2026-06-10
 
 ### Added
