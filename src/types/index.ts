@@ -11,6 +11,7 @@ export type NavItem = {
 }
 
 export type View =
+  | 'home'        // Landing overview — hero + at-a-glance summaries
   | 'tasks'       // Tasks + Approvals
   | 'watch'       // Watch + Agents
   | 'docs'        // Docs + Notes

@@ -1,0 +1,62 @@
+[
+  {
+    "id": "5852c2c0-e6e6-4443-85cb-4ec1e9e18a25",
+    "name": "Error spike",
+    "enabled": true,
+    "severity": "warning",
+    "condition": "error_rate",
+    "threshold": 5,
+    "windowMinutes": 30,
+    "source": "all",
+    "createdAt": "2026-06-08T15:47:58.655Z",
+    "updatedAt": "2026-06-08T15:47:58.655Z"
+  },
+  {
+    "id": "6e52a3ba-25da-43da-8d78-4762781b8d60",
+    "name": "Tool loop detected",
+    "enabled": true,
+    "severity": "warning",
+    "condition": "loop_detected",
+    "threshold": 8,
+    "windowMinutes": 15,
+    "source": "all",
+    "createdAt": "2026-06-08T15:47:58.663Z",
+    "updatedAt": "2026-06-08T15:47:58.663Z"
+  },
+  {
+    "id": "db35bdae-ef85-454a-a529-85581e26fac4",
+    "name": "Agents idle",
+    "enabled": true,
+    "severity": "info",
+    "condition": "no_activity",
+    "threshold": 0,
+    "windowMinutes": 120,
+    "source": "all",
+    "createdAt": "2026-06-08T15:47:58.669Z",
+    "updatedAt": "2026-06-08T15:47:58.669Z"
+  },
+  {
+    "id": "20c15a14-9102-4daa-848f-eaa5f10f67d2",
+    "name": "Session stalled",
+    "enabled": true,
+    "severity": "warning",
+    "condition": "session_stalled",
+    "threshold": 30,
+    "windowMinutes": 60,
+    "source": "all",
+    "createdAt": "2026-06-08T15:47:58.674Z",
+    "updatedAt": "2026-06-08T15:47:58.674Z"
+  },
+  {
+    "id": "29fcf88f-9b63-43dd-a51d-168b351291da",
+    "name": "Token usage spike",
+    "enabled": true,
+    "severity": "info",
+    "condition": "token_spike",
+    "threshold": 500000,
+    "windowMinutes": 60,
+    "source": "all",
+    "createdAt": "2026-06-08T15:47:58.680Z",
+    "updatedAt": "2026-06-08T15:47:58.680Z"
+  }
+]

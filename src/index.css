@@ -3,6 +3,9 @@
 @tailwind utilities;
 
 :root {
+  /* Declare the page as natively dark so Chrome/Edge auto-dark-mode and
+     Dark Reader don't repaint (invert/lighten) the already-dark palette. */
+  color-scheme: dark;
   --bg-base: #0b0b0d;
   --bg-surface: #0f0f12;
   --bg-card: #141417;

@@ -1,3 +1,7 @@
+<div align="center">
+  <img src="public/icon.png" alt="Mission Control" width="180" />
+</div>
+
 # Mission Control
 
 A command-center dashboard for orchestrating AI agents, projects, content pipelines, and day-to-day ops — all from a single pane of glass.

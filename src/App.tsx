@@ -4,11 +4,12 @@ import { Loader2 } from 'lucide-react'
 import { Sidebar } from './components/layout/Sidebar'
 import { TopBar } from './components/layout/TopBar'
 import { ErrorBoundary } from './components/ErrorBoundary'
-import { ScheduledTasks } from './views/ScheduledTasks'   // eager — default landing view
+import { Home } from './views/Home'                       // eager — default landing view
 import type { View } from './types'
 
 // Lazy views: each becomes its own chunk, fetched on first navigation, so the
 // initial bundle is just the shell + landing page instead of all ~25 views.
+const ScheduledTasks    = lazy(() => import('./views/ScheduledTasks').then(m => ({ default: m.ScheduledTasks })))
 const Memory            = lazy(() => import('./views/Memory').then(m => ({ default: m.Memory })))
 const Chats             = lazy(() => import('./views/Chats').then(m => ({ default: m.Chats })))
 const TasksApprovals    = lazy(() => import('./views/TasksApprovals').then(m => ({ default: m.TasksApprovals })))
@@ -33,6 +34,7 @@ const Alerts            = lazy(() => import('./views/Alerts'))
 const Security          = lazy(() => import('./views/Security'))
 
 const VIEW_TITLES: Record<View, string> = {
+  home:        'Home',
   todos:       'To-Do',
   tasks:       'Tasks & Approvals',
   watch:       'Watch & Agents',
@@ -80,7 +82,7 @@ function ViewPane({
 const VIEW_STORAGE_KEY = 'mc:lastView'
 function initialView(): View {
   try { const s = localStorage.getItem(VIEW_STORAGE_KEY); if (s && s in VIEW_TITLES) return s as View } catch { /* ignore */ }
-  return 'calendar'
+  return 'home'
 }
 
 export default function App() {
@@ -108,6 +110,7 @@ export default function App() {
         />
         <main className="flex-1 overflow-hidden bg-base relative">
 
+          <ViewPane view="home"        active={activeView} mounted={mounted}><Home onNavigate={navigate} /></ViewPane>
           <ViewPane view="calendar"    active={activeView} mounted={mounted}><ScheduledTasks /></ViewPane>
           <ViewPane view="todos"       active={activeView} mounted={mounted}><Todos /></ViewPane>
           <ViewPane view="tasks"       active={activeView} mounted={mounted}><TasksApprovals /></ViewPane>

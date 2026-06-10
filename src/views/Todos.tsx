@@ -1,17 +1,16 @@
 // title: To-Do view
 // path: src/views/Todos.tsx
-// purpose: Personal quick-capture to-do list. Natural-language quick add
-//          ("pay water bill tomorrow !high @long"), severity + horizon + due
-//          dates with overdue badges, inline editing, and per-task agent
-//          research that attaches a summary, action steps, links, and facts.
+// purpose: Personal quick-capture to-do list — compact rows click to open a
+//          side drawer (same pattern as Inventory). Natural-language quick add,
+//          severity + horizon + due dates, inline research via OpenClaw/Hermes.
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { clsx } from 'clsx'
 import {
   ListTodo, RefreshCw, AlertCircle, Plus, Trash2, Sparkles, Loader2,
-  Circle, CheckCircle2, ChevronDown, ChevronRight, ExternalLink, Link2,
-  Pencil, Check, X, CalendarDays,
+  Circle, CheckCircle2, ExternalLink, Link2, Pencil, Check, X, CalendarDays,
 } from 'lucide-react'
+import { useEscapeKey } from '../hooks/useEscapeKey'
 import { isRefreshPaused } from '../lib/refreshBus'
 import { friendlyError } from '../lib/friendlyError'
 
@@ -85,9 +84,6 @@ async function startResearch(id: string): Promise<{ todo: Todo }> {
 }
 
 // ─── Quick-add parsing ────────────────────────────────────────────────────────
-// Todoist-style tokens: "!high" / "!crit" sets severity, "@long" / "@short"
-// sets horizon, and a trailing "today" / "tomorrow" / "next week" sets the due
-// date. Everything else stays in the title.
 
 const SEV_TOKEN: Record<string, Severity> = {
   low: 'low', med: 'medium', medium: 'medium', high: 'high', crit: 'critical', critical: 'critical',
@@ -111,7 +107,7 @@ function parseQuickAdd(raw: string, defaults: { severity: Severity; horizon: Hor
   const m = title.match(/(?:^|\s)(today|tomorrow|next week)\s*$/i)
   if (m) {
     const d = new Date()
-    d.setHours(23, 59, 0, 0)   // end of day, so "today" isn't instantly overdue
+    d.setHours(23, 59, 0, 0)
     const kw = m[1].toLowerCase()
     if (kw === 'tomorrow')  d.setDate(d.getDate() + 1)
     if (kw === 'next week') d.setDate(d.getDate() + 7)
@@ -143,7 +139,6 @@ function fmtAgo(iso: string): string {
   return `${Math.round(secs / 86400)}d ago`
 }
 
-/** Whole days from today to the due date (negative = overdue). */
 function daysUntil(iso: string): number {
   const due = new Date(iso); due.setHours(0, 0, 0, 0)
   const now = new Date();    now.setHours(0, 0, 0, 0)
@@ -159,211 +154,302 @@ function dueBadge(iso: string): { label: string; cls: string } {
   return { label: new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }), cls: 'bg-white/5 border-white/10 text-text-muted' }
 }
 
-/** ISO → value for <input type="date">, local time. */
 function isoToDateInput(iso: string): string {
   if (!iso) return ''
   const d = new Date(iso)
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
-/** <input type="date"> value → ISO at local end-of-day ('' clears). */
 function dateInputToIso(v: string): string {
   if (!v) return ''
   const d = new Date(`${v}T23:59:00`)
   return Number.isNaN(d.getTime()) ? '' : d.toISOString()
 }
 
-// ─── Research panel ───────────────────────────────────────────────────────────
+// ─── Todo row ─────────────────────────────────────────────────────────────────
 
-function ResearchPanel({ r }: { r: TodoResearch }) {
+function TodoRow({ todo, active, onToggle, onClick }: {
+  todo:     Todo
+  active:   boolean
+  onToggle: (t: Todo) => void
+  onClick:  () => void
+}) {
+  const r    = todo.research
+  const due  = todo.dueDate && !todo.done ? dueBadge(todo.dueDate) : null
+  const over = todo.dueDate && !todo.done && daysUntil(todo.dueDate) < 0
+
   return (
-    <div className="mt-2 ml-9 mr-2 mb-1 rounded border border-violet-500/20 bg-violet-500/5 p-3 flex flex-col gap-3 text-xs">
-      {r.summary && <p className="text-text-secondary leading-relaxed">{r.summary}</p>}
+    <div className={clsx(
+      'flex items-center gap-2.5 w-full transition-colors',
+      over && 'border-l-2 border-l-red-500/50',
+      active ? 'bg-card-hover' : 'bg-card hover:bg-card-hover',
+    )}>
+      {/* Circle toggle — independent quick action */}
+      <button
+        onClick={e => { e.stopPropagation(); onToggle(todo) }}
+        className="shrink-0 pl-3 py-2.5 text-text-muted hover:text-emerald-400 transition-colors"
+        title={todo.done ? 'Mark as open' : 'Mark as done'}
+      >
+        {todo.done
+          ? <CheckCircle2 size={16} className="text-emerald-400" />
+          : <Circle size={16} />
+        }
+      </button>
 
-      {r.steps && r.steps.length > 0 && (
-        <div>
-          <div className="text-[10px] font-semibold uppercase tracking-wider text-text-muted mb-1">Suggested steps</div>
-          <ol className="list-decimal list-inside flex flex-col gap-0.5 text-text-secondary">
-            {r.steps.map((s, i) => <li key={i}>{s}</li>)}
-          </ol>
-        </div>
-      )}
+      {/* Row body — clicking opens the drawer */}
+      <button
+        onClick={onClick}
+        className="flex flex-1 min-w-0 items-center gap-2 pr-3 py-2.5 text-left"
+      >
+        <span className={clsx(
+          'flex-1 min-w-0 text-sm truncate',
+          todo.done ? 'line-through text-text-muted' : 'text-text-primary',
+        )}>
+          {todo.title}
+        </span>
 
-      {r.links && r.links.length > 0 && (
-        <div>
-          <div className="text-[10px] font-semibold uppercase tracking-wider text-text-muted mb-1">Links</div>
-          <div className="flex flex-col gap-1">
-            {r.links.map((l, i) => (
-              <a key={i} href={l.url} target="_blank" rel="noopener noreferrer"
-                 className="flex items-center gap-1.5 text-accent-blue hover:underline w-fit">
-                <ExternalLink size={11} className="shrink-0" />
-                <span className="truncate">{l.title || l.url}</span>
-              </a>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {r.data && Object.keys(r.data).length > 0 && (
-        <div>
-          <div className="text-[10px] font-semibold uppercase tracking-wider text-text-muted mb-1">Key facts</div>
-          <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5">
-            {Object.entries(r.data).map(([k, v]) => (
-              <div key={k} className="contents">
-                <span className="text-text-muted">{k}</span>
-                <span className="text-text-secondary">{String(v)}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+        {due && (
+          <span className={clsx('shrink-0 flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded border', due.cls)}>
+            <CalendarDays size={10} /> {due.label}
+          </span>
+        )}
+        <span className={clsx('shrink-0 text-[10px] px-1.5 py-0.5 rounded border capitalize', SEVERITY_STYLE[todo.severity])}>
+          {todo.severity}
+        </span>
+        {r.status === 'pending' && <Loader2 size={11} className="shrink-0 text-violet-400 animate-spin" />}
+        {r.status === 'done'    && <Sparkles size={11} className="shrink-0 text-violet-400" />}
+      </button>
     </div>
   )
 }
 
-// ─── Inline edit form ─────────────────────────────────────────────────────────
+// ─── Detail drawer ────────────────────────────────────────────────────────────
 
-function EditForm({ todo, onSave, onCancel }: {
-  todo: Todo
-  onSave: (patch: TodoPatch) => void
-  onCancel: () => void
+function TodoDrawer({ todo, onClose, onToggle, onSave, onDelete, onResearch }: {
+  todo:       Todo
+  onClose:    () => void
+  onToggle:   (t: Todo) => void
+  onSave:     (t: Todo, patch: TodoPatch) => void
+  onDelete:   (t: Todo) => void
+  onResearch: (t: Todo) => void
 }) {
+  useEscapeKey(onClose)
+
+  const [editing, setEditing]   = useState(false)
   const [title, setTitle]       = useState(todo.title)
   const [notes, setNotes]       = useState(todo.notes)
   const [severity, setSeverity] = useState<Severity>(todo.severity)
   const [horizon, setHorizon]   = useState<Horizon>(todo.horizon)
   const [due, setDue]           = useState(isoToDateInput(todo.dueDate))
 
+  // Sync local state when the selected todo changes
+  useEffect(() => {
+    setTitle(todo.title)
+    setNotes(todo.notes)
+    setSeverity(todo.severity)
+    setHorizon(todo.horizon)
+    setDue(isoToDateInput(todo.dueDate))
+    setEditing(false)
+  }, [todo.id]) // eslint-disable-line react-hooks/exhaustive-deps
+
   function save() {
     if (!title.trim()) return
-    onSave({ title: title.trim(), notes, severity, horizon, dueDate: dateInputToIso(due) })
+    onSave(todo, { title: title.trim(), notes, severity, horizon, dueDate: dateInputToIso(due) })
+    setEditing(false)
   }
 
-  function onKeyDown(e: React.KeyboardEvent) {
-    if (e.key === 'Enter')  save()
-    if (e.key === 'Escape') onCancel()
-  }
-
-  const inputCls = 'bg-white/5 border border-white/10 rounded px-2 py-1.5 text-xs text-text-primary placeholder:text-text-muted focus:outline-none focus:border-emerald-500/50'
+  const r        = todo.research
+  const dueBadgeVal = todo.dueDate && !todo.done ? dueBadge(todo.dueDate) : null
+  const inputCls = 'w-full px-2.5 py-1.5 rounded-lg bg-base border border-border text-xs text-text-primary placeholder:text-text-muted outline-none focus:border-accent-blue/50'
 
   return (
-    <div className="flex flex-col gap-1.5 flex-1 min-w-0" onKeyDown={onKeyDown}>
-      <input value={title} onChange={e => setTitle(e.target.value)} autoFocus
-             className={clsx(inputCls, 'w-full')} placeholder="Title" />
-      <input value={notes} onChange={e => setNotes(e.target.value)}
-             className={clsx(inputCls, 'w-full')} placeholder="Notes (optional)" />
-      <div className="flex items-center gap-1.5 flex-wrap">
-        <select value={severity} onChange={e => setSeverity(e.target.value as Severity)} className={inputCls} title="Severity">
-          <option value="low">Low</option>
-          <option value="medium">Medium</option>
-          <option value="high">High</option>
-          <option value="critical">Critical</option>
-        </select>
-        <select value={horizon} onChange={e => setHorizon(e.target.value as Horizon)} className={inputCls} title="Time horizon">
-          <option value="short">Short term</option>
-          <option value="long">Long term</option>
-        </select>
-        <input type="date" value={due} onChange={e => setDue(e.target.value)} className={inputCls} title="Due date" />
-        {due && (
-          <button onClick={() => setDue('')} className="text-[10px] text-text-muted hover:text-text-secondary" title="Clear due date">
-            clear date
+    <div className="flex flex-col h-full w-[380px] min-w-[380px] border-l border-border bg-surface overflow-y-auto">
+
+      {/* Header */}
+      <div className="flex items-start justify-between px-5 py-4 border-b border-border shrink-0 gap-2">
+        <div className="flex items-center gap-2.5 min-w-0 flex-1">
+          <button
+            onClick={() => onToggle(todo)}
+            className="shrink-0 text-text-muted hover:text-emerald-400 transition-colors"
+            title={todo.done ? 'Mark as open' : 'Mark as done'}
+          >
+            {todo.done
+              ? <CheckCircle2 size={18} className="text-emerald-400" />
+              : <Circle size={18} />
+            }
           </button>
-        )}
-        <button onClick={save} disabled={!title.trim()}
-                className="flex items-center gap-1 px-2 py-1.5 text-xs bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 rounded text-emerald-400 transition-colors disabled:opacity-40">
-          <Check size={12} /> Save
-        </button>
-        <button onClick={onCancel}
-                className="flex items-center gap-1 px-2 py-1.5 text-xs bg-white/5 hover:bg-white/10 border border-white/10 rounded text-text-secondary transition-colors">
-          <X size={12} /> Cancel
+          <p className={clsx('text-sm font-semibold leading-snug min-w-0', todo.done ? 'line-through text-text-muted' : 'text-text-primary')}>
+            {todo.title}
+          </p>
+        </div>
+        <button aria-label="Close" onClick={onClose} className="p-1 rounded hover:bg-card text-text-muted hover:text-text-primary shrink-0">
+          <X size={15} />
         </button>
       </div>
-    </div>
-  )
-}
 
-// ─── Todo row ─────────────────────────────────────────────────────────────────
+      <div className="flex flex-col gap-4 p-5 overflow-y-auto flex-1">
 
-function TodoRow({ todo, onToggle, onDelete, onResearch, onSave }: {
-  todo: Todo
-  onToggle: (t: Todo) => void
-  onDelete: (t: Todo) => void
-  onResearch: (t: Todo) => void
-  onSave: (t: Todo, patch: TodoPatch) => void
-}) {
-  const [expanded, setExpanded] = useState(false)
-  const [editing, setEditing]   = useState(false)
-  const r = todo.research
-  const hasResearch = r.status === 'done'
-  const due = todo.dueDate && !todo.done ? dueBadge(todo.dueDate) : null
+        {/* Property chips */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className={clsx('text-[10px] px-1.5 py-0.5 rounded border capitalize', SEVERITY_STYLE[todo.severity])}>
+            {todo.severity}
+          </span>
+          <span className="text-[10px] px-1.5 py-0.5 rounded border border-border bg-base text-text-muted">
+            {HORIZON_LABEL[todo.horizon]}
+          </span>
+          {dueBadgeVal && (
+            <span className={clsx('flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded border', dueBadgeVal.cls)}>
+              <CalendarDays size={10} /> {dueBadgeVal.label}
+            </span>
+          )}
+          <span className="ml-auto text-[10px] text-text-muted" title={todo.createdAt}>
+            {fmtAgo(todo.createdAt)}
+          </span>
+        </div>
 
-  return (
-    <div className="rounded border border-white/10 bg-white/[0.02] hover:bg-white/[0.04] transition-colors px-3 py-2">
-      <div className="flex items-center gap-2.5">
-        <button onClick={() => onToggle(todo)} className="shrink-0 self-start mt-0.5 text-text-muted hover:text-emerald-400 transition-colors" title={todo.done ? 'Mark as open' : 'Mark as done'}>
-          {todo.done ? <CheckCircle2 size={17} className="text-emerald-400" /> : <Circle size={17} />}
-        </button>
-
+        {/* Edit form */}
         {editing ? (
-          <EditForm todo={todo} onCancel={() => setEditing(false)}
-                    onSave={patch => { onSave(todo, patch); setEditing(false) }} />
-        ) : (
-          <>
-            <div className="flex-1 min-w-0">
-              <span className={clsx('text-sm', todo.done ? 'line-through text-text-muted' : 'text-text-primary')}>
-                {todo.title}
-              </span>
-              {todo.notes && <span className="ml-2 text-xs text-text-muted truncate">{todo.notes}</span>}
+          <div className="flex flex-col gap-3">
+            <label className="flex flex-col gap-1">
+              <span className="text-xxs font-semibold uppercase tracking-wide text-text-muted">Title</span>
+              <input value={title} onChange={e => setTitle(e.target.value)} autoFocus className={inputCls}
+                     onKeyDown={e => { if (e.key === 'Enter') save(); if (e.key === 'Escape') setEditing(false) }} />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-xxs font-semibold uppercase tracking-wide text-text-muted">Notes</span>
+              <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={3}
+                        className={clsx(inputCls, 'resize-none')} placeholder="Additional context…" />
+            </label>
+            <div className="grid grid-cols-2 gap-2">
+              <label className="flex flex-col gap-1">
+                <span className="text-xxs font-semibold uppercase tracking-wide text-text-muted">Severity</span>
+                <select value={severity} onChange={e => setSeverity(e.target.value as Severity)} className={inputCls}>
+                  <option value="low">Low</option>
+                  <option value="medium">Medium</option>
+                  <option value="high">High</option>
+                  <option value="critical">Critical</option>
+                </select>
+              </label>
+              <label className="flex flex-col gap-1">
+                <span className="text-xxs font-semibold uppercase tracking-wide text-text-muted">Horizon</span>
+                <select value={horizon} onChange={e => setHorizon(e.target.value as Horizon)} className={inputCls}>
+                  <option value="short">Short term</option>
+                  <option value="long">Long term</option>
+                </select>
+              </label>
             </div>
-
-            {due && (
-              <span className={clsx('shrink-0 flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded border', due.cls)}>
-                <CalendarDays size={10} /> {due.label}
-              </span>
-            )}
-            <span className={clsx('shrink-0 text-[10px] px-1.5 py-0.5 rounded border capitalize', SEVERITY_STYLE[todo.severity])}>
-              {todo.severity}
-            </span>
-            <span className="shrink-0 text-[10px] px-1.5 py-0.5 rounded border border-white/10 bg-white/5 text-text-muted">
-              {HORIZON_LABEL[todo.horizon]}
-            </span>
-            <span className="shrink-0 text-[10px] text-text-muted tabular-nums hidden sm:block" title={todo.createdAt}>
-              {fmtAgo(todo.createdAt)}
-            </span>
-
-            {/* Research control */}
-            {r.status === 'pending' ? (
-              <span className="shrink-0 flex items-center gap-1 text-[10px] text-violet-400" title="Agent is researching this task">
-                <Loader2 size={12} className="animate-spin" /> researching…
-              </span>
-            ) : hasResearch ? (
-              <button onClick={() => setExpanded(e => !e)}
-                      className="shrink-0 flex items-center gap-1 text-[10px] text-violet-400 hover:text-violet-300 transition-colors"
-                      title="Show research">
-                <Sparkles size={12} />
-                {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+            <label className="flex flex-col gap-1">
+              <span className="text-xxs font-semibold uppercase tracking-wide text-text-muted">Due date</span>
+              <div className="flex items-center gap-2">
+                <input type="date" value={due} onChange={e => setDue(e.target.value)} className={clsx(inputCls, 'flex-1')} />
+                {due && (
+                  <button onClick={() => setDue('')} className="text-[10px] text-text-muted hover:text-text-secondary">
+                    clear
+                  </button>
+                )}
+              </div>
+            </label>
+            <div className="flex items-center gap-2">
+              <button onClick={save} disabled={!title.trim()}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-emerald-500/40 bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25 text-xs font-medium disabled:opacity-40">
+                <Check size={12} /> Save
               </button>
-            ) : (
-              <button onClick={() => onResearch(todo)}
-                      className="shrink-0 flex items-center gap-1 text-[10px] text-text-muted hover:text-violet-400 transition-colors"
-                      title={r.status === 'failed' ? `Research failed: ${r.error} — click to retry` : 'Ask an agent to research this task'}>
-                {r.status === 'failed' && <AlertCircle size={12} className="text-red-400" />}
-                <Sparkles size={12} />
-                <span className="hidden md:inline">{r.status === 'failed' ? 'retry' : 'research'}</span>
+              <button onClick={() => setEditing(false)}
+                      className="px-3 py-1.5 rounded-lg border border-border bg-card hover:bg-card-hover text-text-secondary text-xs">
+                Cancel
               </button>
-            )}
-
-            <button onClick={() => setEditing(true)} className="shrink-0 text-text-muted hover:text-text-primary transition-colors" title="Edit">
-              <Pencil size={13} />
-            </button>
-            <button onClick={() => onDelete(todo)} className="shrink-0 text-text-muted hover:text-red-400 transition-colors" title="Delete">
-              <Trash2 size={13} />
-            </button>
-          </>
+            </div>
+          </div>
+        ) : (
+          todo.notes ? (
+            <div>
+              <p className="text-xxs font-semibold uppercase tracking-wide text-text-muted mb-1.5">Notes</p>
+              <p className="text-xs text-text-secondary leading-relaxed whitespace-pre-wrap">{todo.notes}</p>
+            </div>
+          ) : null
         )}
-      </div>
 
-      {hasResearch && expanded && !editing && <ResearchPanel r={r} />}
+        {/* Research section */}
+        <div className="rounded-lg border border-violet-900/30 bg-violet-950/15 p-3">
+          {r.status === 'pending' ? (
+            <div className="flex items-center gap-2 text-xs text-violet-200">
+              <Loader2 size={13} className="animate-spin text-violet-400" />
+              Agent is researching… (~1–2 min)
+            </div>
+          ) : r.status === 'done' ? (
+            <div className="flex flex-col gap-3">
+              <div className="flex items-center justify-between">
+                <span className="flex items-center gap-1.5 text-xs font-medium text-violet-200">
+                  <Sparkles size={13} className="text-violet-400" /> Research
+                </span>
+                <button onClick={() => onResearch(todo)} className="text-[10px] text-violet-400/70 hover:text-violet-300">
+                  re-run
+                </button>
+              </div>
+              {r.summary && (
+                <p className="text-xs text-text-secondary leading-relaxed">{r.summary}</p>
+              )}
+              {r.steps && r.steps.length > 0 && (
+                <div>
+                  <p className="text-xxs font-semibold uppercase tracking-wide text-text-muted mb-1.5">Suggested steps</p>
+                  <ol className="list-decimal list-inside flex flex-col gap-0.5 text-xs text-text-secondary">
+                    {r.steps.map((s, i) => <li key={i}>{s}</li>)}
+                  </ol>
+                </div>
+              )}
+              {r.links && r.links.length > 0 && (
+                <div>
+                  <p className="text-xxs font-semibold uppercase tracking-wide text-text-muted mb-1.5">Links</p>
+                  <div className="flex flex-col gap-1">
+                    {r.links.map((l, i) => (
+                      <a key={i} href={l.url} target="_blank" rel="noopener noreferrer"
+                         className="flex items-center gap-1.5 text-xs text-accent-blue hover:underline w-fit">
+                        <ExternalLink size={11} className="shrink-0" />
+                        {l.title || l.url}
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {r.data && Object.keys(r.data).length > 0 && (
+                <div>
+                  <p className="text-xxs font-semibold uppercase tracking-wide text-text-muted mb-1.5">Key facts</p>
+                  <div className="flex flex-col rounded-lg border border-border overflow-hidden">
+                    {Object.entries(r.data).map(([k, v], i) => (
+                      <div key={k} className={clsx('flex gap-2 px-3 py-1.5 text-xxs', i % 2 ? 'bg-base' : 'bg-card')}>
+                        <span className="text-text-muted w-28 shrink-0">{k}</span>
+                        <span className="text-text-secondary break-words">{String(v)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <button onClick={() => onResearch(todo)} className="flex items-center gap-2 text-xs text-violet-200 hover:text-violet-100 w-full">
+              <Sparkles size={13} className="text-violet-400" />
+              {r.status === 'failed' ? 'Research failed — click to retry' : 'Ask an agent to research this task'}
+            </button>
+          )}
+          {r.status === 'failed' && r.error && (
+            <p className="text-[10px] text-red-400 mt-1.5">{r.error}</p>
+          )}
+        </div>
+
+        {/* Footer actions */}
+        <div className="flex items-center gap-2 pt-2 border-t border-border">
+          {!editing && (
+            <button onClick={() => setEditing(true)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border bg-card hover:bg-card-hover text-text-secondary hover:text-text-primary text-xs">
+              <Pencil size={12} /> Edit
+            </button>
+          )}
+          <button onClick={() => onDelete(todo)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-red-900/40 bg-red-950/20 text-red-400 hover:bg-red-950/40 text-xs">
+            <Trash2 size={12} /> Delete
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
@@ -382,8 +468,9 @@ export default function Todos() {
   const [horizon, setHorizon]   = useState<Horizon>('short')
   const [adding, setAdding]     = useState(false)
   const [clearing, setClearing] = useState(false)
-  const pollRef                 = useRef<ReturnType<typeof setInterval> | null>(null)
-  const inputRef                = useRef<HTMLInputElement>(null)
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
 
   const load = useCallback(async (silent = false) => {
     if (!silent) { setLoading(true); setError(null) }
@@ -392,11 +479,8 @@ export default function Todos() {
     finally { if (!silent) setLoading(false) }
   }, [])
 
-  // Poll fast while research is pending so results appear without a manual refresh.
   const anyPending = todos.some(t => t.research?.status === 'pending')
-  useEffect(() => {
-    load()
-  }, [load])
+  useEffect(() => { load() }, [load])
   useEffect(() => {
     pollRef.current = setInterval(() => { if (!isRefreshPaused()) load(true) }, anyPending ? 5_000 : 30_000)
     return () => { if (pollRef.current) clearInterval(pollRef.current) }
@@ -434,6 +518,7 @@ export default function Todos() {
     try {
       await deleteTodo(todo.id)
       setTodos(ts => ts.filter(t => t.id !== todo.id))
+      setSelectedId(null)
     } catch (e: any) { setError(e.message) }
   }
 
@@ -444,6 +529,7 @@ export default function Todos() {
     try {
       await clearDone()
       setTodos(ts => ts.filter(t => !t.done))
+      setSelectedId(null)
     } catch (e: any) { setError(e.message) }
     finally { setClearing(false) }
   }
@@ -455,7 +541,6 @@ export default function Todos() {
     } catch (e: any) { setError(e.message) }
   }
 
-  // Open tabs: overdue first, then severity, then nearest due date, then newest.
   const dueRank = (t: Todo) => t.dueDate ? new Date(t.dueDate).getTime() : Infinity
   const overdue = (t: Todo) => t.dueDate && daysUntil(t.dueDate) < 0 ? 0 : 1
 
@@ -483,101 +568,120 @@ export default function Todos() {
     done:  todos.filter(t => t.done).length,
   }
 
+  const selected = todos.find(t => t.id === selectedId) ?? null
+
   return (
-    <div className="flex flex-col h-full min-h-0 bg-bg-primary">
-      {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4 border-b border-white/10 flex-shrink-0">
-        <div className="flex items-center gap-3">
-          <ListTodo size={20} className="text-emerald-400" />
-          <h1 className="text-lg font-semibold text-text-primary">To-Do</h1>
-          {openCount > 0 && (
-            <span className="bg-emerald-500/20 text-emerald-400 text-xs px-2 py-0.5 rounded-full border border-emerald-500/30">
-              {openCount} open
-            </span>
-          )}
-        </div>
-        <button onClick={() => load()} disabled={loading}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-white/5 hover:bg-white/10 border border-white/10 rounded text-text-secondary transition-colors disabled:opacity-50">
-          <RefreshCw size={12} className={clsx(loading && 'animate-spin')} /> Refresh
-        </button>
-      </div>
+    <div className="flex h-full overflow-hidden relative">
+      {/* ── Main column ── */}
+      <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
 
-      <div className="flex-1 overflow-y-auto min-h-0 px-6 py-4 flex flex-col gap-4">
-        {error && (
-          <div className="flex items-start gap-2 rounded border border-red-500/30 bg-red-500/10 px-3 py-2 text-red-400">
-            <AlertCircle size={14} className="shrink-0 mt-0.5" />
-            <p className="text-xs leading-snug">{friendlyError(error, 'the to-do API')}</p>
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-border shrink-0">
+          <div className="flex items-center gap-3">
+            <ListTodo size={18} className="text-emerald-400" />
+            <h1 className="text-base font-semibold text-text-primary">To-Do</h1>
+            {openCount > 0 && (
+              <span className="text-xs px-2 py-0.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 text-emerald-400 tabular-nums">
+                {openCount} open
+              </span>
+            )}
           </div>
-        )}
+          <button onClick={() => load()} disabled={loading}
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs bg-card hover:bg-card-hover border border-border rounded text-text-secondary transition-colors disabled:opacity-50">
+            <RefreshCw size={11} className={clsx(loading && 'animate-spin')} /> Refresh
+          </button>
+        </div>
 
-        {/* Quick add */}
-        <div className="flex flex-col gap-1">
+        {/* Quick add + filters */}
+        <div className="shrink-0 px-6 py-3 border-b border-border space-y-3">
+          {error && (
+            <div className="flex items-start gap-2 rounded border border-red-500/30 bg-red-500/10 px-3 py-2 text-red-400">
+              <AlertCircle size={14} className="shrink-0 mt-0.5" />
+              <p className="text-xs leading-snug">{friendlyError(error, 'the to-do API')}</p>
+            </div>
+          )}
+
           <div className="flex items-center gap-2">
             <input
               ref={inputRef}
               value={title}
               onChange={e => setTitle(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter') handleAdd() }}
-              placeholder="Add a to-do and press Enter…"
-              className="flex-1 min-w-0 bg-white/5 border border-white/10 rounded px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-emerald-500/50"
+              placeholder='Add a to-do… ("renew passport tomorrow !high @long")'
+              className="flex-1 min-w-0 bg-base border border-border rounded-lg px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-border"
             />
             <select value={severity} onChange={e => setSeverity(e.target.value as Severity)}
-                    className="bg-white/5 border border-white/10 rounded px-2 py-2 text-xs text-text-secondary focus:outline-none"
-                    title="Severity">
+                    className="bg-base border border-border rounded-lg px-2 py-2 text-xs text-text-secondary focus:outline-none" title="Severity">
               <option value="low">Low</option>
               <option value="medium">Medium</option>
               <option value="high">High</option>
               <option value="critical">Critical</option>
             </select>
             <select value={horizon} onChange={e => setHorizon(e.target.value as Horizon)}
-                    className="bg-white/5 border border-white/10 rounded px-2 py-2 text-xs text-text-secondary focus:outline-none"
-                    title="Time horizon">
-              <option value="short">Short term</option>
-              <option value="long">Long term</option>
+                    className="bg-base border border-border rounded-lg px-2 py-2 text-xs text-text-secondary focus:outline-none" title="Time horizon">
+              <option value="short">Short</option>
+              <option value="long">Long</option>
             </select>
             <button onClick={handleAdd} disabled={!title.trim() || adding}
-                    className="flex items-center gap-1.5 px-3 py-2 text-xs bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 rounded text-emerald-400 transition-colors disabled:opacity-40">
+                    className="flex items-center gap-1.5 px-3 py-2 text-xs bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 rounded-lg text-emerald-400 transition-colors disabled:opacity-40">
               {adding ? <Loader2 size={12} className="animate-spin" /> : <Plus size={12} />} Add
             </button>
           </div>
-          <p className="text-[10px] text-text-muted px-1 select-none">
-            Tip: type <span className="text-text-secondary">"renew passport tomorrow !high @long"</span> — !low/!high/!crit sets severity, @short/@long sets horizon, trailing today/tomorrow/next week sets the due date.
-          </p>
-        </div>
 
-        {/* Filter tabs */}
-        <div className="flex items-center gap-1">
-          {(['open', 'short', 'long', 'done'] as Filter[]).map(f => (
-            <button key={f} onClick={() => setFilter(f)}
-                    className={clsx(
-                      'px-2.5 py-1 rounded text-xs capitalize transition-colors',
-                      filter === f ? 'bg-white/10 text-text-primary' : 'text-text-muted hover:text-text-secondary hover:bg-white/5',
-                    )}>
-              {f === 'short' ? 'Short term' : f === 'long' ? 'Long term' : f}
-              <span className="ml-1.5 tabular-nums opacity-60">{counts[f]}</span>
-            </button>
-          ))}
-          {filter === 'done' && counts.done > 0 && (
-            <button onClick={handleClearDone} disabled={clearing}
-                    className="ml-auto flex items-center gap-1 px-2 py-1 rounded text-xs text-text-muted hover:text-red-400 hover:bg-white/5 transition-colors disabled:opacity-50">
-              {clearing ? <Loader2 size={11} className="animate-spin" /> : <Trash2 size={11} />} Clear completed
-            </button>
-          )}
+          <div className="flex items-center gap-1">
+            {(['open', 'short', 'long', 'done'] as Filter[]).map(f => (
+              <button key={f} onClick={() => setFilter(f)}
+                      className={clsx(
+                        'px-2.5 py-1 rounded text-xs transition-colors',
+                        filter === f ? 'bg-card-hover text-text-primary' : 'text-text-muted hover:text-text-secondary hover:bg-card',
+                      )}>
+                {f === 'short' ? 'Short term' : f === 'long' ? 'Long term' : f.charAt(0).toUpperCase() + f.slice(1)}
+                <span className="ml-1.5 tabular-nums opacity-60">{counts[f]}</span>
+              </button>
+            ))}
+            {filter === 'done' && counts.done > 0 && (
+              <button onClick={handleClearDone} disabled={clearing}
+                      className="ml-auto flex items-center gap-1 px-2 py-1 rounded text-xs text-text-muted hover:text-red-400 hover:bg-card transition-colors disabled:opacity-50">
+                {clearing ? <Loader2 size={11} className="animate-spin" /> : <Trash2 size={11} />} Clear completed
+              </button>
+            )}
+          </div>
         </div>
 
         {/* List */}
-        <div className="flex flex-col gap-1.5 pb-6">
+        <div className="flex-1 min-h-0 overflow-y-auto">
           {visible.length === 0 ? (
-            <div className="flex flex-col items-center gap-2 py-12 text-text-muted">
+            <div className="flex flex-col items-center gap-2 py-16 text-text-muted">
               <Link2 size={20} className="opacity-40" />
               <p className="text-xs">{filter === 'done' ? 'Nothing completed yet.' : 'Nothing here — add a to-do above.'}</p>
             </div>
-          ) : visible.map(t => (
-            <TodoRow key={t.id} todo={t} onToggle={handleToggle} onDelete={handleDelete}
-                     onResearch={handleResearch} onSave={handleSave} />
-          ))}
+          ) : (
+            <div className="flex flex-col divide-y divide-border">
+              {visible.map(t => (
+                <TodoRow
+                  key={t.id}
+                  todo={t}
+                  active={t.id === selectedId}
+                  onToggle={handleToggle}
+                  onClick={() => setSelectedId(prev => prev === t.id ? null : t.id)}
+                />
+              ))}
+            </div>
+          )}
         </div>
       </div>
+
+      {/* ── Detail drawer ── */}
+      {selected && (
+        <TodoDrawer
+          todo={selected}
+          onClose={() => setSelectedId(null)}
+          onToggle={handleToggle}
+          onSave={handleSave}
+          onDelete={handleDelete}
+          onResearch={handleResearch}
+        />
+      )}
     </div>
   )
 }

@@ -6,6 +6,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.7.53] — 2026-06-10
+
+### Added
+
+- **Home landing page** — a new default view (sidebar → Work → Home) that replaces the plain Calendar as the opening screen:
+  - **Hero**: personalised greeting, animated radar sweep (turns red on critical alerts), live digital clock, and an eased count-up of 7-day estimated spend.
+  - **Telemetry ticker**: auto-scrolling strip showing tokens, spend, runs, open to-dos, overdue count, active alerts, pending approvals, active projects, and component health — all live.
+  - **Priority queue**: up to 6 cross-domain attention items (fired alerts, overdue/high-priority to-dos, urgent approvals, system errors) ranked by urgency, each clickable to jump to the relevant view.
+  - **Command metrics**: four animated stat tiles for open to-dos, pending approvals, active alerts, and active projects — click to navigate.
+  - **Quick-view panels**: 7-day usage histogram (tokens + cost + runs + token-mix segment bar), top to-dos preview, project status with progress bars, active alerts & system errors, and a system-health donut. Every panel header is a one-click shortcut to its full view.
+  - Calendar (`ScheduledTasks`) moves to lazy-load; Home is the new eager bundle.
+
+- **App icon** — the Mission Control badge (gold arrow + laurel wreath, blue glow) is now the browser favicon and apple-touch-icon (`public/icon.png`). The badge is also displayed at the top of the README.
+
+### Changed
+
+- **To-Do page: drawer layout** — clicking a row now opens a 380 px detail panel from the right (same pattern as Inventory), replacing the awkward inline expand. The compact row shows circle-toggle + title + severity badge + due date badge + research sparkle; the drawer contains the full edit form, notes, all research output (summary, steps, links, key facts), and Edit/Delete actions.
+- **CSS**: Added `color-scheme: dark` to `:root` so Chrome/Edge auto-dark-mode and Dark Reader no longer repaint the already-dark palette.
+
 ## [0.7.52] — 2026-06-10
 
 ### Added
