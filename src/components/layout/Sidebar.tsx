@@ -130,9 +130,15 @@ export function Sidebar({ activeView, onNavigate }: SidebarProps) {
         collapsed ? 'w-12 min-w-12' : 'w-[200px] min-w-[200px]',
       )}
     >
-      {/* Logo + collapse toggle */}
-      <div className="flex items-center h-12 border-b border-border shrink-0 px-2 gap-1.5">
-        <img src="/icon.png" alt="Mission Control" className="w-7 h-7 rounded object-cover shrink-0 select-none" />
+      {/* Logo + title + collapse toggle */}
+      <div className="flex items-center h-14 border-b border-border shrink-0 px-2 gap-2">
+        <img src="/icon.png" alt="Mission Control" className="w-9 h-9 rounded object-cover shrink-0 select-none" />
+        {!collapsed && (
+          <div className="flex flex-col min-w-0 flex-1">
+            <span className="text-sm font-semibold tracking-tight text-text-primary leading-tight truncate">Mission Control</span>
+            <span className="text-xxs text-text-muted font-mono leading-tight">v{__APP_VERSION__}</span>
+          </div>
+        )}
         <button
           onClick={() => setCollapsed(c => !c)}
           className="flex items-center justify-center w-6 h-6 rounded text-text-muted hover:text-text-secondary hover:bg-card transition-colors shrink-0 ml-auto"
@@ -229,23 +235,6 @@ export function Sidebar({ activeView, onNavigate }: SidebarProps) {
         </button>
       </div>
 
-      {/* User footer */}
-      <div className={clsx('shrink-0 border-t border-border py-3', collapsed ? 'px-1.5' : 'px-4')}>
-        {collapsed ? (
-          <div className="w-7 h-7 rounded-full bg-gradient-to-br from-emerald-500 to-green-600 mx-auto" />
-        ) : (
-          <div className="flex items-center gap-2">
-            <div className="w-6 h-6 rounded-full bg-gradient-to-br from-emerald-500 to-green-600 shrink-0" />
-            <div className="flex flex-col min-w-0 flex-1">
-              <div className="flex items-center justify-between gap-1">
-                <span className="text-xs font-medium text-text-primary truncate">Ant</span>
-                <span className="text-xxs text-text-muted shrink-0 font-mono">v{__APP_VERSION__}</span>
-              </div>
-              <span className="text-xxs text-text-muted truncate">Mission Control</span>
-            </div>
-          </div>
-        )}
-      </div>
     </aside>
   )
 }
