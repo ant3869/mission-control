@@ -126,3 +126,69 @@ export async function researchItem(item: { id: string; name: string; manufacture
   }
   throw new Error(`Unknown agent source: ${source}`)
 }
+
+// ─── To-do research ───────────────────────────────────────────────────────────
+// Same dashboard-orchestrated pattern as item research, but the deliverable is
+// "whatever helps complete this personal task": a summary, action steps, direct
+// links (bill portals, forms, docs), and key facts/calculations.
+
+export interface TodoResearchResult {
+  summary?: string
+  steps?: string[]
+  links?: Array<{ title: string; url: string }>
+  data?: Record<string, string>
+}
+
+function buildTodoPrompt(todo: { title: string; notes?: string }): string {
+  return [
+    'You are a research assistant for a personal to-do list. Research the task below using web search.',
+    'Your goal: gather whatever helps the user complete the task fastest — direct links, key facts, numbers, deadlines, calculations.',
+    'Reply with ONLY a single JSON object (no prose, no markdown fences). Keys:',
+    'summary (2-3 sentences with the most useful information for completing this task),',
+    'steps (array of up to 5 short, concrete action steps),',
+    'links (array of {title,url} — direct, actionable pages: official sites, payment portals, forms, documentation),',
+    'data (object of short key:value facts, figures, prices, deadlines, or calculations that aid the task).',
+    `Task: "${todo.title.trim()}".`,
+    todo.notes?.trim() ? `User notes: ${todo.notes.trim()}` : '',
+  ].filter(Boolean).join(' ')
+}
+
+function isTodoResult(json: any): json is TodoResearchResult {
+  return Boolean(json && (json.summary || json.steps?.length || json.links?.length))
+}
+
+async function researchTodoOpenClaw(todo: { id: string; title: string; notes?: string }): Promise<TodoResearchResult> {
+  await ensureConnected(12_000)
+  const sessionKey = `agent:main:dashboard-todo:${todo.id.slice(0, 8)}`
+  await ocRequest('chat.send', { sessionKey, message: buildTodoPrompt(todo), deliver: false, idempotencyKey: randomUUID() }, 12_000)
+  for (let i = 0; i < 36; i++) {
+    await sleep(5000)
+    const h = await ocRequest('chat.history', { sessionKey, limit: 8, maxChars: 120_000 }, 10_000).catch(() => null)
+    const msgs: any[] = h?.messages ?? []
+    const lastAssistant = [...msgs].reverse().find(m => String(m.role) === 'assistant')
+    const json = extractJson(extractText(lastAssistant?.content))
+    if (isTodoResult(json)) return json
+  }
+  throw new Error('agent did not return structured data within ~3 minutes')
+}
+
+async function researchTodoHermes(todo: { id: string; title: string; notes?: string }): Promise<TodoResearchResult> {
+  const r = await hermesChat(buildTodoPrompt(todo), { timeoutMs: 180_000 })
+  if (!r.ok) throw new Error(`Hermes API server rejected the request (${r.triedUrl}): ${r.error ?? 'unknown'}`)
+  const json = extractJson(r.answer)
+  if (isTodoResult(json)) return json
+  throw new Error('Hermes returned an answer but no parseable JSON.')
+}
+
+export async function researchTodo(todo: { id: string; title: string; notes?: string }, source: AgentSource): Promise<TodoResearchResult> {
+  if (source === 'openclaw') return researchTodoOpenClaw(todo)
+  if (source === 'hermes') {
+    return researchTodoHermes(todo).catch(err => {
+      if (String(err?.message).includes('unavailable') || String(err?.message).includes('no supported')) {
+        return researchTodoOpenClaw(todo)
+      }
+      throw err
+    })
+  }
+  throw new Error(`Unknown agent source: ${source}`)
+}

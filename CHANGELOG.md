@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.7.52] — 2026-06-10
+
+### Added
+
+- **Personal To-Do page** — a quick-capture task list (sidebar → Work → To-Do) with:
+  - **Natural-language quick add** (Todoist-style tokens): `!low / !high / !crit` sets severity, `@short / @long` sets horizon, and `today / tomorrow / next week / next month` parses a due date — all from a single input line.
+  - **Severity levels**: low / medium / high / critical — colour-coded chips on every row.
+  - **Horizon**: short-term vs long-term — a secondary badge alongside severity.
+  - **Due dates with smart badges**: overdue items show in red and sort to the top; "today" is amber; future dates show relative days. ISO-stored server-side via a `parseDueDate()` helper.
+  - **Inline editing**: pencil icon opens an in-row edit form (title, notes, severity, horizon, date); Enter saves, Esc cancels.
+  - **OpenClaw/Hermes research**: sparkle ✨ button fires an async agent research request (`POST /api/todos/:id/research`) — attaches a summary, action steps, relevant links, and key facts/calculations to the task. Status badge shows pending → done; the result panel expands below the row. Polling speeds up to 5 s while any research is in flight, drops to 30 s otherwise.
+  - **Filter tabs**: All / Active / Done — each shows its item count; the Done tab has a **Clear completed** button.
+  - **Sidebar badge**: the Work → To-Do nav item shows the count of open (not-done) todos, polled every 30 s alongside tasks and approvals.
+  - **CRUD backend** (`server/routes/todos.ts`): GET / POST / PATCH / DELETE + `POST /api/todos/clear-done`; JSON-persisted to `data/todos.json`. Orphaned pending-research rows are reset to `failed` on server restart.
+
 ## [0.7.51] — 2026-06-09
 
 ### Removed

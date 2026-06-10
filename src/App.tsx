@@ -27,11 +27,13 @@ const FlowMap           = lazy(() => import('./views/FlowMap').then(m => ({ defa
 const Evaluations       = lazy(() => import('./views/Evaluations').then(m => ({ default: m.Evaluations })))
 const HarnessBenchmarks = lazy(() => import('./views/HarnessBenchmarks').then(m => ({ default: m.HarnessBenchmarks })))
 const Brain             = lazy(() => import('./views/Brain'))
+const Todos             = lazy(() => import('./views/Todos'))
 const Flow              = lazy(() => import('./views/Flow'))
 const Alerts            = lazy(() => import('./views/Alerts'))
 const Security          = lazy(() => import('./views/Security'))
 
 const VIEW_TITLES: Record<View, string> = {
+  todos:       'To-Do',
   tasks:       'Tasks & Approvals',
   watch:       'Watch & Agents',
   docs:        'Docs & Notes',
@@ -107,6 +109,7 @@ export default function App() {
         <main className="flex-1 overflow-hidden bg-base relative">
 
           <ViewPane view="calendar"    active={activeView} mounted={mounted}><ScheduledTasks /></ViewPane>
+          <ViewPane view="todos"       active={activeView} mounted={mounted}><Todos /></ViewPane>
           <ViewPane view="tasks"       active={activeView} mounted={mounted}><TasksApprovals /></ViewPane>
           <ViewPane view="watch"       active={activeView} mounted={mounted}><WatchAgents /></ViewPane>
           <ViewPane view="docs"        active={activeView} mounted={mounted}><DocsNotes /></ViewPane>

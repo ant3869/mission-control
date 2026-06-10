@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import {
-  CheckSquare, Radio, BookOpen, FolderKanban, Radar,
+  CheckSquare, ListTodo, Radio, BookOpen, FolderKanban, Radar,
   MessageSquare, Calendar, Brain, FileText, ThumbsUp,
   Activity, Gauge, Target, Workflow, Package,
   Users, Cog, ChevronLeft, ChevronRight, FlaskConical,
@@ -23,6 +23,7 @@ const NAV: NavSection[] = [
   {
     label: 'Work',
     items: [
+      { id: 'todos',    label: 'To-Do',    icon: <ListTodo      size={iconSize} /> },
       { id: 'tasks',    label: 'Tasks',    icon: <CheckSquare   size={iconSize} /> },
       { id: 'watch',    label: 'Watch',    icon: <Radio         size={iconSize} /> },
       { id: 'council',  label: 'Chats',    icon: <MessageSquare size={iconSize} /> },
@@ -48,10 +49,10 @@ const NAV: NavSection[] = [
   {
     label: 'Analytics',
     items: [
-      { id: 'ops',         label: 'Ops',         icon: <Radar    size={iconSize} /> },
-      { id: 'evaluations', label: 'Evaluations', icon: <Target       size={iconSize} /> },
+      { id: 'ops',         label: 'Ops',           icon: <Radar        size={iconSize} /> },
+      { id: 'evaluations', label: 'Evaluations',   icon: <Target       size={iconSize} /> },
       { id: 'harness',     label: 'Harness Bench', icon: <FlaskConical size={iconSize} /> },
-      { id: 'flowmap',     label: 'Flow Map',    icon: <Workflow     size={iconSize} /> },
+      { id: 'flowmap',     label: 'Flow Map',      icon: <Workflow     size={iconSize} /> },
     ],
   },
   {
@@ -82,13 +83,15 @@ export function Sidebar({ activeView, onNavigate }: SidebarProps) {
   const [collapsed, setCollapsed]           = useState(false)
   const [tasksBadge,     setTasksBadge]     = useState<number | undefined>(undefined)
   const [approvalsBadge, setApprovalsBadge] = useState<number | undefined>(undefined)
+  const [todosBadge,     setTodosBadge]     = useState<number | undefined>(undefined)
 
   useEffect(() => {
     const fetchCounts = async () => {
       try {
-        const [tRes, aRes] = await Promise.all([
+        const [tRes, aRes, dRes] = await Promise.all([
           fetch('/api/tasks').then(r => r.json()),
           fetch('/api/approvals').then(r => r.json()),
+          fetch('/api/todos').then(r => r.json()),
         ])
         const activeTasks = (tRes.tasks ?? []).filter(
           (t: { status: string }) => t.status !== 'completed',
@@ -96,8 +99,12 @@ export function Sidebar({ activeView, onNavigate }: SidebarProps) {
         const pendingApprovals = (aRes.approvals ?? []).filter(
           (a: { status: string }) => a.status === 'pending',
         ).length
+        const openTodos = (dRes.todos ?? []).filter(
+          (t: { done: boolean }) => !t.done,
+        ).length
         setTasksBadge(activeTasks > 0 ? activeTasks : undefined)
         setApprovalsBadge(pendingApprovals > 0 ? pendingApprovals : undefined)
+        setTodosBadge(openTodos > 0 ? openTodos : undefined)
       } catch { /* ignore — badges just won't show */ }
     }
     fetchCounts()
@@ -111,6 +118,7 @@ export function Sidebar({ activeView, onNavigate }: SidebarProps) {
       const total = (tasksBadge ?? 0) + (approvalsBadge ?? 0)
       return total > 0 ? total : undefined
     }
+    if (id === 'todos') return todosBadge
     return undefined
   }
 
@@ -230,10 +238,7 @@ export function Sidebar({ activeView, onNavigate }: SidebarProps) {
       {/* User footer */}
       <div className={clsx('shrink-0 border-t border-border py-3', collapsed ? 'px-1.5' : 'px-4')}>
         {collapsed ? (
-          <div className="flex flex-col items-center gap-1">
-            <div className="w-7 h-7 rounded-full bg-gradient-to-br from-emerald-500 to-green-600" />
-            <span className="text-[9px] text-text-muted tabular-nums">v{__APP_VERSION__}</span>
-          </div>
+          <div className="w-7 h-7 rounded-full bg-gradient-to-br from-emerald-500 to-green-600 mx-auto" />
         ) : (
           <div className="flex items-center gap-2">
             <div className="w-6 h-6 rounded-full bg-gradient-to-br from-emerald-500 to-green-600 shrink-0" />
@@ -241,7 +246,6 @@ export function Sidebar({ activeView, onNavigate }: SidebarProps) {
               <span className="text-xs font-medium text-text-primary truncate">Ant</span>
               <span className="text-xxs text-text-muted truncate">anthon3869@gmail.com</span>
             </div>
-            <span className="ml-auto text-xxs text-text-muted tabular-nums shrink-0" title="App version">v{__APP_VERSION__}</span>
           </div>
         )}
       </div>

@@ -1,0 +1,154 @@
+[
+  {
+    "dueDate": "",
+    "id": "7d864e12-a805-463f-8573-1d2bc8bf9322",
+    "title": "Find a soccer club in/near Bentonville that exceeds BPR Soccer in scope.",
+    "notes": "",
+    "severity": "medium",
+    "horizon": "short",
+    "done": false,
+    "createdAt": "2026-06-10T04:16:02.027Z",
+    "updatedAt": "2026-06-10T04:16:46.492Z",
+    "completedAt": "",
+    "research": {
+      "status": "done",
+      "requestedAt": "2026-06-10T04:16:05.505Z",
+      "completedAt": "2026-06-10T04:16:46.492Z",
+      "error": "",
+      "summary": "Sporting Arkansas and Prodigy FC are the top competitive soccer clubs located directly in Bentonville that offer advanced academy pathways exceeding the recreational scope of Bentonville Parks & Recreation (BPR). For a player born in 2018, the appropriate transition is to a U9 Academy program which introduces structured training, professional coaching, and local tournament play.",
+      "steps": [
+        "Register Miles for Sporting Arkansas Academy evaluations, which are free to attend and cover 2016-2019 birth years.",
+        "Review Prodigy FC's competitive program as a strong, locally-based alternative in Bentonville.",
+        "Look into Arkansas Comets FC in nearby Springdale if you want to evaluate the oldest and most established elite club in Northwest Arkansas.",
+        "Check Upstart Athletics (F.C. Horizon) for an additional competitive youth club option serving ages 7-18.",
+        "Email the club directors to confirm practice locations, travel commitments, and season deadlines before committing."
+      ],
+      "links": [
+        {
+          "title": "Sporting Arkansas - Tryouts & Evaluations",
+          "url": "https://www.sportingarkansas.com/tryouts"
+        },
+        {
+          "title": "Prodigy FC - Competitive Programs",
+          "url": "https://www.bentonvilleprodigy.com/competitive"
+        },
+        {
+          "title": "Arkansas Comets FC - Springdale",
+          "url": "https://www.arkansascometsfc.com/"
+        },
+        {
+          "title": "Upstart Athletics - F.C. Horizon",
+          "url": "https://www.nwaupstartathletics.com/"
+        }
+      ],
+      "data": {
+        "Target Age Group": "U9 Academy (for 2018 birth year)",
+        "Sporting AR Evaluations": "Free to attend",
+        "Sporting AR Focus": "Technical/tactical proficiency and local tournaments",
+        "Arkansas Comets Legacy": "Oldest youth club in NWA (established 1993)",
+        "Prodigy FC Status": "Local Bentonville nonprofit competitive club"
+      }
+    }
+  },
+  {
+    "dueDate": "",
+    "id": "26b02655-1b5c-4de2-8e87-095850756a69",
+    "title": "Decide what stays and what goes for the house move",
+    "notes": "",
+    "severity": "high",
+    "horizon": "short",
+    "done": false,
+    "createdAt": "2026-06-10T03:46:56.431Z",
+    "updatedAt": "2026-06-10T03:47:42.172Z",
+    "completedAt": "",
+    "research": {
+      "status": "done",
+      "requestedAt": "2026-06-10T03:47:00.969Z",
+      "completedAt": "2026-06-10T03:47:42.172Z",
+      "error": "",
+      "summary": "Sorting possessions before a move reduces packing time, lowers transportation costs, and ensures a cleaner start in your new home. By applying structured decision rules like the 4-box method and leveraging local Bentonville donation and hauling services, you can rapidly offload unwanted items without getting bogged down.",
+      "steps": [
+        "Tackle one room at a time using the 4-box method: Keep, Sell, Donate, and Trash.",
+        "Apply the 6-Month Rule to clothing and miscellaneous items: if it hasn't been used in six months, let it go.",
+        "Measure bulky furniture against your new home's floor plan to immediately eliminate items that will not fit.",
+        "Take gently used clothing and furniture to local charities like Helping Hands or Habitat ReStore in Bentonville.",
+        "Book a local junk hauler to do a final sweep of any broken or un-donatable debris before moving day."
+      ],
+      "links": [
+        {
+          "title": "Helping Hands Thrift Store (Bentonville)",
+          "url": "https://helpinghandsnwa.org/"
+        },
+        {
+          "title": "Habitat For Humanity Northwest Arkansas ReStore",
+          "url": "https://habitatnwa.org/restore/"
+        },
+        {
+          "title": "WeCycle Junk Removal (Bentonville)",
+          "url": "https://getwecycle.com/locations/bentonville-ar"
+        },
+        {
+          "title": "Junk King Northwest Arkansas",
+          "url": "https://www.junk-king.com/locations/northwest-arkansas"
+        }
+      ],
+      "data": {
+        "Sorting_Framework": "4-Box Method (Keep, Sell, Donate, Trash)",
+        "Decision_Rule": "6-Month Rule (Discard if unused for 6 months)",
+        "Habitat_ReStore_Location": "1212 N Walton Blvd, Bentonville (479-273-3638)",
+        "Junk_Removal_Cost_Estimate": "$100 - $600 depending on volume"
+      }
+    }
+  },
+  {
+    "dueDate": "",
+    "id": "fcdfd8c0-6fa4-4972-82de-ccf879cf5d3e",
+    "title": "Setup divorce recovery plan",
+    "notes": "",
+    "severity": "medium",
+    "horizon": "short",
+    "done": false,
+    "createdAt": "2026-06-09T23:54:39.127Z",
+    "updatedAt": "2026-06-10T03:45:40.468Z",
+    "completedAt": "",
+    "research": {
+      "status": "done",
+      "requestedAt": "2026-06-09T23:54:47.024Z",
+      "completedAt": "2026-06-09T23:55:12.671Z",
+      "error": "",
+      "summary": "A successful divorce recovery plan must prioritize stabilizing your daily routine for single parenting with ADHD, actively processing abandonment trauma and PTSD, and building a strong local support system. Utilizing high-structure scheduling alongside trauma-informed therapy will help mitigate anxiety and insomnia while establishing a healthy new baseline for you and your son.",
+      "steps": [
+        "Schedule a consultation with a local trauma-informed therapist specializing in PTSD and ADHD (e.g., Compass Counseling or Ozark Psychotherapy).",
+        "Design a strict, high-structure Wednesday-Sunday routine to support ADHD management and provide stability for Miles.",
+        "Join a Bentonville-based or virtual divorce support group (like DivorceCare) to combat feelings of abandonment and isolation.",
+        "Implement a strict evening wind-down protocol and explore Cognitive Behavioral Therapy for Insomnia (CBT-I) to address chronic nightmares and sleep loss.",
+        "Perform a complete financial and logistical audit to separate accounts, set a single-income budget, and reduce cognitive load."
+      ],
+      "links": [
+        {
+          "title": "Bentonville DivorceCare Support Groups",
+          "url": "https://find.divorcecare.org/countries/us/states/ar/cities/bentonville"
+        },
+        {
+          "title": "Compass Counseling Collective (Bentonville - Trauma/ADHD)",
+          "url": "http://www.compasscounselingnwa.com/"
+        },
+        {
+          "title": "Ozark Psychotherapy Group (NWA)",
+          "url": "https://www.ozarkpsychotherapy.com/"
+        },
+        {
+          "title": "Trauma and PTSD Support Groups in Bentonville, AR",
+          "url": "https://www.psychologytoday.com/us/groups/ar/bentonville?category=trauma-and-ptsd"
+        }
+      ],
+      "data": {
+        "Location Focus": "Bentonville, Arkansas",
+        "Primary Therapeutic Needs": "PTSD, ADHD, Abandonment Trauma, Insomnia",
+        "Recommended Modalities": "EMDR, CBT-I, Trauma-Informed Care",
+        "Custody Routine Focus": "Wednesday through Sunday",
+        "Average Therapy Session Cost (AR)": "$100 - $150 per session (sliding scale often available)"
+      }
+    }
+  }
+]
