@@ -6,6 +6,7 @@ import { TopBar } from './components/layout/TopBar'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { Home } from './views/Home'                       // eager — default landing view
 import type { View } from './types'
+import { NAVIGATE_EVENT } from './lib/quickActions'
 
 // Lazy views: each becomes its own chunk, fetched on first navigation, so the
 // initial bundle is just the shell + landing page instead of all ~25 views.
@@ -29,6 +30,7 @@ const Evaluations       = lazy(() => import('./views/Evaluations').then(m => ({ 
 const HarnessBenchmarks = lazy(() => import('./views/HarnessBenchmarks').then(m => ({ default: m.HarnessBenchmarks })))
 const Brain             = lazy(() => import('./views/Brain'))
 const Todos             = lazy(() => import('./views/Todos'))
+const ToBuy             = lazy(() => import('./views/ToBuy'))
 const Flow              = lazy(() => import('./views/Flow'))
 const Alerts            = lazy(() => import('./views/Alerts'))
 const Security          = lazy(() => import('./views/Security'))
@@ -36,6 +38,7 @@ const Security          = lazy(() => import('./views/Security'))
 const VIEW_TITLES: Record<View, string> = {
   home:        'Home',
   todos:       'To-Do',
+  tobuy:       'To-Buy',
   tasks:       'Tasks & Approvals',
   watch:       'Watch & Agents',
   docs:        'Docs & Notes',
@@ -98,6 +101,19 @@ export default function App() {
   // Reflect the active view in the browser tab title (history + tab identification).
   useEffect(() => { document.title = `${VIEW_TITLES[activeView]} · Mission Control` }, [activeView])
 
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const custom = event as CustomEvent<{ view?: View }>
+      const view = custom.detail?.view
+      if (!view) return
+      setMounted(prev => new Set([...prev, view]))
+      setActiveView(view)
+      try { localStorage.setItem(VIEW_STORAGE_KEY, view) } catch { /* ignore */ }
+    }
+    window.addEventListener(NAVIGATE_EVENT, handler as EventListener)
+    return () => window.removeEventListener(NAVIGATE_EVENT, handler as EventListener)
+  }, [])
+
   return (
     <div className="flex h-full w-full bg-base overflow-hidden">
       <Sidebar activeView={activeView} onNavigate={navigate} />
@@ -113,6 +129,7 @@ export default function App() {
           <ViewPane view="home"        active={activeView} mounted={mounted}><Home onNavigate={navigate} /></ViewPane>
           <ViewPane view="calendar"    active={activeView} mounted={mounted}><ScheduledTasks /></ViewPane>
           <ViewPane view="todos"       active={activeView} mounted={mounted}><Todos /></ViewPane>
+          <ViewPane view="tobuy"       active={activeView} mounted={mounted}><ToBuy /></ViewPane>
           <ViewPane view="tasks"       active={activeView} mounted={mounted}><TasksApprovals /></ViewPane>
           <ViewPane view="watch"       active={activeView} mounted={mounted}><WatchAgents /></ViewPane>
           <ViewPane view="docs"        active={activeView} mounted={mounted}><DocsNotes /></ViewPane>

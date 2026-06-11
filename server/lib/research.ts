@@ -192,3 +192,73 @@ export async function researchTodo(todo: { id: string; title: string; notes?: st
   }
   throw new Error(`Unknown agent source: ${source}`)
 }
+
+// ─── To-buy research ────────────────────────────────────────────────────────
+// Same dashboard-orchestrated pattern, but the deliverable is shopping help for
+// an item the user wants to buy: general info, a typical price, where to buy it
+// locally, online purchase links with prices, and key specs to compare.
+
+export interface BuyResearchResult {
+  summary?:        string
+  estimatedPrice?: number
+  priceRange?:     string
+  buyLinks?:       Array<{ title: string; url: string; price?: string }>
+  localOptions?:   Array<{ store: string; note?: string }>
+  data?:           Record<string, string>
+}
+
+function buildBuyPrompt(item: { title: string; notes?: string }): string {
+  return [
+    'You are a shopping research assistant. The user wants to BUY the item below. Research it using web search.',
+    'Your goal: help the user decide and purchase fast — what it is, a fair price, where to get it locally, and where to buy online.',
+    'Reply with ONLY a single JSON object (no prose, no markdown fences). Keys:',
+    'summary (2-3 sentences of general info: what the item is, what to look for, typical use),',
+    'estimatedPrice (typical price in USD for ONE unit, a plain number with no symbols),',
+    'priceRange (a short string like "$40–$120" spanning budget to premium options),',
+    'buyLinks (array of {title,url,price} — direct online product/store pages where it can be purchased; include price as a short string when known),',
+    'localOptions (array of {store,note} — types of local stores or chains that typically stock it, e.g. Home Depot, Lowe\'s, a hardware store; note is a short availability hint),',
+    'data (object of short key:value specs or facts useful for comparing options — e.g. voltage, capacity, warranty).',
+    `Item to buy: "${item.title.trim()}".`,
+    item.notes?.trim() ? `User notes: ${item.notes.trim()}` : '',
+  ].filter(Boolean).join(' ')
+}
+
+function isBuyResult(json: any): json is BuyResearchResult {
+  return Boolean(json && (json.summary || json.estimatedPrice || json.buyLinks?.length || json.localOptions?.length))
+}
+
+async function researchBuyOpenClaw(item: { id: string; title: string; notes?: string }): Promise<BuyResearchResult> {
+  await ensureConnected(12_000)
+  const sessionKey = `agent:main:dashboard-buy:${item.id.slice(0, 8)}`
+  await ocRequest('chat.send', { sessionKey, message: buildBuyPrompt(item), deliver: false, idempotencyKey: randomUUID() }, 12_000)
+  for (let i = 0; i < 36; i++) {
+    await sleep(5000)
+    const h = await ocRequest('chat.history', { sessionKey, limit: 8, maxChars: 120_000 }, 10_000).catch(() => null)
+    const msgs: any[] = h?.messages ?? []
+    const lastAssistant = [...msgs].reverse().find(m => String(m.role) === 'assistant')
+    const json = extractJson(extractText(lastAssistant?.content))
+    if (isBuyResult(json)) return json
+  }
+  throw new Error('agent did not return structured data within ~3 minutes')
+}
+
+async function researchBuyHermes(item: { id: string; title: string; notes?: string }): Promise<BuyResearchResult> {
+  const r = await hermesChat(buildBuyPrompt(item), { timeoutMs: 180_000 })
+  if (!r.ok) throw new Error(`Hermes API server rejected the request (${r.triedUrl}): ${r.error ?? 'unknown'}`)
+  const json = extractJson(r.answer)
+  if (isBuyResult(json)) return json
+  throw new Error('Hermes returned an answer but no parseable JSON.')
+}
+
+export async function researchBuyItem(item: { id: string; title: string; notes?: string }, source: AgentSource): Promise<BuyResearchResult> {
+  if (source === 'openclaw') return researchBuyOpenClaw(item)
+  if (source === 'hermes') {
+    return researchBuyHermes(item).catch(err => {
+      if (String(err?.message).includes('unavailable') || String(err?.message).includes('no supported')) {
+        return researchBuyOpenClaw(item)
+      }
+      throw err
+    })
+  }
+  throw new Error(`Unknown agent source: ${source}`)
+}

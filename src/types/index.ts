@@ -35,6 +35,7 @@ export type View =
   | 'alerts'       // Alert rules + active alerts
   | 'security'     // Security posture + diagnostics
   | 'todos'        // Personal quick-capture to-do list
+  | 'tobuy'        // Personal shopping list with research + running total
 
 export type TaskColor =
   | 'red'

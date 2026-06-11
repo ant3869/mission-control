@@ -19,6 +19,7 @@ Press **⌘K** (Ctrl+K) anywhere for the command palette — jump to any page or
 | View | What you can do |
 |------|----------------|
 | **To-Do** | Personal quick-capture task list. Natural-language quick add (`!crit @long tomorrow`), severity levels (low → critical), short/long horizon, due dates with overdue badges, inline editing, and a one-click OpenClaw/Hermes research button that auto-attaches a summary, action steps, links, and key facts to each task. |
+| **To-Buy** | Personal shopping list with the same click-to-open drawer as To-Do. Quick add with priority/quantity/price tokens (`power drill !high x1 $89`), a running estimated total, and one-click OpenClaw/Hermes research that returns general info, a fair price + range, online buy links, local store options, and key specs — auto-filling the item's price estimate. |
 | **Tasks** | Create, triage, and filter work items. Assign status and priority. See what's blocked or in flight. |
 | **Approvals** | Review agent-generated output before it ships. Approve, reject, or request changes with a single click. |
 | **Projects** | Kanban-style boards for tracking initiatives. Drag cards across columns, set owners, and attach notes. |

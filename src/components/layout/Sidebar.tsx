@@ -4,7 +4,7 @@ import {
   MessageSquare, Calendar, Brain, FileText, ThumbsUp,
   Activity, Gauge, Target, Workflow, Package,
   Users, Cog, ChevronLeft, ChevronRight, FlaskConical,
-  BrainCircuit, GitBranch, Bell, Shield, House,
+  BrainCircuit, GitBranch, Bell, Shield, House, ShoppingCart,
 } from 'lucide-react'
 import { clsx } from 'clsx'
 import type { View } from '../../types'
@@ -25,6 +25,7 @@ const NAV: NavSection[] = [
     items: [
       { id: 'home',     label: 'Home',     icon: <House         size={iconSize} /> },
       { id: 'todos',    label: 'To-Do',    icon: <ListTodo      size={iconSize} /> },
+      { id: 'tobuy',    label: 'To-Buy',   icon: <ShoppingCart  size={iconSize} /> },
       { id: 'tasks',    label: 'Tasks',    icon: <CheckSquare   size={iconSize} /> },
       { id: 'watch',    label: 'Watch',    icon: <Radio         size={iconSize} /> },
       { id: 'council',  label: 'Chats',    icon: <MessageSquare size={iconSize} /> },
@@ -84,15 +85,19 @@ export function Sidebar({ activeView, onNavigate }: SidebarProps) {
   const [collapsed, setCollapsed]           = useState(false)
   const [tasksBadge,     setTasksBadge]     = useState<number | undefined>(undefined)
   const [approvalsBadge, setApprovalsBadge] = useState<number | undefined>(undefined)
+  const [inboxBadge,     setInboxBadge]     = useState<number | undefined>(undefined)
   const [todosBadge,     setTodosBadge]     = useState<number | undefined>(undefined)
+  const [toBuyBadge,     setToBuyBadge]     = useState<number | undefined>(undefined)
 
   useEffect(() => {
     const fetchCounts = async () => {
       try {
-        const [tRes, aRes, dRes] = await Promise.all([
+        const [tRes, aRes, dRes, iRes, bRes] = await Promise.all([
           fetch('/api/tasks').then(r => r.json()),
           fetch('/api/approvals').then(r => r.json()),
           fetch('/api/todos').then(r => r.json()),
+          fetch('/api/inbox').then(r => r.json()),
+          fetch('/api/tobuy').then(r => r.json()),
         ])
         const activeTasks = (tRes.tasks ?? []).filter(
           (t: { status: string }) => t.status !== 'completed',
@@ -103,9 +108,15 @@ export function Sidebar({ activeView, onNavigate }: SidebarProps) {
         const openTodos = (dRes.todos ?? []).filter(
           (t: { done: boolean }) => !t.done,
         ).length
+        const activeInbox = Number(iRes.counts?.active ?? 0)
+        const openToBuy = (bRes.items ?? []).filter(
+          (i: { purchased: boolean }) => !i.purchased,
+        ).length
         setTasksBadge(activeTasks > 0 ? activeTasks : undefined)
         setApprovalsBadge(pendingApprovals > 0 ? pendingApprovals : undefined)
+        setInboxBadge(activeInbox > 0 ? activeInbox : undefined)
         setTodosBadge(openTodos > 0 ? openTodos : undefined)
+        setToBuyBadge(openToBuy > 0 ? openToBuy : undefined)
       } catch { /* ignore — badges just won't show */ }
     }
     fetchCounts()
@@ -114,12 +125,13 @@ export function Sidebar({ activeView, onNavigate }: SidebarProps) {
   }, [])
 
   const getBadge = (id: View): number | undefined => {
-    // Roll tasks + approvals badge into the combined Tasks nav item
+    // Roll tasks + approvals + inbox badge into the combined Tasks nav item
     if (id === 'tasks') {
-      const total = (tasksBadge ?? 0) + (approvalsBadge ?? 0)
+      const total = (tasksBadge ?? 0) + (approvalsBadge ?? 0) + (inboxBadge ?? 0)
       return total > 0 ? total : undefined
     }
     if (id === 'todos') return todosBadge
+    if (id === 'tobuy') return toBuyBadge
     return undefined
   }
 

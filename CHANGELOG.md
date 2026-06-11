@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.7.55] — 2026-06-11
+
+### Added
+
+- **To-Buy page** — a personal shopping list (sidebar → Work → To-Buy, right under To-Do) built on the same click-to-open drawer pattern as To-Do / Inventory:
+  - Quick add with priority, quantity, and price tokens (e.g. `cordless power drill !high x1 $89`); per-item priority (low / medium / high), quantity, and estimated unit price.
+  - **Running total** of all unbought items shown in the header (`Est. total`); each row shows its line total and a count badge appears on the sidebar nav item.
+  - **Agent research** (OpenClaw / Hermes) tailored for buying: general info summary, a typical price + price range, online buy links (with prices), local store options, and key specs — all rendered in the side drawer. If you haven't set a price, the agent's estimate auto-fills the item.
+  - Mark items as bought (strikethrough + Bought filter), edit inline, delete, and clear-bought — mirroring the To-Do interactions.
+  - Backed by `data/tobuy.json` via a new `/api/tobuy` route; research runs async and the client polls for completion.
+
 ## [0.7.54] — 2026-06-10
 
 ### Changed
