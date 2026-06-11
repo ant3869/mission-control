@@ -9,7 +9,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { clsx } from 'clsx'
 import {
   ShoppingCart, RefreshCw, AlertCircle, Plus, Trash2, Sparkles, Loader2,
-  Circle, CheckCircle2, ExternalLink, Link2, Pencil, Check, X, MapPin,
+  Circle, CheckCircle2, ExternalLink, Pencil, Check, X, MapPin,
 } from 'lucide-react'
 import { useEscapeKey } from '../hooks/useEscapeKey'
 import { isRefreshPaused } from '../lib/refreshBus'
@@ -79,8 +79,10 @@ async function clearPurchased(): Promise<{ removed: number }> {
   return res.json()
 }
 
-async function startResearch(id: string): Promise<{ item: BuyItem }> {
-  const res = await fetch(`/api/tobuy/${id}/research`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) })
+type ResearchSource = 'openclaw' | 'hermes'
+
+async function startResearch(id: string, source: ResearchSource): Promise<{ item: BuyItem }> {
+  const res = await fetch(`/api/tobuy/${id}/research`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ source }) })
   if (!res.ok) throw new Error(await res.text())
   return res.json()
 }
@@ -136,6 +138,27 @@ function money(n: number): string {
   return n.toLocaleString(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: n % 1 === 0 ? 0 : 2 })
 }
 
+// ─── Agent source picker ──────────────────────────────────────────────────────
+
+function AgentSourcePicker({ value, onChange }: { value: ResearchSource; onChange: (s: ResearchSource) => void }) {
+  return (
+    <div className="inline-flex items-center rounded-lg border border-violet-900/40 bg-violet-950/20 p-0.5 text-[10px]">
+      {(['openclaw', 'hermes'] as ResearchSource[]).map(s => (
+        <button
+          key={s}
+          onClick={() => onChange(s)}
+          className={clsx(
+            'px-2 py-0.5 rounded transition-colors',
+            value === s ? 'bg-violet-500/25 text-violet-100' : 'text-violet-400/60 hover:text-violet-300',
+          )}
+        >
+          {s === 'openclaw' ? 'OpenClaw' : 'Hermes'}
+        </button>
+      ))}
+    </div>
+  )
+}
+
 // ─── Item row ─────────────────────────────────────────────────────────────────
 
 function BuyRow({ item, active, onToggle, onClick }: {
@@ -149,7 +172,9 @@ function BuyRow({ item, active, onToggle, onClick }: {
 
   return (
     <div className={clsx(
-      'flex items-center gap-2.5 w-full transition-colors',
+      'relative flex items-center gap-2.5 w-full transition-colors',
+      'before:absolute before:left-0 before:top-0 before:bottom-0 before:w-[2px] before:transition-colors',
+      active ? 'before:bg-sky-400' : 'before:bg-transparent',
       active ? 'bg-card-hover' : 'bg-card hover:bg-card-hover',
     )}>
       {/* Circle toggle — mark purchased */}
@@ -204,7 +229,7 @@ function BuyDrawer({ item, onClose, onToggle, onSave, onDelete, onResearch }: {
   onToggle:   (i: BuyItem) => void
   onSave:     (i: BuyItem, patch: BuyPatch) => void
   onDelete:   (i: BuyItem) => void
-  onResearch: (i: BuyItem) => void
+  onResearch: (i: BuyItem, source: ResearchSource) => void
 }) {
   useEscapeKey(onClose)
 
@@ -214,6 +239,7 @@ function BuyDrawer({ item, onClose, onToggle, onSave, onDelete, onResearch }: {
   const [priority, setPriority] = useState<Priority>(item.priority)
   const [quantity, setQuantity] = useState(String(item.quantity))
   const [price, setPrice]       = useState(item.estimatedPrice ? String(item.estimatedPrice) : '')
+  const [source, setSource]     = useState<ResearchSource>('openclaw')
 
   // Sync local state when the selected item changes
   useEffect(() => {
@@ -242,7 +268,7 @@ function BuyDrawer({ item, onClose, onToggle, onSave, onDelete, onResearch }: {
   const inputCls = 'w-full px-2.5 py-1.5 rounded-lg bg-base border border-border text-xs text-text-primary placeholder:text-text-muted outline-none focus:border-accent-blue/50'
 
   return (
-    <div className="flex flex-col h-full w-[380px] min-w-[380px] border-l border-border bg-surface overflow-y-auto">
+    <div className="animate-drawer-in flex flex-col h-full w-[380px] min-w-[380px] border-l border-border bg-surface overflow-y-auto">
 
       {/* Header */}
       <div className="flex items-start justify-between px-5 py-4 border-b border-border shrink-0 gap-2">
@@ -345,14 +371,17 @@ function BuyDrawer({ item, onClose, onToggle, onSave, onDelete, onResearch }: {
               Agent is researching… (~1–2 min)
             </div>
           ) : r.status === 'done' ? (
-            <div className="flex flex-col gap-3">
-              <div className="flex items-center justify-between">
+            <div className="animate-rise-in flex flex-col gap-3">
+              <div className="flex items-center justify-between gap-2">
                 <span className="flex items-center gap-1.5 text-xs font-medium text-violet-200">
                   <Sparkles size={13} className="text-violet-400" /> Shopping research
                 </span>
-                <button onClick={() => onResearch(item)} className="text-[10px] text-violet-400/70 hover:text-violet-300">
-                  re-run
-                </button>
+                <div className="flex items-center gap-2">
+                  <AgentSourcePicker value={source} onChange={setSource} />
+                  <button onClick={() => onResearch(item, source)} className="text-[10px] text-violet-400/70 hover:text-violet-300">
+                    re-run
+                  </button>
+                </div>
               </div>
               {r.summary && (
                 <p className="text-xs text-text-secondary leading-relaxed">{r.summary}</p>
@@ -414,10 +443,16 @@ function BuyDrawer({ item, onClose, onToggle, onSave, onDelete, onResearch }: {
               )}
             </div>
           ) : (
-            <button onClick={() => onResearch(item)} className="flex items-center gap-2 text-xs text-violet-200 hover:text-violet-100 w-full">
-              <Sparkles size={13} className="text-violet-400" />
-              {r.status === 'failed' ? 'Research failed — click to retry' : 'Ask an agent to research where to buy & price'}
-            </button>
+            <div className="flex flex-col gap-2.5">
+              <button onClick={() => onResearch(item, source)} className="flex items-center gap-2 text-xs text-violet-200 hover:text-violet-100 w-full text-left">
+                <Sparkles size={13} className="text-violet-400 shrink-0" />
+                {r.status === 'failed' ? 'Research failed — click to retry' : 'Ask an agent to research where to buy & price'}
+              </button>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] text-text-muted">via</span>
+                <AgentSourcePicker value={source} onChange={setSource} />
+              </div>
+            </div>
           )}
           {r.status === 'failed' && r.error && (
             <p className="text-[10px] text-red-400 mt-1.5">{r.error}</p>
@@ -521,9 +556,9 @@ export default function ToBuy() {
     finally { setClearing(false) }
   }
 
-  async function handleResearch(item: BuyItem) {
+  async function handleResearch(item: BuyItem, source: ResearchSource) {
     try {
-      const r = await startResearch(item.id)
+      const r = await startResearch(item.id, source)
       setItems(is => is.map(i => i.id === item.id ? r.item : i))
     } catch (e: any) { setError(e.message) }
   }
@@ -627,9 +662,17 @@ export default function ToBuy() {
         {/* List */}
         <div className="flex-1 min-h-0 overflow-y-auto">
           {visible.length === 0 ? (
-            <div className="flex flex-col items-center gap-2 py-16 text-text-muted">
-              <Link2 size={20} className="opacity-40" />
+            <div className="flex flex-col items-center gap-3 py-16 text-text-muted">
+              <ShoppingCart size={22} className="opacity-30" />
               <p className="text-xs">{filter === 'bought' ? 'Nothing bought yet.' : 'Nothing to buy — add an item above.'}</p>
+              {filter !== 'bought' && (
+                <div className="flex items-center gap-1.5 flex-wrap justify-center max-w-xs">
+                  <span className="text-[10px] text-text-muted/70">Try tokens:</span>
+                  {['!high', 'x2', '$89'].map(t => (
+                    <code key={t} className="text-[10px] px-1.5 py-0.5 rounded border border-border bg-base text-text-secondary font-mono">{t}</code>
+                  ))}
+                </div>
+              )}
             </div>
           ) : (
             <div className="flex flex-col divide-y divide-border">

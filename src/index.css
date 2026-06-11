@@ -63,6 +63,23 @@ body {
     font-size: 0.625rem;
     line-height: 1rem;
   }
+  /* Detail drawer entrance — slide + fade from the right (motion-only drama). */
+  .animate-drawer-in {
+    animation: drawer-in 0.24s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  /* Research result reveal — soft rise as agent output lands. */
+  .animate-rise-in {
+    animation: rise-in 0.3s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+}
+
+@keyframes drawer-in {
+  from { transform: translateX(20px); opacity: 0; }
+  to   { transform: translateX(0);    opacity: 1; }
+}
+@keyframes rise-in {
+  from { transform: translateY(6px); opacity: 0; }
+  to   { transform: translateY(0);   opacity: 1; }
 }
 
 /* ── Agent state animations ── */

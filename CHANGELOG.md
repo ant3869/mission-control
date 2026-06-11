@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.7.56] — 2026-06-11
+
+### Changed
+
+- **To-Do & To-Buy polish** — a cohesive pass over both personal-list pages:
+  - **Drawer slide-in motion** — the detail drawer now eases in from the right (`drawer-in` keyframe), and agent research results rise in as they land (`rise-in`). On-theme motion, no new styling.
+  - **Research agent picker** — both drawers now let you choose **OpenClaw** or **Hermes** for the research run (inline `via …` toggle); the choice is passed through `/api/*/research`, so you can compare how each platform answers.
+  - **Active-row accent** — the selected row gets a coloured left rail (emerald for To-Do, sky for To-Buy) so it's clear which item the open drawer belongs to.
+  - **Friendlier empty states** — section-appropriate icon plus quick-add token hints (`!high`, `@long`, `tomorrow` / `!high`, `x2`, `$89`) so the natural-language syntax is discoverable.
+
 ## [0.7.55] — 2026-06-11
 
 ### Added
