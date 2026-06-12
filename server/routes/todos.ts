@@ -22,6 +22,7 @@ export interface TodoResearch extends TodoResearchResult {
   requestedAt: string   // ISO or empty
   completedAt: string   // ISO or empty
   error:       string
+  guidance:    string   // extra context the user gave for a re-run (or empty)
 }
 
 export interface Todo {
@@ -41,7 +42,7 @@ export interface Todo {
 const SEVERITIES: TodoSeverity[] = ['low', 'medium', 'high', 'critical']
 const HORIZONS:   TodoHorizon[]  = ['short', 'long']
 
-const emptyResearch = (): TodoResearch => ({ status: 'idle', requestedAt: '', completedAt: '', error: '' })
+const emptyResearch = (): TodoResearch => ({ status: 'idle', requestedAt: '', completedAt: '', error: '', guidance: '' })
 
 // ─── Persistence ──────────────────────────────────────────────────────────────
 
@@ -161,12 +162,13 @@ todosRouter.post('/:id/research', (req, res) => {
   if (todo.research?.status === 'pending') return res.status(409).json({ error: 'research already in progress' })
 
   const source = req.body?.source === 'hermes' ? 'hermes' : 'openclaw'
-  todo.research = { ...emptyResearch(), status: 'pending', requestedAt: new Date().toISOString() }
+  const guidance = String(req.body?.guidance ?? '').trim().slice(0, 1000)
+  todo.research = { ...emptyResearch(), status: 'pending', requestedAt: new Date().toISOString(), guidance }
   todo.updatedAt = new Date().toISOString()
   saveTodos(todos)
 
   // Fire-and-forget: the client polls GET /api/todos for status transitions.
-  researchTodo(todo, source).then(r => {
+  researchTodo(todo, source, guidance).then(r => {
     const cur = loadTodos()
     const t = cur.find(x => x.id === todo.id)
     if (!t) return

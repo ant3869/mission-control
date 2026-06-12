@@ -24,6 +24,7 @@ interface BuyResearch {
   requestedAt:     string
   completedAt:     string
   error:           string
+  guidance?:       string
   summary?:        string
   estimatedPrice?: number
   priceRange?:     string
@@ -81,8 +82,8 @@ async function clearPurchased(): Promise<{ removed: number }> {
 
 type ResearchSource = 'openclaw' | 'hermes'
 
-async function startResearch(id: string, source: ResearchSource): Promise<{ item: BuyItem }> {
-  const res = await fetch(`/api/tobuy/${id}/research`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ source }) })
+async function startResearch(id: string, source: ResearchSource, guidance?: string): Promise<{ item: BuyItem }> {
+  const res = await fetch(`/api/tobuy/${id}/research`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ source, guidance: guidance ?? '' }) })
   if (!res.ok) throw new Error(await res.text())
   return res.json()
 }
@@ -159,6 +160,41 @@ function AgentSourcePicker({ value, onChange }: { value: ResearchSource; onChang
   )
 }
 
+// ─── Research refine box ──────────────────────────────────────────────────────
+
+function RefineBox({ value, onChange, onRun, onCancel, placeholder }: {
+  value: string
+  onChange: (s: string) => void
+  onRun: () => void
+  onCancel: () => void
+  placeholder: string
+}) {
+  return (
+    <div className="animate-rise-in flex flex-col gap-2 rounded-lg border border-violet-900/40 bg-violet-950/25 p-2.5">
+      <textarea
+        autoFocus
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        rows={3}
+        placeholder={placeholder}
+        className="w-full px-2.5 py-1.5 rounded-lg bg-base border border-border text-xs text-text-primary placeholder:text-text-muted outline-none focus:border-violet-500/50 resize-none"
+        onKeyDown={e => { if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') onRun() }}
+      />
+      <div className="flex items-center gap-2">
+        <button onClick={onRun}
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-violet-500/40 bg-violet-500/20 text-violet-100 hover:bg-violet-500/30 text-xs">
+          <Sparkles size={11} /> Re-run research
+        </button>
+        <button onClick={onCancel}
+                className="px-2.5 py-1 rounded-lg border border-border bg-card hover:bg-card-hover text-text-secondary text-xs">
+          Cancel
+        </button>
+        <span className="ml-auto text-[10px] text-text-muted">⌘↵</span>
+      </div>
+    </div>
+  )
+}
+
 // ─── Item row ─────────────────────────────────────────────────────────────────
 
 function BuyRow({ item, active, onToggle, onClick }: {
@@ -229,7 +265,7 @@ function BuyDrawer({ item, onClose, onToggle, onSave, onDelete, onResearch }: {
   onToggle:   (i: BuyItem) => void
   onSave:     (i: BuyItem, patch: BuyPatch) => void
   onDelete:   (i: BuyItem) => void
-  onResearch: (i: BuyItem, source: ResearchSource) => void
+  onResearch: (i: BuyItem, source: ResearchSource, guidance?: string) => void
 }) {
   useEscapeKey(onClose)
 
@@ -240,6 +276,14 @@ function BuyDrawer({ item, onClose, onToggle, onSave, onDelete, onResearch }: {
   const [quantity, setQuantity] = useState(String(item.quantity))
   const [price, setPrice]       = useState(item.estimatedPrice ? String(item.estimatedPrice) : '')
   const [source, setSource]     = useState<ResearchSource>('openclaw')
+  const [refining, setRefining] = useState(false)
+  const [guidance, setGuidance] = useState('')
+
+  function runResearch() {
+    onResearch(item, source, guidance.trim() || undefined)
+    setRefining(false)
+    setGuidance('')
+  }
 
   // Sync local state when the selected item changes
   useEffect(() => {
@@ -249,6 +293,8 @@ function BuyDrawer({ item, onClose, onToggle, onSave, onDelete, onResearch }: {
     setQuantity(String(item.quantity))
     setPrice(item.estimatedPrice ? String(item.estimatedPrice) : '')
     setEditing(false)
+    setRefining(false)
+    setGuidance('')
   }, [item.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   function save() {
@@ -378,11 +424,23 @@ function BuyDrawer({ item, onClose, onToggle, onSave, onDelete, onResearch }: {
                 </span>
                 <div className="flex items-center gap-2">
                   <AgentSourcePicker value={source} onChange={setSource} />
-                  <button onClick={() => onResearch(item, source)} className="text-[10px] text-violet-400/70 hover:text-violet-300">
-                    re-run
+                  <button onClick={() => setRefining(v => !v)} className="text-[10px] text-violet-400/70 hover:text-violet-300">
+                    {refining ? 'close' : 're-run'}
                   </button>
                 </div>
               </div>
+              {refining && (
+                <RefineBox
+                  value={guidance}
+                  onChange={setGuidance}
+                  onRun={runResearch}
+                  onCancel={() => { setRefining(false); setGuidance('') }}
+                  placeholder="What should the agent do differently? e.g. budget under $50, prefer brand, only in-stock locally…"
+                />
+              )}
+              {r.guidance && (
+                <p className="text-[10px] text-violet-300/70 italic leading-snug">Refined with: “{r.guidance}”</p>
+              )}
               {r.summary && (
                 <p className="text-xs text-text-secondary leading-relaxed">{r.summary}</p>
               )}
@@ -442,15 +500,28 @@ function BuyDrawer({ item, onClose, onToggle, onSave, onDelete, onResearch }: {
                 </div>
               )}
             </div>
+          ) : refining ? (
+            <RefineBox
+              value={guidance}
+              onChange={setGuidance}
+              onRun={runResearch}
+              onCancel={() => { setRefining(false); setGuidance('') }}
+              placeholder="What should the agent do differently? e.g. budget under $50, prefer brand, only in-stock locally…"
+            />
           ) : (
             <div className="flex flex-col gap-2.5">
               <button onClick={() => onResearch(item, source)} className="flex items-center gap-2 text-xs text-violet-200 hover:text-violet-100 w-full text-left">
                 <Sparkles size={13} className="text-violet-400 shrink-0" />
                 {r.status === 'failed' ? 'Research failed — click to retry' : 'Ask an agent to research where to buy & price'}
               </button>
-              <div className="flex items-center gap-2">
-                <span className="text-[10px] text-text-muted">via</span>
-                <AgentSourcePicker value={source} onChange={setSource} />
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] text-text-muted">via</span>
+                  <AgentSourcePicker value={source} onChange={setSource} />
+                </div>
+                <button onClick={() => setRefining(true)} className="text-[10px] text-violet-400/70 hover:text-violet-300">
+                  {r.status === 'failed' ? 'refine & retry' : 'add guidance'}
+                </button>
               </div>
             </div>
           )}
@@ -556,9 +627,9 @@ export default function ToBuy() {
     finally { setClearing(false) }
   }
 
-  async function handleResearch(item: BuyItem, source: ResearchSource) {
+  async function handleResearch(item: BuyItem, source: ResearchSource, guidance?: string) {
     try {
-      const r = await startResearch(item.id, source)
+      const r = await startResearch(item.id, source, guidance)
       setItems(is => is.map(i => i.id === item.id ? r.item : i))
     } catch (e: any) { setError(e.message) }
   }

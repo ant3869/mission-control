@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.7.57] — 2026-06-11
+
+### Added
+
+- **Research guidance for re-runs** — both To-Do and To-Buy now let you tell the agent what to do differently before re-running research. The drawer's "re-run" (and "refine & retry" on a failed run, or "add guidance" on a first run) opens a text box where you type context — e.g. "focus on free local options", "budget under $40, prefer DeWalt" — which is sent to the agent and prioritised in its prompt (⌘↵ to submit). The guidance used is shown on the result as "Refined with: …".
+
+### Fixed
+
+- **Re-run now actually re-researches** — each research run uses a fresh agent session instead of reusing one keyed only by item id. Previously a re-run could return the *previous* answer instantly (the poller saw the stale reply), so guidance/refinements were ignored. Runs are now isolated end-to-end.
+
 ## [0.7.56] — 2026-06-11
 
 ### Changed

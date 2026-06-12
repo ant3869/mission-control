@@ -24,6 +24,7 @@ interface TodoResearch {
   requestedAt: string
   completedAt: string
   error:       string
+  guidance?:   string
   summary?:    string
   steps?:      string[]
   links?:      Array<{ title: string; url: string }>
@@ -79,8 +80,8 @@ async function clearDone(): Promise<{ removed: number }> {
 
 type ResearchSource = 'openclaw' | 'hermes'
 
-async function startResearch(id: string, source: ResearchSource): Promise<{ todo: Todo }> {
-  const res = await fetch(`/api/todos/${id}/research`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ source }) })
+async function startResearch(id: string, source: ResearchSource, guidance?: string): Promise<{ todo: Todo }> {
+  const res = await fetch(`/api/todos/${id}/research`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ source, guidance: guidance ?? '' }) })
   if (!res.ok) throw new Error(await res.text())
   return res.json()
 }
@@ -189,6 +190,41 @@ function AgentSourcePicker({ value, onChange }: { value: ResearchSource; onChang
   )
 }
 
+// ─── Research refine box ──────────────────────────────────────────────────────
+
+function RefineBox({ value, onChange, onRun, onCancel, placeholder }: {
+  value: string
+  onChange: (s: string) => void
+  onRun: () => void
+  onCancel: () => void
+  placeholder: string
+}) {
+  return (
+    <div className="animate-rise-in flex flex-col gap-2 rounded-lg border border-violet-900/40 bg-violet-950/25 p-2.5">
+      <textarea
+        autoFocus
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        rows={3}
+        placeholder={placeholder}
+        className="w-full px-2.5 py-1.5 rounded-lg bg-base border border-border text-xs text-text-primary placeholder:text-text-muted outline-none focus:border-violet-500/50 resize-none"
+        onKeyDown={e => { if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') onRun() }}
+      />
+      <div className="flex items-center gap-2">
+        <button onClick={onRun}
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-violet-500/40 bg-violet-500/20 text-violet-100 hover:bg-violet-500/30 text-xs">
+          <Sparkles size={11} /> Re-run research
+        </button>
+        <button onClick={onCancel}
+                className="px-2.5 py-1 rounded-lg border border-border bg-card hover:bg-card-hover text-text-secondary text-xs">
+          Cancel
+        </button>
+        <span className="ml-auto text-[10px] text-text-muted">⌘↵</span>
+      </div>
+    </div>
+  )
+}
+
 // ─── Todo row ─────────────────────────────────────────────────────────────────
 
 function TodoRow({ todo, active, onToggle, onClick }: {
@@ -257,7 +293,7 @@ function TodoDrawer({ todo, onClose, onToggle, onSave, onDelete, onResearch }: {
   onToggle:   (t: Todo) => void
   onSave:     (t: Todo, patch: TodoPatch) => void
   onDelete:   (t: Todo) => void
-  onResearch: (t: Todo, source: ResearchSource) => void
+  onResearch: (t: Todo, source: ResearchSource, guidance?: string) => void
 }) {
   useEscapeKey(onClose)
 
@@ -268,6 +304,14 @@ function TodoDrawer({ todo, onClose, onToggle, onSave, onDelete, onResearch }: {
   const [horizon, setHorizon]   = useState<Horizon>(todo.horizon)
   const [due, setDue]           = useState(isoToDateInput(todo.dueDate))
   const [source, setSource]     = useState<ResearchSource>('openclaw')
+  const [refining, setRefining] = useState(false)
+  const [guidance, setGuidance] = useState('')
+
+  function runResearch() {
+    onResearch(todo, source, guidance.trim() || undefined)
+    setRefining(false)
+    setGuidance('')
+  }
 
   // Sync local state when the selected todo changes
   useEffect(() => {
@@ -276,6 +320,8 @@ function TodoDrawer({ todo, onClose, onToggle, onSave, onDelete, onResearch }: {
     setSeverity(todo.severity)
     setHorizon(todo.horizon)
     setDue(isoToDateInput(todo.dueDate))
+    setRefining(false)
+    setGuidance('')
     setEditing(false)
   }, [todo.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -411,11 +457,23 @@ function TodoDrawer({ todo, onClose, onToggle, onSave, onDelete, onResearch }: {
                 </span>
                 <div className="flex items-center gap-2">
                   <AgentSourcePicker value={source} onChange={setSource} />
-                  <button onClick={() => onResearch(todo, source)} className="text-[10px] text-violet-400/70 hover:text-violet-300">
-                    re-run
+                  <button onClick={() => setRefining(v => !v)} className="text-[10px] text-violet-400/70 hover:text-violet-300">
+                    {refining ? 'close' : 're-run'}
                   </button>
                 </div>
               </div>
+              {refining && (
+                <RefineBox
+                  value={guidance}
+                  onChange={setGuidance}
+                  onRun={runResearch}
+                  onCancel={() => { setRefining(false); setGuidance('') }}
+                  placeholder="What should the agent do differently? e.g. focus on free options, official sources only, NWA-local results…"
+                />
+              )}
+              {r.guidance && (
+                <p className="text-[10px] text-violet-300/70 italic leading-snug">Refined with: “{r.guidance}”</p>
+              )}
               {r.summary && (
                 <p className="text-xs text-text-secondary leading-relaxed">{r.summary}</p>
               )}
@@ -455,15 +513,28 @@ function TodoDrawer({ todo, onClose, onToggle, onSave, onDelete, onResearch }: {
                 </div>
               )}
             </div>
+          ) : refining ? (
+            <RefineBox
+              value={guidance}
+              onChange={setGuidance}
+              onRun={runResearch}
+              onCancel={() => { setRefining(false); setGuidance('') }}
+              placeholder="What should the agent do differently? e.g. focus on free options, official sources only, NWA-local results…"
+            />
           ) : (
             <div className="flex flex-col gap-2.5">
               <button onClick={() => onResearch(todo, source)} className="flex items-center gap-2 text-xs text-violet-200 hover:text-violet-100 w-full text-left">
                 <Sparkles size={13} className="text-violet-400 shrink-0" />
                 {r.status === 'failed' ? 'Research failed — click to retry' : 'Ask an agent to research this task'}
               </button>
-              <div className="flex items-center gap-2">
-                <span className="text-[10px] text-text-muted">via</span>
-                <AgentSourcePicker value={source} onChange={setSource} />
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] text-text-muted">via</span>
+                  <AgentSourcePicker value={source} onChange={setSource} />
+                </div>
+                <button onClick={() => setRefining(true)} className="text-[10px] text-violet-400/70 hover:text-violet-300">
+                  {r.status === 'failed' ? 'refine & retry' : 'add guidance'}
+                </button>
               </div>
             </div>
           )}
@@ -570,9 +641,9 @@ export default function Todos() {
     finally { setClearing(false) }
   }
 
-  async function handleResearch(todo: Todo, source: ResearchSource) {
+  async function handleResearch(todo: Todo, source: ResearchSource, guidance?: string) {
     try {
-      const r = await startResearch(todo.id, source)
+      const r = await startResearch(todo.id, source, guidance)
       setTodos(ts => ts.map(t => t.id === todo.id ? r.todo : t))
     } catch (e: any) { setError(e.message) }
   }

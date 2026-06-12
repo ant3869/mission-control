@@ -139,7 +139,7 @@ export interface TodoResearchResult {
   data?: Record<string, string>
 }
 
-function buildTodoPrompt(todo: { title: string; notes?: string }): string {
+function buildTodoPrompt(todo: { title: string; notes?: string }, guidance?: string): string {
   return [
     'You are a research assistant for a personal to-do list. Research the task below using web search.',
     'Your goal: gather whatever helps the user complete the task fastest — direct links, key facts, numbers, deadlines, calculations.',
@@ -150,6 +150,7 @@ function buildTodoPrompt(todo: { title: string; notes?: string }): string {
     'data (object of short key:value facts, figures, prices, deadlines, or calculations that aid the task).',
     `Task: "${todo.title.trim()}".`,
     todo.notes?.trim() ? `User notes: ${todo.notes.trim()}` : '',
+    guidance?.trim() ? `IMPORTANT — the user is re-running this research and gave specific guidance on what to do differently this time. Prioritise it above all else: ${guidance.trim()}` : '',
   ].filter(Boolean).join(' ')
 }
 
@@ -157,10 +158,12 @@ function isTodoResult(json: any): json is TodoResearchResult {
   return Boolean(json && (json.summary || json.steps?.length || json.links?.length))
 }
 
-async function researchTodoOpenClaw(todo: { id: string; title: string; notes?: string }): Promise<TodoResearchResult> {
+async function researchTodoOpenClaw(todo: { id: string; title: string; notes?: string }, guidance?: string): Promise<TodoResearchResult> {
   await ensureConnected(12_000)
-  const sessionKey = `agent:main:dashboard-todo:${todo.id.slice(0, 8)}`
-  await ocRequest('chat.send', { sessionKey, message: buildTodoPrompt(todo), deliver: false, idempotencyKey: randomUUID() }, 12_000)
+  // Fresh session per run so a previous answer in the same session can't be
+  // returned by the poller before the (guided) re-run actually completes.
+  const sessionKey = `agent:main:dashboard-todo:${todo.id.slice(0, 8)}:${randomUUID().slice(0, 8)}`
+  await ocRequest('chat.send', { sessionKey, message: buildTodoPrompt(todo, guidance), deliver: false, idempotencyKey: randomUUID() }, 12_000)
   for (let i = 0; i < 36; i++) {
     await sleep(5000)
     const h = await ocRequest('chat.history', { sessionKey, limit: 8, maxChars: 120_000 }, 10_000).catch(() => null)
@@ -172,20 +175,20 @@ async function researchTodoOpenClaw(todo: { id: string; title: string; notes?: s
   throw new Error('agent did not return structured data within ~3 minutes')
 }
 
-async function researchTodoHermes(todo: { id: string; title: string; notes?: string }): Promise<TodoResearchResult> {
-  const r = await hermesChat(buildTodoPrompt(todo), { timeoutMs: 180_000 })
+async function researchTodoHermes(todo: { id: string; title: string; notes?: string }, guidance?: string): Promise<TodoResearchResult> {
+  const r = await hermesChat(buildTodoPrompt(todo, guidance), { timeoutMs: 180_000 })
   if (!r.ok) throw new Error(`Hermes API server rejected the request (${r.triedUrl}): ${r.error ?? 'unknown'}`)
   const json = extractJson(r.answer)
   if (isTodoResult(json)) return json
   throw new Error('Hermes returned an answer but no parseable JSON.')
 }
 
-export async function researchTodo(todo: { id: string; title: string; notes?: string }, source: AgentSource): Promise<TodoResearchResult> {
-  if (source === 'openclaw') return researchTodoOpenClaw(todo)
+export async function researchTodo(todo: { id: string; title: string; notes?: string }, source: AgentSource, guidance?: string): Promise<TodoResearchResult> {
+  if (source === 'openclaw') return researchTodoOpenClaw(todo, guidance)
   if (source === 'hermes') {
-    return researchTodoHermes(todo).catch(err => {
+    return researchTodoHermes(todo, guidance).catch(err => {
       if (String(err?.message).includes('unavailable') || String(err?.message).includes('no supported')) {
-        return researchTodoOpenClaw(todo)
+        return researchTodoOpenClaw(todo, guidance)
       }
       throw err
     })
@@ -207,7 +210,7 @@ export interface BuyResearchResult {
   data?:           Record<string, string>
 }
 
-function buildBuyPrompt(item: { title: string; notes?: string }): string {
+function buildBuyPrompt(item: { title: string; notes?: string }, guidance?: string): string {
   return [
     'You are a shopping research assistant. The user wants to BUY the item below. Research it using web search.',
     'Your goal: help the user decide and purchase fast — what it is, a fair price, where to get it locally, and where to buy online.',
@@ -220,6 +223,7 @@ function buildBuyPrompt(item: { title: string; notes?: string }): string {
     'data (object of short key:value specs or facts useful for comparing options — e.g. voltage, capacity, warranty).',
     `Item to buy: "${item.title.trim()}".`,
     item.notes?.trim() ? `User notes: ${item.notes.trim()}` : '',
+    guidance?.trim() ? `IMPORTANT — the user is re-running this research and gave specific guidance on what to do differently this time (e.g. a budget, brand, or feature focus). Prioritise it above all else: ${guidance.trim()}` : '',
   ].filter(Boolean).join(' ')
 }
 
@@ -227,10 +231,12 @@ function isBuyResult(json: any): json is BuyResearchResult {
   return Boolean(json && (json.summary || json.estimatedPrice || json.buyLinks?.length || json.localOptions?.length))
 }
 
-async function researchBuyOpenClaw(item: { id: string; title: string; notes?: string }): Promise<BuyResearchResult> {
+async function researchBuyOpenClaw(item: { id: string; title: string; notes?: string }, guidance?: string): Promise<BuyResearchResult> {
   await ensureConnected(12_000)
-  const sessionKey = `agent:main:dashboard-buy:${item.id.slice(0, 8)}`
-  await ocRequest('chat.send', { sessionKey, message: buildBuyPrompt(item), deliver: false, idempotencyKey: randomUUID() }, 12_000)
+  // Fresh session per run so a previous answer can't be returned before the
+  // (guided) re-run completes.
+  const sessionKey = `agent:main:dashboard-buy:${item.id.slice(0, 8)}:${randomUUID().slice(0, 8)}`
+  await ocRequest('chat.send', { sessionKey, message: buildBuyPrompt(item, guidance), deliver: false, idempotencyKey: randomUUID() }, 12_000)
   for (let i = 0; i < 36; i++) {
     await sleep(5000)
     const h = await ocRequest('chat.history', { sessionKey, limit: 8, maxChars: 120_000 }, 10_000).catch(() => null)
@@ -242,20 +248,20 @@ async function researchBuyOpenClaw(item: { id: string; title: string; notes?: st
   throw new Error('agent did not return structured data within ~3 minutes')
 }
 
-async function researchBuyHermes(item: { id: string; title: string; notes?: string }): Promise<BuyResearchResult> {
-  const r = await hermesChat(buildBuyPrompt(item), { timeoutMs: 180_000 })
+async function researchBuyHermes(item: { id: string; title: string; notes?: string }, guidance?: string): Promise<BuyResearchResult> {
+  const r = await hermesChat(buildBuyPrompt(item, guidance), { timeoutMs: 180_000 })
   if (!r.ok) throw new Error(`Hermes API server rejected the request (${r.triedUrl}): ${r.error ?? 'unknown'}`)
   const json = extractJson(r.answer)
   if (isBuyResult(json)) return json
   throw new Error('Hermes returned an answer but no parseable JSON.')
 }
 
-export async function researchBuyItem(item: { id: string; title: string; notes?: string }, source: AgentSource): Promise<BuyResearchResult> {
-  if (source === 'openclaw') return researchBuyOpenClaw(item)
+export async function researchBuyItem(item: { id: string; title: string; notes?: string }, source: AgentSource, guidance?: string): Promise<BuyResearchResult> {
+  if (source === 'openclaw') return researchBuyOpenClaw(item, guidance)
   if (source === 'hermes') {
-    return researchBuyHermes(item).catch(err => {
+    return researchBuyHermes(item, guidance).catch(err => {
       if (String(err?.message).includes('unavailable') || String(err?.message).includes('no supported')) {
-        return researchBuyOpenClaw(item)
+        return researchBuyOpenClaw(item, guidance)
       }
       throw err
     })

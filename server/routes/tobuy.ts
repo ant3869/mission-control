@@ -22,6 +22,7 @@ export interface BuyResearch extends BuyResearchResult {
   requestedAt: string   // ISO or empty
   completedAt: string   // ISO or empty
   error:       string
+  guidance:    string   // extra context the user gave for a re-run (or empty)
 }
 
 export interface BuyItem {
@@ -40,7 +41,7 @@ export interface BuyItem {
 
 const PRIORITIES: BuyPriority[] = ['low', 'medium', 'high']
 
-const emptyResearch = (): BuyResearch => ({ status: 'idle', requestedAt: '', completedAt: '', error: '' })
+const emptyResearch = (): BuyResearch => ({ status: 'idle', requestedAt: '', completedAt: '', error: '', guidance: '' })
 
 function toNum(v: unknown, fallback: number): number {
   const n = Number(v)
@@ -157,12 +158,13 @@ toBuyRouter.post('/:id/research', (req, res) => {
   if (item.research?.status === 'pending') return res.status(409).json({ error: 'research already in progress' })
 
   const source = req.body?.source === 'hermes' ? 'hermes' : 'openclaw'
-  item.research = { ...emptyResearch(), status: 'pending', requestedAt: new Date().toISOString() }
+  const guidance = String(req.body?.guidance ?? '').trim().slice(0, 1000)
+  item.research = { ...emptyResearch(), status: 'pending', requestedAt: new Date().toISOString(), guidance }
   item.updatedAt = new Date().toISOString()
   saveItems(items)
 
   // Fire-and-forget: the client polls GET /api/tobuy for status transitions.
-  researchBuyItem(item, source).then(r => {
+  researchBuyItem(item, source, guidance).then(r => {
     const cur = loadItems()
     const t = cur.find(x => x.id === item.id)
     if (!t) return
