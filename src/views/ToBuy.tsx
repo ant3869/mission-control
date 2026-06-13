@@ -197,6 +197,17 @@ function RefineBox({ value, onChange, onRun, onCancel, placeholder }: {
 
 // ─── Item row ─────────────────────────────────────────────────────────────────
 
+// Muted second line — quantity / unit price / notes, with a quiet fallback.
+function buySubtext(item: BuyItem): string {
+  const parts: string[] = []
+  if (item.quantity > 1) parts.push(`Qty ${item.quantity}`)
+  if (item.estimatedPrice > 0) parts.push(`${money(item.estimatedPrice)} each`)
+  if (item.notes.trim()) parts.push(item.notes.trim().split('\n')[0])
+  if (parts.length) return parts.join('  ·  ')
+  if (item.research?.status === 'done' && item.research.priceRange) return `Typical ${item.research.priceRange}`
+  return `added ${fmtAgo(item.createdAt)}`
+}
+
 function BuyRow({ item, active, onToggle, onClick }: {
   item:     BuyItem
   active:   boolean
@@ -225,33 +236,44 @@ function BuyRow({ item, active, onToggle, onClick }: {
         }
       </button>
 
-      {/* Row body — clicking opens the drawer */}
+      {/* Row body — clicking opens the drawer. Two-line item + uniform right
+          badge column (mirrors the To-Do layout). */}
       <button
         onClick={onClick}
-        className="flex flex-1 min-w-0 items-center gap-2 pr-3 py-2.5 text-left"
+        className="flex flex-1 min-w-0 items-center gap-3 pr-4 py-2.5 text-left"
       >
-        <span className={clsx(
-          'flex-1 min-w-0 text-sm truncate',
-          item.purchased ? 'line-through text-text-muted' : 'text-text-primary',
-        )}>
-          {item.title}
-        </span>
+        {/* Left text column */}
+        <div className="flex flex-col min-w-0 flex-1 gap-0.5">
+          <span className={clsx(
+            'text-sm truncate leading-tight',
+            item.purchased ? 'line-through text-text-muted' : 'text-text-primary',
+          )}>
+            {item.title}
+          </span>
+          <span className="text-[11px] text-text-muted truncate leading-tight">
+            {buySubtext(item)}
+          </span>
+        </div>
 
-        {item.quantity > 1 && (
-          <span className="shrink-0 text-[10px] px-1.5 py-0.5 rounded border border-border bg-base text-text-muted tabular-nums">
-            ×{item.quantity}
+        {/* Right badge column — fixed slots keep everything aligned */}
+        <div className="shrink-0 flex items-center gap-2">
+          {item.estimatedPrice > 0 && (
+            <span className="text-xs text-text-secondary tabular-nums" title={item.quantity > 1 ? `${money(item.estimatedPrice)} each` : undefined}>
+              {money(line)}
+            </span>
+          )}
+          <span className={clsx(
+            'inline-flex justify-center min-w-[60px] text-[10px] px-1.5 py-0.5 rounded border capitalize',
+            PRIORITY_STYLE[item.priority],
+          )}>
+            {item.priority}
           </span>
-        )}
-        {item.estimatedPrice > 0 && (
-          <span className="shrink-0 text-xs text-text-secondary tabular-nums" title={item.quantity > 1 ? `${money(item.estimatedPrice)} each` : undefined}>
-            {money(line)}
+          <span className="w-4 flex justify-center shrink-0">
+            {r.status === 'pending' && <Loader2 size={12} className="text-violet-400 animate-spin" />}
+            {r.status === 'done'    && <Sparkles size={12} className="text-violet-400" />}
+            {r.status === 'failed'  && <Sparkles size={12} className="text-text-muted/40" />}
           </span>
-        )}
-        <span className={clsx('shrink-0 text-[10px] px-1.5 py-0.5 rounded border capitalize', PRIORITY_STYLE[item.priority])}>
-          {item.priority}
-        </span>
-        {r.status === 'pending' && <Loader2 size={11} className="shrink-0 text-violet-400 animate-spin" />}
-        {r.status === 'done'    && <Sparkles size={11} className="shrink-0 text-violet-400" />}
+        </div>
       </button>
     </div>
   )
@@ -314,7 +336,13 @@ function BuyDrawer({ item, onClose, onToggle, onSave, onDelete, onResearch }: {
   const inputCls = 'w-full px-2.5 py-1.5 rounded-lg bg-base border border-border text-xs text-text-primary placeholder:text-text-muted outline-none focus:border-accent-blue/50'
 
   return (
-    <div className="animate-drawer-in flex flex-col h-full w-[380px] min-w-[380px] border-l border-border bg-surface overflow-y-auto">
+    <div className={clsx(
+      'animate-drawer-in flex flex-col h-full border-l border-border bg-surface overflow-y-auto',
+      // Narrow (half-screen): overlay the list instead of crushing it.
+      'absolute inset-y-0 right-0 z-30 w-full max-w-[440px] shadow-2xl shadow-black/40',
+      // Wide: sit side-by-side as a static panel.
+      'lg:static lg:w-[380px] lg:min-w-[380px] lg:max-w-none lg:shadow-none lg:z-auto',
+    )}>
 
       {/* Header */}
       <div className="flex items-start justify-between px-5 py-4 border-b border-border shrink-0 gap-2">
@@ -657,7 +685,7 @@ export default function ToBuy() {
       <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
 
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-border shrink-0">
+        <div className="flex items-center justify-between px-4 lg:px-6 py-4 border-b border-border shrink-0">
           <div className="flex items-center gap-3">
             <ShoppingCart size={18} className="text-sky-400" />
             <h1 className="text-base font-semibold text-text-primary">To-Buy</h1>
@@ -681,7 +709,7 @@ export default function ToBuy() {
         </div>
 
         {/* Quick add + filters */}
-        <div className="shrink-0 px-6 py-3 border-b border-border space-y-3">
+        <div className="shrink-0 px-4 lg:px-6 py-3 border-b border-border space-y-3">
           {error && (
             <div className="flex items-start gap-2 rounded border border-red-500/30 bg-red-500/10 px-3 py-2 text-red-400">
               <AlertCircle size={14} className="shrink-0 mt-0.5" />
@@ -761,16 +789,23 @@ export default function ToBuy() {
         </div>
       </div>
 
-      {/* ── Detail drawer ── */}
+      {/* ── Detail drawer ── (overlay on narrow widths, side panel when wide) */}
       {selected && (
-        <BuyDrawer
-          item={selected}
-          onClose={() => setSelectedId(null)}
-          onToggle={handleToggle}
-          onSave={handleSave}
-          onDelete={handleDelete}
-          onResearch={handleResearch}
-        />
+        <>
+          <div
+            onClick={() => setSelectedId(null)}
+            className="absolute inset-0 z-20 bg-black/40 lg:hidden"
+            aria-hidden
+          />
+          <BuyDrawer
+            item={selected}
+            onClose={() => setSelectedId(null)}
+            onToggle={handleToggle}
+            onSave={handleSave}
+            onDelete={handleDelete}
+            onResearch={handleResearch}
+          />
+        </>
       )}
     </div>
   )

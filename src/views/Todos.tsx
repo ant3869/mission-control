@@ -9,6 +9,7 @@ import { clsx } from 'clsx'
 import {
   ListTodo, RefreshCw, AlertCircle, Plus, Trash2, Sparkles, Loader2,
   Circle, CheckCircle2, ExternalLink, Pencil, Check, X, CalendarDays,
+  ChevronDown, MapPin, Phone, DollarSign, Clock, Link2, User, Tag, Wand2,
 } from 'lucide-react'
 import { useEscapeKey } from '../hooks/useEscapeKey'
 import { isRefreshPaused } from '../lib/refreshBus'
@@ -31,6 +32,29 @@ interface TodoResearch {
   data?:       Record<string, string>
 }
 
+interface TodoDetails {
+  date:         string
+  time:         string
+  location:     string
+  phone:        string
+  cost:         string
+  url:          string
+  contact:      string
+  category:     string
+  customFields: Record<string, string>
+}
+
+const emptyDetails = (): TodoDetails => ({ date: '', time: '', location: '', phone: '', cost: '', url: '', contact: '', category: '', customFields: {} })
+
+function withDetails(d?: Partial<TodoDetails> | null): TodoDetails {
+  return { ...emptyDetails(), ...(d ?? {}), customFields: { ...(d?.customFields ?? {}) } }
+}
+
+function hasAnyDetail(d?: TodoDetails | null): boolean {
+  if (!d) return false
+  return Boolean(d.date || d.time || d.location || d.phone || d.cost || d.url || d.contact || d.category || Object.keys(d.customFields ?? {}).length)
+}
+
 interface Todo {
   id:          string
   title:       string
@@ -42,10 +66,12 @@ interface Todo {
   createdAt:   string
   updatedAt:   string
   completedAt: string
+  details:     TodoDetails
+  rawInput:    string
   research:    TodoResearch
 }
 
-type TodoPatch = Partial<Pick<Todo, 'title' | 'notes' | 'severity' | 'horizon' | 'dueDate' | 'done'>>
+type TodoPatch = Partial<Pick<Todo, 'title' | 'notes' | 'severity' | 'horizon' | 'dueDate' | 'done' | 'details' | 'rawInput'>>
 
 // ─── API ──────────────────────────────────────────────────────────────────────
 
@@ -55,7 +81,7 @@ async function fetchTodos(): Promise<{ todos: Todo[] }> {
   return res.json()
 }
 
-async function createTodo(body: { title: string; severity: Severity; horizon: Horizon; dueDate?: string }): Promise<{ todo: Todo }> {
+async function createTodo(body: { title: string; severity: Severity; horizon: Horizon; dueDate?: string; details?: TodoDetails; rawInput?: string }): Promise<{ todo: Todo }> {
   const res = await fetch('/api/todos', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
   if (!res.ok) throw new Error(await res.text())
   return res.json()
@@ -119,6 +145,47 @@ function parseQuickAdd(raw: string, defaults: { severity: Severity; horizon: Hor
   }
 
   return { title: title.replace(/\s{2,}/g, ' ').trim(), severity, horizon, dueDate }
+}
+
+// ─── Smart detail extraction ──────────────────────────────────────────────────
+// Best-effort scan of free text for structured fields. A *helper*, never the
+// required input path — it only fills fields the user left blank, and never
+// rewrites the title. e.g. "Eye exam 06/17/2026, 406 S Walton Blvd, 11:40AM,
+// $100, 479-271-0301" → date/location/time/cost/phone.
+
+const STREET_SUFFIX = 'St|Street|Ave|Avenue|Blvd|Boulevard|Rd|Road|Dr|Drive|Ln|Lane|Way|Ct|Court|Pkwy|Parkway|Hwy|Highway|Cir|Circle|Pl|Place|Ter|Terrace|Trl|Trail|Sq|Square'
+
+function parseDetails(raw: string): Partial<TodoDetails> {
+  const text = ` ${raw} `
+  const found: Partial<TodoDetails> = {}
+
+  const date = text.match(/\b(\d{1,2}\/\d{1,2}\/\d{2,4}|\d{4}-\d{2}-\d{2})\b/)
+    || text.match(/\b((?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+\d{1,2}(?:,?\s*\d{4})?)\b/i)
+  if (date) found.date = date[1].trim()
+
+  const time = text.match(/\b(\d{1,2}(?::\d{2})?\s*(?:a\.?m\.?|p\.?m\.?))\b/i)
+    || text.match(/\b([01]?\d|2[0-3]):[0-5]\d\b/)
+  if (time) found.time = time[1].trim().replace(/\s+/g, '')
+
+  const phone = text.match(/(\(\d{3}\)\s*\d{3}[-.\s]\d{4}|\d{3}[-.\s]\d{3}[-.\s]\d{4})/)
+  if (phone) found.phone = phone[1].trim()
+
+  const cost = text.match(/\$\s?(\d{1,3}(?:,\d{3})*(?:\.\d{1,2})?)/)
+  if (cost) found.cost = `$${cost[1]}`
+
+  const url = text.match(/\b(https?:\/\/[^\s,]+|www\.[^\s,]+)\b/i)
+  if (url) found.url = url[1].trim()
+
+  const addr = text.match(new RegExp(`(\\d{1,6}\\s+(?:[NSEW]\\.?\\s+)?[A-Za-z0-9][\\w'.-]*(?:\\s+[A-Za-z0-9][\\w'.-]*){0,4}?\\s+(?:${STREET_SUFFIX})\\b)`, 'i'))
+  if (addr) found.location = addr[1].replace(/\s{2,}/g, ' ').trim()
+
+  return found
+}
+
+// True if the text plausibly carries structured detail worth offering to extract.
+function looksDetailRich(raw: string): boolean {
+  const d = parseDetails(raw)
+  return Object.values(d).some(Boolean)
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -225,6 +292,143 @@ function RefineBox({ value, onChange, onRun, onCancel, placeholder }: {
   )
 }
 
+// ─── Additional details ───────────────────────────────────────────────────────
+
+type DetailKey = 'date' | 'time' | 'location' | 'phone' | 'cost' | 'url' | 'contact' | 'category'
+
+const DETAIL_FIELDS: Array<{ key: DetailKey; label: string; icon: typeof MapPin; placeholder: string; wide?: boolean; type?: string }> = [
+  { key: 'date',     label: 'Date',     icon: CalendarDays, placeholder: 'e.g. 06/17/2026',     type: 'text' },
+  { key: 'time',     label: 'Time',     icon: Clock,        placeholder: 'e.g. 11:40 AM',        type: 'text' },
+  { key: 'location', label: 'Location', icon: MapPin,       placeholder: '406 S Walton Blvd',    wide: true },
+  { key: 'phone',    label: 'Phone',    icon: Phone,        placeholder: '479-271-0301',         type: 'tel' },
+  { key: 'cost',     label: 'Cost',     icon: DollarSign,   placeholder: '$100',                 type: 'text' },
+  { key: 'contact',  label: 'Contact',  icon: User,         placeholder: 'Person / office name' },
+  { key: 'category', label: 'Category', icon: Tag,          placeholder: 'Appointment, errand…' },
+  { key: 'url',      label: 'URL',      icon: Link2,        placeholder: 'https://…',  wide: true, type: 'url' },
+]
+
+const detailFieldCls = 'w-full pl-7 pr-2 py-1.5 rounded-lg bg-base border border-border text-xs text-text-primary placeholder:text-text-muted outline-none focus:border-accent-blue/50'
+
+// Editable grid of optional fields + custom key/value pairs. Used in quick-add
+// and the drawer editor. Lightweight by design — collapsed by default elsewhere.
+function DetailsForm({ value, onChange, parseSource }: {
+  value: TodoDetails
+  onChange: (d: TodoDetails) => void
+  parseSource?: string   // text to offer auto-detect from (the live title input)
+}) {
+  const set = (k: DetailKey, v: string) => onChange({ ...value, [k]: v })
+
+  const suggestions = parseSource ? parseDetails(parseSource) : {}
+  const fillable = (Object.entries(suggestions) as Array<[DetailKey, string]>)
+    .filter(([k, v]) => v && !value[k])
+
+  function applyDetected() {
+    const next = { ...value }
+    for (const [k, v] of fillable) next[k] = v
+    onChange(next)
+  }
+
+  // Custom fields
+  const customEntries = Object.entries(value.customFields)
+  function setCustom(oldKey: string, key: string, val: string) {
+    const cf = { ...value.customFields }
+    if (oldKey !== key) delete cf[oldKey]
+    if (key.trim()) cf[key] = val
+    onChange({ ...value, customFields: cf })
+  }
+  function addCustom() {
+    if (Object.prototype.hasOwnProperty.call(value.customFields, '')) return
+    onChange({ ...value, customFields: { ...value.customFields, '': '' } })
+  }
+  function removeCustom(key: string) {
+    const cf = { ...value.customFields }; delete cf[key]
+    onChange({ ...value, customFields: cf })
+  }
+
+  return (
+    <div className="flex flex-col gap-2.5">
+      {fillable.length > 0 && (
+        <button onClick={applyDetected}
+                className="animate-rise-in flex items-center gap-1.5 self-start px-2 py-1 rounded-lg border border-violet-500/40 bg-violet-500/15 text-violet-200 hover:bg-violet-500/25 text-[11px]">
+          <Wand2 size={11} /> Detected {fillable.length} field{fillable.length > 1 ? 's' : ''} — apply
+        </button>
+      )}
+
+      <div className="grid grid-cols-2 gap-2">
+        {DETAIL_FIELDS.map(f => {
+          const Icon = f.icon
+          return (
+            <label key={f.key} className={clsx('flex flex-col gap-1 min-w-0', f.wide && 'col-span-2')}>
+              <span className="flex items-center gap-1 text-xxs font-semibold uppercase tracking-wide text-text-muted">
+                <Icon size={10} /> {f.label}
+              </span>
+              <div className="relative">
+                <Icon size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
+                <input
+                  type={f.type ?? 'text'}
+                  value={value[f.key]}
+                  onChange={e => set(f.key, e.target.value)}
+                  placeholder={f.placeholder}
+                  className={detailFieldCls}
+                />
+              </div>
+            </label>
+          )
+        })}
+      </div>
+
+      {/* Custom key/value fields */}
+      {customEntries.length > 0 && (
+        <div className="flex flex-col gap-1.5">
+          {customEntries.map(([k, v], i) => (
+            <div key={i} className="flex items-center gap-1.5">
+              <input
+                value={k}
+                onChange={e => setCustom(k, e.target.value, v)}
+                placeholder="Label"
+                className="w-28 shrink-0 px-2 py-1.5 rounded-lg bg-base border border-border text-xs text-text-secondary placeholder:text-text-muted outline-none focus:border-accent-blue/50"
+              />
+              <input
+                value={v}
+                onChange={e => setCustom(k, k, e.target.value)}
+                placeholder="Value"
+                className="flex-1 min-w-0 px-2 py-1.5 rounded-lg bg-base border border-border text-xs text-text-primary placeholder:text-text-muted outline-none focus:border-accent-blue/50"
+              />
+              <button onClick={() => removeCustom(k)} className="shrink-0 p-1 text-text-muted hover:text-red-400" aria-label="Remove field">
+                <X size={13} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+      <button onClick={addCustom} className="flex items-center gap-1 self-start text-[11px] text-text-muted hover:text-text-secondary">
+        <Plus size={11} /> Custom field
+      </button>
+    </div>
+  )
+}
+
+// The muted second line for a row. Composes the most useful detail fields into
+// a single readable subtext (like the subtitles in the status dashboard), with
+// graceful fallbacks so every row has a consistent two-line rhythm.
+function rowSubtext(todo: Todo): string {
+  const d = todo.details
+  const parts: string[] = []
+  if (d.time)     parts.push(d.time)
+  if (d.date)     parts.push(d.date)
+  if (d.location) parts.push(d.location)
+  if (d.cost)     parts.push(d.cost)
+  if (d.phone)    parts.push(d.phone)
+  if (d.contact)  parts.push(d.contact)
+  if (d.category) parts.push(d.category)
+  if (parts.length) return parts.join('  ·  ')
+
+  if (todo.notes.trim()) return todo.notes.trim().split('\n')[0]
+
+  // Quiet fallback so plain tasks still carry a subtext line.
+  return `${HORIZON_LABEL[todo.horizon]}  ·  added ${fmtAgo(todo.createdAt)}`
+}
+
 // ─── Todo row ─────────────────────────────────────────────────────────────────
 
 function TodoRow({ todo, active, onToggle, onClick }: {
@@ -258,28 +462,45 @@ function TodoRow({ todo, active, onToggle, onClick }: {
         }
       </button>
 
-      {/* Row body — clicking opens the drawer */}
+      {/* Row body — clicking opens the drawer. Two-line item (title + muted
+          subtext) on the left; a uniform, right-aligned badge column on the
+          right so priority pills line up cleanly down the list. */}
       <button
         onClick={onClick}
-        className="flex flex-1 min-w-0 items-center gap-2 pr-3 py-2.5 text-left"
+        className="flex flex-1 min-w-0 items-center gap-3 pr-4 py-2.5 text-left"
       >
-        <span className={clsx(
-          'flex-1 min-w-0 text-sm truncate',
-          todo.done ? 'line-through text-text-muted' : 'text-text-primary',
-        )}>
-          {todo.title}
-        </span>
-
-        {due && (
-          <span className={clsx('shrink-0 flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded border', due.cls)}>
-            <CalendarDays size={10} /> {due.label}
+        {/* Left text column */}
+        <div className="flex flex-col min-w-0 flex-1 gap-0.5">
+          <span className={clsx(
+            'text-sm truncate leading-tight',
+            todo.done ? 'line-through text-text-muted' : 'text-text-primary',
+          )}>
+            {todo.title}
           </span>
-        )}
-        <span className={clsx('shrink-0 text-[10px] px-1.5 py-0.5 rounded border capitalize', SEVERITY_STYLE[todo.severity])}>
-          {todo.severity}
-        </span>
-        {r.status === 'pending' && <Loader2 size={11} className="shrink-0 text-violet-400 animate-spin" />}
-        {r.status === 'done'    && <Sparkles size={11} className="shrink-0 text-violet-400" />}
+          <span className="text-[11px] text-text-muted truncate leading-tight">
+            {rowSubtext(todo)}
+          </span>
+        </div>
+
+        {/* Right badge column — fixed slots keep everything aligned */}
+        <div className="shrink-0 flex items-center gap-2">
+          {due && (
+            <span className={clsx('flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded border', due.cls)}>
+              <CalendarDays size={10} /> {due.label}
+            </span>
+          )}
+          <span className={clsx(
+            'inline-flex justify-center min-w-[68px] text-[10px] px-1.5 py-0.5 rounded border capitalize',
+            SEVERITY_STYLE[todo.severity],
+          )}>
+            {todo.severity}
+          </span>
+          <span className="w-4 flex justify-center shrink-0">
+            {r.status === 'pending' && <Loader2 size={12} className="text-violet-400 animate-spin" />}
+            {r.status === 'done'    && <Sparkles size={12} className="text-violet-400" />}
+            {r.status === 'failed'  && <Sparkles size={12} className="text-text-muted/40" />}
+          </span>
+        </div>
       </button>
     </div>
   )
@@ -303,6 +524,7 @@ function TodoDrawer({ todo, onClose, onToggle, onSave, onDelete, onResearch }: {
   const [severity, setSeverity] = useState<Severity>(todo.severity)
   const [horizon, setHorizon]   = useState<Horizon>(todo.horizon)
   const [due, setDue]           = useState(isoToDateInput(todo.dueDate))
+  const [details, setDetails]   = useState<TodoDetails>(withDetails(todo.details))
   const [source, setSource]     = useState<ResearchSource>('openclaw')
   const [refining, setRefining] = useState(false)
   const [guidance, setGuidance] = useState('')
@@ -320,6 +542,7 @@ function TodoDrawer({ todo, onClose, onToggle, onSave, onDelete, onResearch }: {
     setSeverity(todo.severity)
     setHorizon(todo.horizon)
     setDue(isoToDateInput(todo.dueDate))
+    setDetails(withDetails(todo.details))
     setRefining(false)
     setGuidance('')
     setEditing(false)
@@ -327,7 +550,7 @@ function TodoDrawer({ todo, onClose, onToggle, onSave, onDelete, onResearch }: {
 
   function save() {
     if (!title.trim()) return
-    onSave(todo, { title: title.trim(), notes, severity, horizon, dueDate: dateInputToIso(due) })
+    onSave(todo, { title: title.trim(), notes, severity, horizon, dueDate: dateInputToIso(due), details })
     setEditing(false)
   }
 
@@ -336,7 +559,13 @@ function TodoDrawer({ todo, onClose, onToggle, onSave, onDelete, onResearch }: {
   const inputCls = 'w-full px-2.5 py-1.5 rounded-lg bg-base border border-border text-xs text-text-primary placeholder:text-text-muted outline-none focus:border-accent-blue/50'
 
   return (
-    <div className="animate-drawer-in flex flex-col h-full w-[380px] min-w-[380px] border-l border-border bg-surface overflow-y-auto">
+    <div className={clsx(
+      'animate-drawer-in flex flex-col h-full border-l border-border bg-surface overflow-y-auto',
+      // Narrow (half-screen): overlay the list instead of crushing it.
+      'absolute inset-y-0 right-0 z-30 w-full max-w-[440px] shadow-2xl shadow-black/40',
+      // Wide: sit side-by-side as a static panel.
+      'lg:static lg:w-[380px] lg:min-w-[380px] lg:max-w-none lg:shadow-none lg:z-auto',
+    )}>
 
       {/* Header */}
       <div className="flex items-start justify-between px-5 py-4 border-b border-border shrink-0 gap-2">
@@ -422,6 +651,12 @@ function TodoDrawer({ todo, onClose, onToggle, onSave, onDelete, onResearch }: {
                 )}
               </div>
             </label>
+
+            <div className="pt-1 border-t border-border">
+              <p className="text-xxs font-semibold uppercase tracking-wide text-text-muted mb-2">Additional details</p>
+              <DetailsForm value={details} onChange={setDetails} parseSource={title} />
+            </div>
+
             <div className="flex items-center gap-2">
               <button onClick={save} disabled={!title.trim()}
                       className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-emerald-500/40 bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25 text-xs font-medium disabled:opacity-40">
@@ -434,12 +669,53 @@ function TodoDrawer({ todo, onClose, onToggle, onSave, onDelete, onResearch }: {
             </div>
           </div>
         ) : (
-          todo.notes ? (
-            <div>
-              <p className="text-xxs font-semibold uppercase tracking-wide text-text-muted mb-1.5">Notes</p>
-              <p className="text-xs text-text-secondary leading-relaxed whitespace-pre-wrap">{todo.notes}</p>
-            </div>
-          ) : null
+          <>
+            {hasAnyDetail(todo.details) && (
+              <div>
+                <p className="text-xxs font-semibold uppercase tracking-wide text-text-muted mb-1.5">Details</p>
+                <div className="flex flex-col rounded-lg border border-border overflow-hidden">
+                  {DETAIL_FIELDS.filter(f => todo.details[f.key]).map((f, i) => {
+                    const Icon = f.icon
+                    const val = todo.details[f.key]
+                    const isUrl = f.key === 'url'
+                    return (
+                      <div key={f.key} className={clsx('flex items-center gap-2 px-3 py-1.5 text-xs', i % 2 ? 'bg-base' : 'bg-card')}>
+                        <Icon size={12} className="shrink-0 text-text-muted" />
+                        <span className="text-text-muted w-20 shrink-0">{f.label}</span>
+                        {isUrl ? (
+                          <a href={val.startsWith('http') ? val : `https://${val}`} target="_blank" rel="noopener noreferrer"
+                             className="text-accent-blue hover:underline truncate">{val}</a>
+                        ) : (
+                          <span className="text-text-secondary break-words">{val}</span>
+                        )}
+                      </div>
+                    )
+                  })}
+                  {Object.entries(todo.details.customFields).map(([k, v], i) => (
+                    <div key={k} className={clsx('flex items-center gap-2 px-3 py-1.5 text-xs', (DETAIL_FIELDS.filter(f => todo.details[f.key]).length + i) % 2 ? 'bg-base' : 'bg-card')}>
+                      <Tag size={12} className="shrink-0 text-text-muted" />
+                      <span className="text-text-muted w-20 shrink-0 truncate" title={k}>{k}</span>
+                      <span className="text-text-secondary break-words">{v}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {todo.notes && (
+              <div>
+                <p className="text-xxs font-semibold uppercase tracking-wide text-text-muted mb-1.5">Notes</p>
+                <p className="text-xs text-text-secondary leading-relaxed whitespace-pre-wrap">{todo.notes}</p>
+              </div>
+            )}
+
+            {todo.rawInput && todo.rawInput !== todo.title && (
+              <div>
+                <p className="text-xxs font-semibold uppercase tracking-wide text-text-muted mb-1.5">Original input</p>
+                <p className="text-[11px] text-text-muted leading-relaxed whitespace-pre-wrap font-mono break-words">{todo.rawInput}</p>
+              </div>
+            )}
+          </>
         )}
 
         {/* Research section */}
@@ -575,6 +851,8 @@ export default function Todos() {
   const [horizon, setHorizon]   = useState<Horizon>('short')
   const [adding, setAdding]     = useState(false)
   const [clearing, setClearing] = useState(false)
+  const [showDetails, setShowDetails]   = useState(false)
+  const [quickDetails, setQuickDetails] = useState<TodoDetails>(emptyDetails())
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -597,10 +875,21 @@ export default function Todos() {
     const parsed = parseQuickAdd(title, { severity, horizon })
     if (!parsed.title || adding) return
     setAdding(true); setError(null)
+    // If the user opened details but left fields blank, fall back to auto-detect
+    // from the typed text so pasted appointments still capture structure.
+    const details = hasAnyDetail(quickDetails)
+      ? quickDetails
+      : withDetails(parseDetails(title))
     try {
-      const r = await createTodo(parsed)
+      const r = await createTodo({
+        ...parsed,
+        details,
+        rawInput: title.trim(),
+      })
       setTodos(ts => [r.todo, ...ts])
       setTitle('')
+      setQuickDetails(emptyDetails())
+      setShowDetails(false)
       inputRef.current?.focus()
     } catch (e: any) { setError(e.message) }
     finally { setAdding(false) }
@@ -683,7 +972,7 @@ export default function Todos() {
       <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
 
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-border shrink-0">
+        <div className="flex items-center justify-between px-4 lg:px-6 py-4 border-b border-border shrink-0">
           <div className="flex items-center gap-3">
             <ListTodo size={18} className="text-emerald-400" />
             <h1 className="text-base font-semibold text-text-primary">To-Do</h1>
@@ -700,7 +989,7 @@ export default function Todos() {
         </div>
 
         {/* Quick add + filters */}
-        <div className="shrink-0 px-6 py-3 border-b border-border space-y-3">
+        <div className="shrink-0 px-4 lg:px-6 py-3 border-b border-border space-y-3">
           {error && (
             <div className="flex items-start gap-2 rounded border border-red-500/30 bg-red-500/10 px-3 py-2 text-red-400">
               <AlertCircle size={14} className="shrink-0 mt-0.5" />
@@ -734,6 +1023,35 @@ export default function Todos() {
               {adding ? <Loader2 size={12} className="animate-spin" /> : <Plus size={12} />} Add
             </button>
           </div>
+
+          {/* Additional details toggle — keeps simple tasks simple */}
+          <div className="flex items-center gap-2 -mt-1">
+            <button onClick={() => setShowDetails(v => !v)}
+                    className={clsx(
+                      'flex items-center gap-1 text-[11px] transition-colors',
+                      showDetails ? 'text-text-secondary' : 'text-text-muted hover:text-text-secondary',
+                    )}>
+              <ChevronDown size={12} className={clsx('transition-transform', showDetails && 'rotate-180')} />
+              {showDetails ? 'Additional details' : '+ Additional details'}
+              {hasAnyDetail(quickDetails) && !showDetails && (
+                <span className="ml-1 px-1 rounded bg-accent-blue/15 text-accent-blue tabular-nums">
+                  {DETAIL_FIELDS.filter(f => quickDetails[f.key]).length + Object.keys(quickDetails.customFields).length}
+                </span>
+              )}
+            </button>
+            {!showDetails && title.trim() && looksDetailRich(title) && !hasAnyDetail(quickDetails) && (
+              <button onClick={() => setShowDetails(true)}
+                      className="flex items-center gap-1 text-[11px] text-violet-300/80 hover:text-violet-200">
+                <Wand2 size={11} /> details found in text
+              </button>
+            )}
+          </div>
+
+          {showDetails && (
+            <div className="animate-rise-in rounded-lg border border-border bg-base/40 p-3">
+              <DetailsForm value={quickDetails} onChange={setQuickDetails} parseSource={title} />
+            </div>
+          )}
 
           <div className="flex items-center gap-1">
             {(['open', 'short', 'long', 'done'] as Filter[]).map(f => (
@@ -786,16 +1104,23 @@ export default function Todos() {
         </div>
       </div>
 
-      {/* ── Detail drawer ── */}
+      {/* ── Detail drawer ── (overlay on narrow widths, side panel when wide) */}
       {selected && (
-        <TodoDrawer
-          todo={selected}
-          onClose={() => setSelectedId(null)}
-          onToggle={handleToggle}
-          onSave={handleSave}
-          onDelete={handleDelete}
-          onResearch={handleResearch}
-        />
+        <>
+          <div
+            onClick={() => setSelectedId(null)}
+            className="absolute inset-0 z-20 bg-black/40 lg:hidden"
+            aria-hidden
+          />
+          <TodoDrawer
+            todo={selected}
+            onClose={() => setSelectedId(null)}
+            onToggle={handleToggle}
+            onSave={handleSave}
+            onDelete={handleDelete}
+            onResearch={handleResearch}
+          />
+        </>
       )}
     </div>
   )

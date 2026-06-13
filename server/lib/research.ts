@@ -139,17 +139,51 @@ export interface TodoResearchResult {
   data?: Record<string, string>
 }
 
-function buildTodoPrompt(todo: { title: string; notes?: string }, guidance?: string): string {
+interface TodoDetailsCtx {
+  date?:         string
+  time?:         string
+  location?:     string
+  phone?:        string
+  cost?:         string
+  url?:          string
+  contact?:      string
+  category?:     string
+  customFields?: Record<string, string>
+}
+
+// Render the optional Additional Details into a compact "Label: value" list the
+// agent can use as ground truth (don't re-discover an address the user gave us).
+function renderDetails(d?: TodoDetailsCtx): string {
+  if (!d) return ''
+  const parts: string[] = []
+  const push = (label: string, v?: string) => { if (v && v.trim()) parts.push(`${label}: ${v.trim()}`) }
+  push('Date', d.date)
+  push('Time', d.time)
+  push('Location/Address', d.location)
+  push('Phone', d.phone)
+  push('Cost', d.cost)
+  push('URL', d.url)
+  push('Contact', d.contact)
+  push('Category', d.category)
+  if (d.customFields) for (const [k, v] of Object.entries(d.customFields)) push(k, v)
+  return parts.join('; ')
+}
+
+function buildTodoPrompt(todo: { title: string; notes?: string; details?: TodoDetailsCtx; rawInput?: string }, guidance?: string): string {
+  const details = renderDetails(todo.details)
   return [
     'You are a research assistant for a personal to-do list. Research the task below using web search.',
     'Your goal: gather whatever helps the user complete the task fastest — direct links, key facts, numbers, deadlines, calculations.',
+    'The user may have already supplied known details (date, address, phone, cost, etc.); treat those as ground truth and build on them rather than re-deriving them.',
     'Reply with ONLY a single JSON object (no prose, no markdown fences). Keys:',
     'summary (2-3 sentences with the most useful information for completing this task),',
     'steps (array of up to 5 short, concrete action steps),',
     'links (array of {title,url} — direct, actionable pages: official sites, payment portals, forms, documentation),',
     'data (object of short key:value facts, figures, prices, deadlines, or calculations that aid the task).',
     `Task: "${todo.title.trim()}".`,
+    details ? `Known details — ${details}.` : '',
     todo.notes?.trim() ? `User notes: ${todo.notes.trim()}` : '',
+    !details && todo.rawInput?.trim() && todo.rawInput.trim() !== todo.title.trim() ? `Original raw input: ${todo.rawInput.trim()}` : '',
     guidance?.trim() ? `IMPORTANT — the user is re-running this research and gave specific guidance on what to do differently this time. Prioritise it above all else: ${guidance.trim()}` : '',
   ].filter(Boolean).join(' ')
 }
@@ -158,7 +192,7 @@ function isTodoResult(json: any): json is TodoResearchResult {
   return Boolean(json && (json.summary || json.steps?.length || json.links?.length))
 }
 
-async function researchTodoOpenClaw(todo: { id: string; title: string; notes?: string }, guidance?: string): Promise<TodoResearchResult> {
+async function researchTodoOpenClaw(todo: { id: string; title: string; notes?: string; details?: TodoDetailsCtx; rawInput?: string }, guidance?: string): Promise<TodoResearchResult> {
   await ensureConnected(12_000)
   // Fresh session per run so a previous answer in the same session can't be
   // returned by the poller before the (guided) re-run actually completes.
@@ -175,7 +209,7 @@ async function researchTodoOpenClaw(todo: { id: string; title: string; notes?: s
   throw new Error('agent did not return structured data within ~3 minutes')
 }
 
-async function researchTodoHermes(todo: { id: string; title: string; notes?: string }, guidance?: string): Promise<TodoResearchResult> {
+async function researchTodoHermes(todo: { id: string; title: string; notes?: string; details?: TodoDetailsCtx; rawInput?: string }, guidance?: string): Promise<TodoResearchResult> {
   const r = await hermesChat(buildTodoPrompt(todo, guidance), { timeoutMs: 180_000 })
   if (!r.ok) throw new Error(`Hermes API server rejected the request (${r.triedUrl}): ${r.error ?? 'unknown'}`)
   const json = extractJson(r.answer)
@@ -183,7 +217,7 @@ async function researchTodoHermes(todo: { id: string; title: string; notes?: str
   throw new Error('Hermes returned an answer but no parseable JSON.')
 }
 
-export async function researchTodo(todo: { id: string; title: string; notes?: string }, source: AgentSource, guidance?: string): Promise<TodoResearchResult> {
+export async function researchTodo(todo: { id: string; title: string; notes?: string; details?: TodoDetailsCtx; rawInput?: string }, source: AgentSource, guidance?: string): Promise<TodoResearchResult> {
   if (source === 'openclaw') return researchTodoOpenClaw(todo, guidance)
   if (source === 'hermes') {
     return researchTodoHermes(todo, guidance).catch(err => {

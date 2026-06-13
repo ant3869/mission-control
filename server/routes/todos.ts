@@ -25,6 +25,18 @@ export interface TodoResearch extends TodoResearchResult {
   guidance:    string   // extra context the user gave for a re-run (or empty)
 }
 
+export interface TodoDetails {
+  date:         string
+  time:         string
+  location:     string
+  phone:        string
+  cost:         string
+  url:          string
+  contact:      string
+  category:     string
+  customFields: Record<string, string>
+}
+
 export interface Todo {
   id:          string
   title:       string
@@ -36,6 +48,8 @@ export interface Todo {
   createdAt:   string
   updatedAt:   string
   completedAt: string   // ISO or empty
+  details:     TodoDetails
+  rawInput:    string
   research:    TodoResearch
 }
 
@@ -43,6 +57,7 @@ const SEVERITIES: TodoSeverity[] = ['low', 'medium', 'high', 'critical']
 const HORIZONS:   TodoHorizon[]  = ['short', 'long']
 
 const emptyResearch = (): TodoResearch => ({ status: 'idle', requestedAt: '', completedAt: '', error: '', guidance: '' })
+const emptyDetails  = (): TodoDetails  => ({ date: '', time: '', location: '', phone: '', cost: '', url: '', contact: '', category: '', customFields: {} })
 
 // ─── Persistence ──────────────────────────────────────────────────────────────
 
@@ -57,9 +72,31 @@ function loadTodos(): Todo[] {
   if (!existsSync(path)) return []
   try {
     const parsed = JSON.parse(readFileSync(path, 'utf8')) as Todo[]
-    // Rows written before dueDate existed lack the field.
-    return parsed.map(t => ({ dueDate: '', ...t }))
+    // Backfill fields added after rows were first written (dueDate, details, rawInput).
+    return parsed.map(t => ({
+      dueDate:  '',
+      rawInput: '',
+      ...t,
+      details: { ...emptyDetails(), ...(t.details ?? {}), customFields: { ...((t.details as any)?.customFields ?? {}) } },
+    }))
   } catch { return [] }
+}
+
+// Coerce an arbitrary body.details into a clean TodoDetails (strings only).
+function sanitizeDetails(v: unknown): TodoDetails {
+  const out = emptyDetails()
+  if (!v || typeof v !== 'object') return out
+  const src = v as Record<string, unknown>
+  for (const k of ['date', 'time', 'location', 'phone', 'cost', 'url', 'contact', 'category'] as const) {
+    if (src[k] !== undefined && src[k] !== null) out[k] = String(src[k]).slice(0, 500)
+  }
+  if (src.customFields && typeof src.customFields === 'object') {
+    for (const [k, val] of Object.entries(src.customFields as Record<string, unknown>)) {
+      const key = String(k).trim().slice(0, 60)
+      if (key) out.customFields[key] = String(val ?? '').slice(0, 500)
+    }
+  }
+  return out
 }
 
 function parseDueDate(v: unknown): string {
@@ -108,6 +145,8 @@ todosRouter.post('/', (req, res) => {
     createdAt:   new Date().toISOString(),
     updatedAt:   new Date().toISOString(),
     completedAt: '',
+    details:     sanitizeDetails(body.details),
+    rawInput:    String(body.rawInput ?? '').slice(0, 2000),
     research:    emptyResearch(),
   }
   const todos = loadTodos()
@@ -122,12 +161,14 @@ todosRouter.patch('/:id', (req, res) => {
   const todo  = todos.find(t => t.id === req.params.id)
   if (!todo) return res.status(404).json({ error: 'not found' })
 
-  const { title, notes, severity, horizon, dueDate, done } = req.body ?? {}
+  const { title, notes, severity, horizon, dueDate, done, details, rawInput } = req.body ?? {}
   if (title !== undefined && String(title).trim()) todo.title = String(title).trim()
   if (notes !== undefined)                         todo.notes = String(notes)
   if (SEVERITIES.includes(severity))               todo.severity = severity
   if (HORIZONS.includes(horizon))                  todo.horizon = horizon
   if (dueDate !== undefined)                       todo.dueDate = parseDueDate(dueDate)
+  if (details !== undefined)                       todo.details = sanitizeDetails(details)
+  if (rawInput !== undefined)                      todo.rawInput = String(rawInput).slice(0, 2000)
   if (done !== undefined) {
     todo.done = Boolean(done)
     todo.completedAt = todo.done ? new Date().toISOString() : ''
