@@ -20,7 +20,7 @@ Press **⌘K** (Ctrl+K) anywhere for the command palette — jump to any page or
 |------|----------------|
 | **To-Do** | Personal quick-capture task list. Natural-language quick add (`!crit @long tomorrow`), severity levels (low → critical), short/long horizon, due dates with overdue badges, inline editing, and a one-click OpenClaw/Hermes research button that auto-attaches a summary, action steps, links, and key facts to each task. |
 | **To-Buy** | Personal shopping list with the same click-to-open drawer as To-Do. Quick add with priority/quantity/price tokens (`power drill !high x1 $89`), a running estimated total, and one-click OpenClaw/Hermes research that returns general info, a fair price + range, online buy links, local store options, and key specs — auto-filling the item's price estimate. |
-| **Tasks** | Create, triage, and filter work items. Assign status and priority. See what's blocked or in flight. |
+| **Tasks** | Create, triage, and filter work items. Assign status and priority. See what's blocked or in flight. Includes an **Inbox** tab — a unified feed aggregating approvals, tasks, to-dos, feedback, and publications with snooze, convert-to-task/note, and priority sorting. |
 | **Approvals** | Review agent-generated output before it ships. Approve, reject, or request changes with a single click. |
 | **Projects** | Kanban-style boards for tracking initiatives. Drag cards across columns, set owners, and attach notes. |
 | **Calendar** | View and manage scheduled tasks. Synced with Google Calendar so your schedule and your agents stay aligned. |
@@ -57,8 +57,9 @@ Press **⌘K** (Ctrl+K) anywhere for the command palette — jump to any page or
 | View | What you can do |
 |------|----------------|
 | **Content** | A real feed of what the agents actually publish — morning briefings, status reports, digests, and replies — with a type badge, channel, word count, and an expandable full body. Filter by type and search. |
-| **Docs** | Documentation browser connected to your agent knowledge base. |
+| **Docs** | Documentation browser connected to your agent knowledge base. Includes a **Links** tab — save, tag, pin, and archive bookmarks; add manually or via the Inbox "save as link" action. |
 | **Notes** | Quick-capture scratchpad. Jot down ideas, snippets, or follow-ups without leaving the dashboard. |
+| **News** | Real-time curated news dashboard with three tabs: **Feed** (17 RSS/Atom sources across AI, computing, code, and robotics), **GitHub** (trending repos by time range and language), and **Buzz** (top discussions from HN, Reddit, and Lobsters). ADHD-friendly magazine-style hero, cross-source "Top right now" strip, category/platform filters, and 5-minute auto-refresh. |
 
 ### People & Office
 
@@ -117,6 +118,7 @@ Required variables (see `.env.example` for details):
 | `GOOGLE_CLIENT_SECRET` | Google OAuth client secret |
 | `GOOGLE_REFRESH_TOKEN` | Google OAuth refresh token |
 | `ANTHROPIC_API_KEY` | Anthropic API key (Radar analytics) |
+| `GITHUB_TOKEN` | GitHub personal access token — optional; raises the Search API rate limit for the News → GitHub tab |
 
 ### Run
 

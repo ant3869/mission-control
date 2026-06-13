@@ -2,6 +2,9 @@ import { useState, useEffect, useCallback } from 'react'
 import { clsx } from 'clsx'
 import { Search, FileText, Clock, Hash, RefreshCw, AlertCircle, ChevronRight } from 'lucide-react'
 import { docs as docsApi, type LiveDocFile } from '../lib/api'
+import {
+  clearStoredValue, DOCS_FILE_EVENT, DOCS_FILE_STORAGE_KEY, readStoredValue,
+} from '../lib/quickActions'
 
 // ─── Tag config ────────────────────────────────────────────────────────────────
 
@@ -116,6 +119,7 @@ export function Docs() {
   const [error,    setError]    = useState<string | null>(null)
   const [search,   setSearch]   = useState('')
   const [activeTag, setActiveTag] = useState<DocTag | null>(null)
+  const [requestedFileId, setRequestedFileId] = useState<string | null>(() => readStoredValue(DOCS_FILE_STORAGE_KEY))
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -147,6 +151,33 @@ export function Docs() {
       setLoadingDoc(false)
     }
   }, [])
+
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const custom = event as CustomEvent<{ fileId?: string }>
+      if (custom.detail?.fileId) setRequestedFileId(custom.detail.fileId)
+    }
+    window.addEventListener(DOCS_FILE_EVENT, handler as EventListener)
+    return () => window.removeEventListener(DOCS_FILE_EVENT, handler as EventListener)
+  }, [])
+
+  useEffect(() => {
+    if (!requestedFileId) return
+    const file = files.find(entry => entry.id === requestedFileId)
+    if (!file) {
+      if (!loading) {
+        clearStoredValue(DOCS_FILE_STORAGE_KEY)
+        setRequestedFileId(null)
+      }
+      return
+    }
+
+    clearStoredValue(DOCS_FILE_STORAGE_KEY)
+    setRequestedFileId(null)
+    setSearch('')
+    setActiveTag(null)
+    void openDoc(file)
+  }, [files, loading, openDoc, requestedFileId])
 
   // Auto-load first doc
   useEffect(() => {

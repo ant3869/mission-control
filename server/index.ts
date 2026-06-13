@@ -32,6 +32,7 @@ import { evaluationsRouter } from './routes/evaluations.js'
 import { harnessBenchRouter } from './routes/harnessBench.js'
 import { linksRouter }    from './routes/links.js'
 import { inboxRouter }    from './routes/inbox.js'
+import { newsRouter }     from './routes/news.js'
 
 const app = express()
 const PORT = process.env.API_PORT ?? 3001
@@ -70,6 +71,7 @@ app.use('/api/evaluations', evaluationsRouter)
 app.use('/api/harness-bench', harnessBenchRouter)
 app.use('/api/links',    linksRouter)
 app.use('/api/inbox',    inboxRouter)
+app.use('/api/news',     newsRouter)
 
 app.get('/api/health', (_req, res) => res.json({ ok: true, ts: new Date().toISOString() }))
 

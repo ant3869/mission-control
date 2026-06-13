@@ -1111,6 +1111,174 @@ export const approvals = {
   remove:  (id: string)                           => del<{ ok: boolean }>(`/approvals/${id}`),
 }
 
+// ─── To-Dos ───────────────────────────────────────────────────────────────────
+
+export type TodoSeverity = 'low' | 'medium' | 'high' | 'critical'
+export type TodoHorizon = 'short' | 'long'
+
+export interface LiveTodo {
+  id: string
+  title: string
+  notes: string
+  severity: TodoSeverity
+  horizon: TodoHorizon
+  dueDate: string
+  done: boolean
+  createdAt: string
+  updatedAt: string
+  completedAt: string
+}
+
+export const todosApi = {
+  list: () => get<{ todos: LiveTodo[]; fetchedAt: string }>('/todos'),
+  create: (body: { title: string; severity?: TodoSeverity; horizon?: TodoHorizon; dueDate?: string }) =>
+    post<{ todo: LiveTodo }>('/todos', body),
+  update: (id: string, body: Partial<Pick<LiveTodo, 'title' | 'notes' | 'severity' | 'horizon' | 'dueDate' | 'done'>>) =>
+    patch<{ todo: LiveTodo }>(`/todos/${id}`, body),
+}
+
+// ─── Links ────────────────────────────────────────────────────────────────────
+
+export type LinkSource = 'manual' | 'launcher' | 'inbox'
+
+export interface LinkItem {
+  id: string
+  url: string
+  title: string
+  domain: string
+  note: string
+  tags: string[]
+  pinned: boolean
+  archived: boolean
+  source: LinkSource
+  createdAt: string
+  updatedAt: string
+  openedAt: string
+  updatedAgo: string
+  openedAgo: string
+}
+
+export type LinkCreateBody = {
+  url: string
+  title?: string
+  note?: string
+  tags?: string[]
+  pinned?: boolean
+  source?: LinkSource
+}
+
+export type LinkPatchBody = Partial<LinkCreateBody & { archived: boolean; openedAt: string }>
+
+export const links = {
+  list: (archived = false) => get<{ links: LinkItem[]; fetchedAt: string }>('/links', archived ? { archived: 'true' } : undefined),
+  create: (body: LinkCreateBody) => post<{ link: LinkItem; deduped?: boolean }>('/links', body),
+  update: (id: string, body: LinkPatchBody) => patch<{ link: LinkItem }>(`/links/${id}`, body),
+  remove: (id: string) => del<{ ok: boolean }>(`/links/${id}`),
+}
+
+// ─── Inbox ────────────────────────────────────────────────────────────────────
+
+export type InboxKind = 'approval' | 'task' | 'todo' | 'feedback' | 'publication'
+export type InboxStatus = 'active' | 'snoozed' | 'done'
+export type InboxPriority = 'critical' | 'high' | 'medium' | 'low'
+
+export interface InboxItem {
+  id: string
+  kind: InboxKind
+  itemId: string
+  title: string
+  summary: string
+  content: string
+  priority: InboxPriority
+  status: InboxStatus
+  source: 'local' | 'openclaw' | 'hermes'
+  sourceLabel: string
+  routeView: 'tasks' | 'todos' | 'feedback' | 'content'
+  routeTab: 'tasks' | 'approvals' | 'inbox' | ''
+  eventAt: string
+  eventAgo: string
+  snoozedUntil: string
+  reviewedAt: string
+  convertedTo: { kind: 'task' | 'note' | 'link'; id: string } | null
+  badges: string[]
+}
+
+export type InboxPatchBody = {
+  status?: InboxStatus
+  snoozedUntil?: string
+  clearReviewed?: boolean
+  convertedTo?: { kind: 'task' | 'note' | 'link'; id: string }
+}
+
+export const inbox = {
+  list: () => get<{ items: InboxItem[]; counts: Record<string, number>; fetchedAt: string }>('/inbox'),
+  update: (id: string, body: InboxPatchBody) => patch<{ item: { id: string; status: InboxStatus } }>(`/inbox/${encodeURIComponent(id)}`, body),
+}
+
+// ─── News ─────────────────────────────────────────────────────────────────────
+
+export type NewsCategory = 'ai' | 'computing' | 'code' | 'robotics'
+export type GithubSince  = 'daily' | 'weekly' | 'monthly'
+
+export interface NewsArticle {
+  id:           string
+  title:        string
+  url:          string
+  summary:      string
+  source:       string
+  category:     NewsCategory
+  domain:       string
+  favicon:      string
+  image:        string
+  publishedAt:  string
+  publishedAgo: string
+}
+
+export interface GithubRepo {
+  id:          string
+  name:        string
+  owner:       string
+  fullName:    string
+  url:         string
+  description: string
+  language:    string | null
+  stars:       number
+  forks:       number
+  topics:      string[]
+  avatar:      string
+  createdAgo:  string
+  pushedAgo:   string
+}
+
+export type BuzzSource = 'hackernews' | 'reddit' | 'lobsters'
+
+export interface BuzzItem {
+  id:          string
+  title:       string
+  url:         string
+  source:      BuzzSource
+  origin:      string
+  score:       number
+  comments:    number
+  commentsUrl: string
+  domain:      string
+  image:       string
+  postedAt:    string
+  postedAgo:   string
+}
+
+export interface NewsSourceStatus { name: string; ok: boolean; count: number }
+
+export interface NewsFeedResponse   { articles: NewsArticle[]; sources: NewsSourceStatus[]; fetchedAt: string; cached: boolean; error?: string }
+export interface GithubReposResponse { repos: GithubRepo[]; since: GithubSince; language: string; fetchedAt: string; cached: boolean; error?: string }
+export interface BuzzResponse        { items: BuzzItem[]; sources: NewsSourceStatus[]; fetchedAt: string; cached: boolean; error?: string }
+
+export const news = {
+  feed:   ()                                            => get<NewsFeedResponse>('/news/feed'),
+  github: (since: GithubSince = 'weekly', lang = '')     => get<GithubReposResponse>('/news/github', lang ? { since, lang } : { since }),
+  buzz:   ()                                            => get<BuzzResponse>('/news/buzz'),
+}
+
 // ─── Notes ────────────────────────────────────────────────────────────────────
 
 export interface NoteNotebook {

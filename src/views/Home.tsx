@@ -11,14 +11,17 @@ import { clsx } from 'clsx'
 import {
   ListTodo, Bell, FolderKanban, Radar, ArrowRight, ArrowUpRight,
   ShieldAlert, AlertTriangle, CheckCircle2, Circle, Flame,
-  Activity, Cpu, Coins, Zap, CalendarDays, Inbox, ServerCrash, TrendingUp,
+  Activity, Cpu, Coins, Link2, Zap, CalendarDays, Inbox, ServerCrash, TrendingUp,
 } from 'lucide-react'
 import {
   radar, system, projects as projectsApi, approvals as approvalsApi,
+  inbox, links,
   type RadarUsageResponse, type SystemResponse, type LiveProject, type LiveApproval,
+  type InboxItem, type LinkItem,
 } from '../lib/api'
 import { Histogram, SegmentBar, Donut, fmtNum } from '../components/charts'
 import { isRefreshPaused } from '../lib/refreshBus'
+import { openDocsTab, openInboxItem as focusInboxItem, openTasksTab } from '../lib/quickActions'
 import type { View } from '../types'
 
 // ─── Theme accents (mirror tailwind.config.js — never introduce new colors) ───
@@ -299,16 +302,21 @@ export function Home({ onNavigate }: { onNavigate: (view: View) => void }) {
   const [todos,     setTodos]     = useState<HomeTodo[]>([])
   const [alerts,    setAlerts]    = useState<FiredAlert[]>([])
   const [approvals, setApprovals] = useState<LiveApproval[]>([])
+  const [inboxItems, setInboxItems] = useState<InboxItem[]>([])
+  const [inboxCounts, setInboxCounts] = useState<Record<string, number>>({})
+  const [savedLinks, setSavedLinks] = useState<LinkItem[]>([])
   const [projects,  setProjects]  = useState<LiveProject[]>([])
   const [usage,     setUsage]     = useState<RadarUsageResponse | null>(null)
   const [sys,       setSys]       = useState<SystemResponse | null>(null)
   const [loaded,    setLoaded]    = useState(false)
 
   const load = useCallback(async () => {
-    const [tRes, alRes, apRes, prRes, usRes, syRes] = await Promise.allSettled([
+    const [tRes, alRes, apRes, inRes, liRes, prRes, usRes, syRes] = await Promise.allSettled([
       fetch('/api/todos').then(r => r.json()),
       fetch('/api/alerts/active').then(r => r.json()),
       approvalsApi.list(),
+      inbox.list(),
+      links.list(),
       projectsApi.list(),
       radar.usage(7),
       system.components(),
@@ -316,6 +324,11 @@ export function Home({ onNavigate }: { onNavigate: (view: View) => void }) {
     if (tRes.status  === 'fulfilled') setTodos(tRes.value.todos ?? [])
     if (alRes.status === 'fulfilled') setAlerts(alRes.value.alerts ?? [])
     if (apRes.status === 'fulfilled') setApprovals(apRes.value.approvals ?? [])
+    if (inRes.status === 'fulfilled') {
+      setInboxItems(inRes.value.items ?? [])
+      setInboxCounts(inRes.value.counts ?? {})
+    }
+    if (liRes.status === 'fulfilled') setSavedLinks(liRes.value.links ?? [])
     if (prRes.status === 'fulfilled') setProjects(prRes.value.projects ?? [])
     if (usRes.status === 'fulfilled') setUsage(usRes.value)
     if (syRes.status === 'fulfilled') setSys(syRes.value)
@@ -333,6 +346,10 @@ export function Home({ onNavigate }: { onNavigate: (view: View) => void }) {
   const openTodos    = todos.filter(t => !t.done)
   const overdueCount = openTodos.filter(isOverdue).length
   const pending      = approvals.filter(a => a.status === 'pending')
+  const activeInboxItems = inboxItems.filter(item => item.status === 'active')
+  const activeInbox = Number(inboxCounts.active ?? activeInboxItems.length)
+  const snoozedInbox = Number(inboxCounts.snoozed ?? 0)
+  const pinnedLinks = savedLinks.filter(link => link.pinned).length
   const components   = sys?.components ?? []
   const healthy      = components.filter(c => c.status === 'healthy').length
   const sysErrors    = components.filter(c => c.status === 'error' || c.status === 'offline')
@@ -369,7 +386,26 @@ export function Home({ onNavigate }: { onNavigate: (view: View) => void }) {
     })
     .slice(0, 5)
 
+  const topInbox = activeInboxItems.slice(0, 4)
+  const topLinks = savedLinks.slice(0, 4)
+
   const tb = usage?.tokenBreakdown
+
+  function openInboxHub(): void {
+    openTasksTab('inbox')
+    onNavigate('tasks')
+  }
+
+  function openLinksHub(): void {
+    openDocsTab('links')
+    onNavigate('docs')
+  }
+
+  function openFocusedInboxItem(item: InboxItem): void {
+    focusInboxItem(item.id)
+    openTasksTab('inbox')
+    onNavigate('tasks')
+  }
 
   // Telemetry ticker — duplicated once in the DOM for a seamless loop.
   const tickerItems: Array<{ label: string; value: string; color: string }> = [
@@ -377,6 +413,8 @@ export function Home({ onNavigate }: { onNavigate: (view: View) => void }) {
     { label: 'Spend 7d',   value: usage ? `$${usage.totalCost.toFixed(2)}` : '—',   color: ACCENT.green },
     { label: 'Runs 7d',    value: usage ? fmtNum(usage.totalRuns) : '—',            color: ACCENT.blue },
     { label: 'Open to-dos', value: String(openTodos.length),                        color: overdueCount > 0 ? ACCENT.red : ACCENT.blue },
+    { label: 'Inbox',      value: `${activeInbox} active`,                           color: activeInbox > 0 ? ACCENT.amber : ACCENT.green },
+    { label: 'Links',      value: `${savedLinks.length} saved`,                      color: pinnedLinks > 0 ? ACCENT.blue : ACCENT.muted },
     { label: 'Overdue',    value: String(overdueCount),                             color: overdueCount > 0 ? ACCENT.red : ACCENT.muted },
     { label: 'Alerts',     value: String(alerts.length),                            color: alerts.length > 0 ? ACCENT.amber : ACCENT.green },
     { label: 'Approvals',  value: `${pending.length} pending`,                      color: ACCENT.purple },
@@ -534,6 +572,125 @@ export function Home({ onNavigate }: { onNavigate: (view: View) => void }) {
               ))}
             </ul>
           )}
+        </section>
+
+        {/* ─── Triage desk ────────────────────────────────────────────────── */}
+        <section className="home-rise bg-card border border-border rounded-xl overflow-hidden" style={{ animationDelay: '200ms' }}>
+          <div className="flex items-center gap-2 px-4 py-3 border-b border-border-subtle">
+            <Inbox size={13} className="text-accent-blue" />
+            <h2 className="text-xs font-semibold uppercase tracking-wider text-text-muted">Capture & triage</h2>
+            <span className="ml-auto text-[10px] text-text-muted">Launcher, inbox, and links in one place</span>
+          </div>
+
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-px bg-border-subtle">
+            <div className="bg-card p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold text-text-primary">Unified inbox</p>
+                  <p className="mt-1 text-xs text-text-muted">Critical approvals, blocked work, feedback, and publications ready for triage.</p>
+                </div>
+                <button onClick={openInboxHub} className="flex items-center gap-1 rounded border border-border bg-base px-2.5 py-1 text-[11px] text-text-secondary hover:bg-card-hover hover:text-text-primary transition-colors shrink-0">
+                  Open inbox <ArrowRight size={11} />
+                </button>
+              </div>
+
+              <div className="mt-3 grid grid-cols-3 gap-2">
+                {[
+                  { label: 'Active', value: activeInbox, color: activeInbox > 0 ? ACCENT.amber : ACCENT.green },
+                  { label: 'Snoozed', value: snoozedInbox, color: ACCENT.blue },
+                  { label: 'Approvals', value: pending.length, color: ACCENT.purple },
+                ].map(stat => (
+                  <div key={stat.label} className="rounded-lg border border-border-subtle bg-base px-3 py-2">
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-text-muted">{stat.label}</p>
+                    <p className="mt-1 text-lg font-bold tabular-nums leading-none" style={{ color: stat.color }}>{stat.value}</p>
+                  </div>
+                ))}
+              </div>
+
+              {topInbox.length === 0 ? (
+                <EmptyNote icon={<CheckCircle2 size={20} className="text-accent-green" />} text={loaded ? 'Inbox is clear.' : 'Loading inbox…'} />
+              ) : (
+                <ul className="mt-3 space-y-1.5">
+                  {topInbox.map(item => (
+                    <li key={item.id}>
+                      <button onClick={() => openFocusedInboxItem(item)} className="group flex items-start gap-2.5 w-full rounded-lg px-2.5 py-2 hover:bg-card-hover transition-colors text-left">
+                        <span
+                          className="mt-0.5 inline-flex h-2 w-2 shrink-0 rounded-full"
+                          style={{
+                            backgroundColor: item.priority === 'critical'
+                              ? ACCENT.red
+                              : item.priority === 'high'
+                                ? ACCENT.amber
+                                : item.priority === 'medium'
+                                  ? ACCENT.blue
+                                  : ACCENT.muted,
+                          }}
+                        />
+                        <span className="min-w-0 flex-1">
+                          <span className="flex items-center gap-2">
+                            <span className="truncate text-sm font-medium text-text-primary">{item.title}</span>
+                            <span className="rounded border border-border-subtle bg-base px-1.5 py-0.5 text-[10px] capitalize text-text-muted shrink-0">{item.kind}</span>
+                          </span>
+                          <span className="mt-0.5 block truncate text-[11px] text-text-muted">{item.summary}</span>
+                        </span>
+                        <span className="shrink-0 text-[10px] text-text-muted">{item.eventAgo}</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            <div className="bg-card p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold text-text-primary">Saved links</p>
+                  <p className="mt-1 text-xs text-text-muted">Reference docs, research, and follow-up reading with quick task or note conversion.</p>
+                </div>
+                <button onClick={openLinksHub} className="flex items-center gap-1 rounded border border-border bg-base px-2.5 py-1 text-[11px] text-text-secondary hover:bg-card-hover hover:text-text-primary transition-colors shrink-0">
+                  Open links <ArrowRight size={11} />
+                </button>
+              </div>
+
+              <div className="mt-3 grid grid-cols-3 gap-2">
+                {[
+                  { label: 'Saved', value: savedLinks.length, color: ACCENT.blue },
+                  { label: 'Pinned', value: pinnedLinks, color: ACCENT.amber },
+                  { label: 'Unread', value: savedLinks.filter(link => !link.openedAt).length, color: ACCENT.teal },
+                ].map(stat => (
+                  <div key={stat.label} className="rounded-lg border border-border-subtle bg-base px-3 py-2">
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-text-muted">{stat.label}</p>
+                    <p className="mt-1 text-lg font-bold tabular-nums leading-none" style={{ color: stat.color }}>{stat.value}</p>
+                  </div>
+                ))}
+              </div>
+
+              {topLinks.length === 0 ? (
+                <EmptyNote icon={<Link2 size={20} className="text-accent-blue" />} text={loaded ? 'No saved links yet.' : 'Loading links…'} />
+              ) : (
+                <ul className="mt-3 space-y-1.5">
+                  {topLinks.map(link => (
+                    <li key={link.id}>
+                      <button
+                        onClick={() => window.open(link.url, '_blank', 'noopener,noreferrer')}
+                        className="group flex items-start gap-2.5 w-full rounded-lg px-2.5 py-2 hover:bg-card-hover transition-colors text-left"
+                      >
+                        <Link2 size={13} className="mt-0.5 shrink-0 text-accent-blue" />
+                        <span className="min-w-0 flex-1">
+                          <span className="flex items-center gap-2">
+                            <span className="truncate text-sm font-medium text-text-primary">{link.title}</span>
+                            {link.pinned && <span className="rounded border border-amber-900/40 bg-amber-950/20 px-1.5 py-0.5 text-[10px] text-amber-300 shrink-0">Pinned</span>}
+                          </span>
+                          <span className="mt-0.5 block truncate text-[11px] text-text-muted">{link.domain}{link.note ? ` · ${link.note}` : ''}</span>
+                        </span>
+                        <span className="shrink-0 text-[10px] text-text-muted">{link.updatedAgo}</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
         </section>
 
         {/* ─── Quick-view grid ─────────────────────────────────────────────── */}

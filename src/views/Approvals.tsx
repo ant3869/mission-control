@@ -7,6 +7,9 @@ import {
 } from 'lucide-react'
 import { approvals as approvalsApi } from '../lib/api'
 import type { LiveApproval, ApprovalStatus, ApprovalType, ApprovalUrgency, ApprovalCreateBody } from '../lib/api'
+import {
+  APPROVAL_FOCUS_EVENT, APPROVAL_FOCUS_STORAGE_KEY, clearStoredValue, readStoredValue,
+} from '../lib/quickActions'
 import { isRefreshPaused } from '../lib/refreshBus'
 
 // ─── Config ───────────────────────────────────────────────────────────────────
@@ -228,11 +231,13 @@ interface CardAction { id: string; action: 'approve' | 'reject' }
 
 function ApprovalCard({
   item,
+  highlighted,
   onAction,
   onDelete,
   acting,
 }: {
   item:     LiveApproval
+  highlighted: boolean
   onAction: (a: CardAction) => void
   onDelete: (id: string) => void
   acting:   string | null
@@ -247,8 +252,10 @@ function ApprovalCard({
     <div className={clsx(
       'group flex flex-col gap-3.5 p-4 rounded-lg border transition-all',
       isPending ? 'bg-card border-border' : 'bg-surface/60 border-border opacity-60 hover:opacity-80',
+      highlighted && 'ring-1 ring-blue-500/60 bg-card-hover opacity-100',
       isActing && 'opacity-50 pointer-events-none',
-    )}>
+    )}
+    data-approval-id={item.id}>
       {/* Header row */}
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-2 flex-wrap">
@@ -374,6 +381,7 @@ export function Approvals() {
   const [showModal, setShowModal] = useState(false)
   const [acting, setActing]       = useState<string | null>(null)
   const [noteTarget, setNoteTarget] = useState<{ id: string; action: 'approve' | 'reject' } | null>(null)
+  const [focusedApprovalId, setFocusedApprovalId] = useState<string | null>(() => readStoredValue(APPROVAL_FOCUS_STORAGE_KEY))
 
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true)
@@ -389,6 +397,43 @@ export function Approvals() {
   }, [])
 
   useEffect(() => { load() }, [load])
+
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const custom = event as CustomEvent<{ approvalId?: string }>
+      if (custom.detail?.approvalId) setFocusedApprovalId(custom.detail.approvalId)
+    }
+    window.addEventListener(APPROVAL_FOCUS_EVENT, handler as EventListener)
+    return () => window.removeEventListener(APPROVAL_FOCUS_EVENT, handler as EventListener)
+  }, [])
+
+  useEffect(() => {
+    if (!focusedApprovalId) return
+    const match = data.find(entry => entry.id === focusedApprovalId)
+    if (!match) {
+      if (!loading) {
+        clearStoredValue(APPROVAL_FOCUS_STORAGE_KEY)
+        setFocusedApprovalId(null)
+      }
+      return
+    }
+
+    clearStoredValue(APPROVAL_FOCUS_STORAGE_KEY)
+    if (match.status !== 'pending') setShowResolved(true)
+  }, [data, focusedApprovalId, loading])
+
+  useEffect(() => {
+    if (!focusedApprovalId) return
+    const frame = window.requestAnimationFrame(() => {
+      const node = document.querySelector<HTMLElement>(`[data-approval-id="${focusedApprovalId}"]`)
+      node?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    })
+    const timer = window.setTimeout(() => setFocusedApprovalId(current => current === focusedApprovalId ? null : current), 2600)
+    return () => {
+      window.cancelAnimationFrame(frame)
+      window.clearTimeout(timer)
+    }
+  }, [focusedApprovalId, showResolved, data])
 
   // Poll every 15s to pick up new requests submitted by agents
   useEffect(() => {
@@ -508,7 +553,7 @@ export function Approvals() {
                       return o[a.urgency] - o[b.urgency]
                     })
                     .map(item => (
-                      <ApprovalCard key={item.id} item={item} onAction={handleAction} onDelete={handleDelete} acting={acting} />
+                      <ApprovalCard key={item.id} item={item} highlighted={item.id === focusedApprovalId} onAction={handleAction} onDelete={handleDelete} acting={acting} />
                     ))}
                 </div>
               </div>
@@ -531,7 +576,7 @@ export function Approvals() {
                 <span className="text-xxs font-semibold uppercase tracking-wider text-text-muted block mb-3">Resolved</span>
                 <div className="flex flex-col gap-3">
                   {resolved.map(item => (
-                    <ApprovalCard key={item.id} item={item} onAction={handleAction} onDelete={handleDelete} acting={acting} />
+                    <ApprovalCard key={item.id} item={item} highlighted={item.id === focusedApprovalId} onAction={handleAction} onDelete={handleDelete} acting={acting} />
                   ))}
                 </div>
               </div>

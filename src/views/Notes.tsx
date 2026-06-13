@@ -14,6 +14,9 @@ import {
 } from 'lucide-react'
 import { notes as notesApi } from '../lib/api'
 import type { NoteNotebook, NoteSection, NotePage } from '../lib/api'
+import {
+  clearStoredValue, NOTES_PAGE_EVENT, NOTES_PAGE_STORAGE_KEY, readStoredValue,
+} from '../lib/quickActions'
 
 // ─── Markdown renderer ────────────────────────────────────────────────────────
 
@@ -344,6 +347,7 @@ export function Notes() {
   const [nbContextMenu, setNbContextMenu] = useState<{ id: string; x: number; y: number } | null>(null)
   const [secContextMenu, setSecContextMenu] = useState<{ id: string; x: number; y: number } | null>(null)
   const [renamingSecId, setRenamingSecId] = useState<string | null>(null)
+  const [requestedPageId, setRequestedPageId] = useState<string | null>(() => readStoredValue(NOTES_PAGE_STORAGE_KEY))
 
   const editorRef = useRef<HTMLTextAreaElement>(null)
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -360,9 +364,6 @@ export function Notes() {
       setNotebooks(nbRes.notebooks)
       setSections(secRes.sections)
       setPages(pgRes.pages)
-      if (pgRes.pages.length > 0 && !activePage) {
-        loadPage(pgRes.pages[0].id)
-      }
     } finally { setLoading(false) }
   }, [])
 
@@ -375,14 +376,66 @@ export function Notes() {
     }
   }, [notebooks])
 
+  useEffect(() => {
+    if (loading || requestedPageId || activePage || pages.length === 0) return
+    void loadPage(pages[0].id)
+  }, [activePage, loading, pages, requestedPageId])
+
   // ── Load single page with content ──
   const loadPage = async (id: string) => {
     try {
       const res = await notesApi.getPage(id)
       setActivePage(res.page)
       setPreviewMode(false)
+      setEditingTitle(false)
     } catch { /* ignore */ }
   }
+
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const custom = event as CustomEvent<{ pageId?: string }>
+      if (custom.detail?.pageId) setRequestedPageId(custom.detail.pageId)
+    }
+    window.addEventListener(NOTES_PAGE_EVENT, handler as EventListener)
+    return () => window.removeEventListener(NOTES_PAGE_EVENT, handler as EventListener)
+  }, [])
+
+  useEffect(() => {
+    if (!requestedPageId) return
+    let cancelled = false
+
+    const openRequestedPage = async () => {
+      try {
+        const existing = pages.find(entry => entry.id === requestedPageId)
+        const resolved = await notesApi.getPage(requestedPageId)
+        if (cancelled) return
+
+        const page = resolved.page
+        clearStoredValue(NOTES_PAGE_STORAGE_KEY)
+        setRequestedPageId(null)
+        setSearch('')
+        setScope({ type: 'section', id: page.sectionId, notebookId: page.notebookId })
+        setExpandedNbs(prev => new Set([...prev, page.notebookId]))
+        setPages(prev => {
+          const nextPage = existing ? { ...existing, ...page } : page
+          const index = prev.findIndex(entry => entry.id === page.id)
+          if (index === -1) return [nextPage, ...prev]
+          return prev.map(entry => entry.id === page.id ? nextPage : entry)
+        })
+        setActivePage(page)
+        setPreviewMode(false)
+        setEditingTitle(false)
+      } catch {
+        if (!cancelled && !loading) {
+          clearStoredValue(NOTES_PAGE_STORAGE_KEY)
+          setRequestedPageId(null)
+        }
+      }
+    }
+
+    void openRequestedPage()
+    return () => { cancelled = true }
+  }, [loading, pages, requestedPageId])
 
   // ── Filtered page list ──
   const filteredPages = useMemo(() => {
@@ -664,7 +717,7 @@ export function Notes() {
                 key={page.id}
                 onClick={() => loadPage(page.id)}
                 className={clsx(
-                  'group w-full text-left px-3 py-2.5 rounded-lg transition-all border',
+                  'group relative w-full text-left px-3 py-2.5 rounded-lg transition-all border',
                   isActive ? 'bg-card-hover border-border text-text-primary' : 'bg-transparent border-transparent hover:bg-card/60 text-text-secondary',
                 )}
               >

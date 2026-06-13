@@ -41,6 +41,15 @@ data/connectors.json
 # ─── Runtime task storage (seeded automatically on first run) ─────────────────
 data/tasks.json
 
+# ─── Runtime personal data (user-specific, not shared) ───────────────────────
+data/todos.json
+data/tobuy.json
+data/links.json
+data/inbox.json
+
+# ─── CodeGraph index ─────────────────────────────────────────────────────────
+.codegraph/
+
 # ─── Local agent knowledge docs (non-sensitive but repo-local) ───────────────
 CLAUDE.md
 *_GAP_MAP_FOR_AGENT.md

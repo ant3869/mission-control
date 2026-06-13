@@ -4,6 +4,9 @@ import { clsx } from 'clsx'
 import { Plus, Clock, AlertCircle, ChevronRight, Tag, Loader2, Trash2, X, Check } from 'lucide-react'
 import { tasks as tasksApi } from '../lib/api'
 import type { LiveTask, TaskStatus, TaskPriority } from '../lib/api'
+import {
+  clearStoredValue, readStoredValue, TASK_FOCUS_EVENT, TASK_FOCUS_STORAGE_KEY,
+} from '../lib/quickActions'
 
 // ─── Config ────────────────────────────────────────────────────────────────────
 
@@ -168,10 +171,12 @@ function AddTaskModal({ onClose, onSave }: AddTaskModalProps) {
 
 function TaskCard({
   task,
+  highlighted,
   onMove,
   onDelete,
 }: {
   task:     LiveTask
+  highlighted: boolean
   onMove:   (id: string, status: TaskStatus) => Promise<void>
   onDelete: (id: string) => Promise<void>
 }) {
@@ -189,8 +194,10 @@ function TaskCard({
     <div className={clsx(
       'group flex flex-col gap-2.5 p-3.5 rounded-lg border bg-card hover:bg-card-hover cursor-pointer transition-all',
       isBlocked ? 'border-red-900/30 opacity-80' : 'border-border',
+      highlighted && 'ring-1 ring-blue-500/60 bg-card-hover',
       moving && 'opacity-50 pointer-events-none',
-    )}>
+    )}
+    data-task-id={task.id}>
       {/* Priority row */}
       <div className="flex items-center justify-between gap-2">
         <span className={clsx('flex items-center gap-1 px-1.5 py-0.5 rounded border text-xxs font-semibold', p.badge)}>
@@ -265,11 +272,13 @@ function TaskCard({
 function Column({
   status,
   tasks,
+  focusedTaskId,
   onMove,
   onDelete,
 }: {
   status:   TaskStatus
   tasks:    LiveTask[]
+  focusedTaskId: string | null
   onMove:   (id: string, s: TaskStatus) => Promise<void>
   onDelete: (id: string) => Promise<void>
 }) {
@@ -299,7 +308,7 @@ function Column({
           </div>
         ) : (
           sorted.map(task => (
-            <TaskCard key={task.id} task={task} onMove={onMove} onDelete={onDelete} />
+            <TaskCard key={task.id} task={task} highlighted={task.id === focusedTaskId} onMove={onMove} onDelete={onDelete} />
           ))
         )}
       </div>
@@ -315,6 +324,7 @@ export function Tasks() {
   const [error, setError]             = useState<string | null>(null)
   const [showCompleted, setShowCompleted] = useState(false)
   const [showModal, setShowModal]     = useState(false)
+  const [focusedTaskId, setFocusedTaskId] = useState<string | null>(() => readStoredValue(TASK_FOCUS_STORAGE_KEY))
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -330,6 +340,45 @@ export function Tasks() {
   }, [])
 
   useEffect(() => { load() }, [load])
+
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const custom = event as CustomEvent<{ taskId?: string }>
+      if (custom.detail?.taskId) setFocusedTaskId(custom.detail.taskId)
+    }
+    window.addEventListener(TASK_FOCUS_EVENT, handler as EventListener)
+    return () => window.removeEventListener(TASK_FOCUS_EVENT, handler as EventListener)
+  }, [])
+
+  useEffect(() => {
+    if (!focusedTaskId) return
+    const task = taskList.find(entry => entry.id === focusedTaskId)
+    if (!task) {
+      if (!loading) {
+        clearStoredValue(TASK_FOCUS_STORAGE_KEY)
+        setFocusedTaskId(null)
+      }
+      return
+    }
+
+    clearStoredValue(TASK_FOCUS_STORAGE_KEY)
+    if (task.status === 'completed') setShowCompleted(true)
+  }, [focusedTaskId, loading, taskList])
+
+  useEffect(() => {
+    if (!focusedTaskId) return
+    const frame = window.requestAnimationFrame(() => {
+      const node = document.querySelector<HTMLElement>(`[data-task-id="${focusedTaskId}"]`)
+      node?.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' })
+    })
+    const timer = window.setTimeout(() => {
+      setFocusedTaskId(current => current === focusedTaskId ? null : current)
+    }, 2600)
+    return () => {
+      window.cancelAnimationFrame(frame)
+      window.clearTimeout(timer)
+    }
+  }, [focusedTaskId, showCompleted, taskList])
 
   const handleMove = async (id: string, newStatus: TaskStatus) => {
     // Optimistic update
@@ -427,6 +476,7 @@ export function Tasks() {
                 key={status}
                 status={status}
                 tasks={taskList.filter(t => t.status === status)}
+                focusedTaskId={focusedTaskId}
                 onMove={handleMove}
                 onDelete={handleDelete}
               />

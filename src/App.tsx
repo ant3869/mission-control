@@ -28,6 +28,7 @@ const Inventory         = lazy(() => import('./views/Inventory').then(m => ({ de
 const FlowMap           = lazy(() => import('./views/FlowMap').then(m => ({ default: m.FlowMap })))
 const Evaluations       = lazy(() => import('./views/Evaluations').then(m => ({ default: m.Evaluations })))
 const HarnessBenchmarks = lazy(() => import('./views/HarnessBenchmarks').then(m => ({ default: m.HarnessBenchmarks })))
+const News              = lazy(() => import('./views/News').then(m => ({ default: m.News })))
 const Brain             = lazy(() => import('./views/Brain'))
 const Todos             = lazy(() => import('./views/Todos'))
 const ToBuy             = lazy(() => import('./views/ToBuy'))
@@ -42,6 +43,7 @@ const VIEW_TITLES: Record<View, string> = {
   tasks:       'Tasks & Approvals',
   watch:       'Watch & Agents',
   docs:        'Docs & Notes',
+  news:        'News',
   projects:    'Projects & Pipeline',
   ops:         'Ops',
   workspace:   'Workspace',
@@ -133,6 +135,7 @@ export default function App() {
           <ViewPane view="tasks"       active={activeView} mounted={mounted}><TasksApprovals /></ViewPane>
           <ViewPane view="watch"       active={activeView} mounted={mounted}><WatchAgents /></ViewPane>
           <ViewPane view="docs"        active={activeView} mounted={mounted}><DocsNotes /></ViewPane>
+          <ViewPane view="news"        active={activeView} mounted={mounted}><News /></ViewPane>
           <ViewPane view="projects"    active={activeView} mounted={mounted}><ProjectsPipeline /></ViewPane>
           <ViewPane view="ops"         active={activeView} mounted={mounted}><SystemOps /></ViewPane>
           <ViewPane view="workspace"   active={activeView} mounted={mounted}><WorkspaceHub /></ViewPane>

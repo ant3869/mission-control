@@ -6,6 +6,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.7.58] — 2026-06-13
+
+### Added
+
+- **News page** — a curated real-time news dashboard (sidebar → Knowledge → News) with three tabs:
+  - **Feed**: 17 RSS/Atom sources across four categories (AI, computing, code, robotics). Dependency-free XML parser with in-memory cache and stale-while-error fallback. Category filter and search.
+  - **GitHub**: trending repos by time range (daily/weekly/monthly) and language. Uses GitHub Search API; optional `GITHUB_TOKEN` for higher rate limits.
+  - **Buzz**: top social discussions from Hacker News, Reddit, and Lobsters — heat-scored by engagement and recency. Filterable by platform.
+  - **Hero showcase**: ADHD-friendly magazine-style lead story with glassmorphism stat widgets, dynamic theming per story kind (article/repo/buzz), branded image fallbacks (wordmark watermark + icon glyph when no image), and a cross-source "Top right now" scrollable strip. 5-minute auto-refresh.
+
+- **Inbox tab** — a unified inbox (Tasks → Inbox tab) aggregating approvals, tasks, to-dos, feedback, and publications into a single priority-sorted feed. Snooze items (1 d / 3 d / 1 w), mark done, convert to task or note, and filter by kind/status. Items are derived from existing agent events.
+
+- **Links tab** — a bookmark manager (Docs → Links tab) for saving, tagging, and organising URLs. Add manually or via the Inbox "save as link" action. Pin favourites, archive stale links, tag with kebab-case labels, and search/filter across all saved links.
+
+- **Quick actions** — a cross-view navigation system (`src/lib/quickActions.ts`) enabling deep-link jumps between views: open a specific note page, focus a task card, highlight an approval, switch Docs/Tasks sub-tabs, and auto-scroll to an Inbox item — all via `CustomEvent` + `localStorage` handoff.
+
+---
+
 ## [0.7.57] — 2026-06-11
 
 ### Added

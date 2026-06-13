@@ -4,7 +4,7 @@ import {
   MessageSquare, Calendar, Brain, FileText, ThumbsUp,
   Activity, Gauge, Target, Workflow, Package,
   Users, Cog, ChevronLeft, ChevronRight, FlaskConical,
-  BrainCircuit, GitBranch, Bell, Shield, House, ShoppingCart,
+  BrainCircuit, GitBranch, Bell, Shield, House, ShoppingCart, Newspaper,
 } from 'lucide-react'
 import { clsx } from 'clsx'
 import type { View } from '../../types'
@@ -35,8 +35,9 @@ const NAV: NavSection[] = [
   {
     label: 'Knowledge',
     items: [
-      { id: 'docs',    label: 'Docs',    icon: <BookOpen size={iconSize} /> },
-      { id: 'memory',  label: 'Memory',  icon: <Brain    size={iconSize} /> },
+      { id: 'docs',    label: 'Docs',    icon: <BookOpen  size={iconSize} /> },
+      { id: 'news',    label: 'News',    icon: <Newspaper size={iconSize} /> },
+      { id: 'memory',  label: 'Memory',  icon: <Brain     size={iconSize} /> },
       { id: 'content', label: 'Content', icon: <FileText size={iconSize} /> },
     ],
   },

@@ -15,6 +15,7 @@ export type View =
   | 'tasks'       // Tasks + Approvals
   | 'watch'       // Watch + Agents
   | 'docs'        // Docs + Notes
+  | 'news'        // News — live RSS, GitHub trending, social buzz
   | 'projects'    // Projects + Pipeline
   | 'ops'         // Radar + System + ModelOps
   | 'workspace'   // People + Office + Factory
