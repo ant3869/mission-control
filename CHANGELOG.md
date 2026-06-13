@@ -6,6 +6,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.7.59] — 2026-06-13
+
+### Added
+
+- **Additional Details panel (To-Do)** — optional sub-panel on the quick-add bar with structured fields: date, time, location/address, phone, cost, URL, contact, category, and unlimited custom key/value pairs. Hidden by default; tap "+ Additional details" to expand. Smart regex extraction auto-detects dates, times, phone numbers, costs, URLs, and addresses from the free-text title and shows a "detected N fields — apply" shortcut when the text looks detail-rich. All supplied details are injected into the research agent's prompt as ground truth (the agent won't re-derive an address or cost you already provided).
+
+- **Structured task context in research prompt** — the `researchTodo` backend function now renders any `TodoDetails` fields into a compact `"Label: value; ..."` block that is passed to OpenClaw/Hermes as ground truth before the main research instruction.
+
+### Changed
+
+- **Two-line list rows (To-Do & To-Buy)** — rows now show a bold title on line 1 and a muted subtext line on line 2 composed from the most useful detail fields (date · time · location · cost, falling back to notes or a quiet `horizon · added Xd ago`). Replaces the previous single-line layout that left a big dead gap between title and badge at half-screen widths.
+
+- **Uniform right-aligned badge column** — the priority/severity pill uses `min-w-[68px] justify-center` so all pills render the same width and stack in a clean vertical column. A fixed-width `w-4` slot to the right holds the research/status icon so pills never shift.
+
+- **Overlay drawer at narrow widths** — the detail drawer is now `absolute inset-y-0 right-0` (overlays the list with a backdrop) at widths below `lg:` (1024 px), and becomes a static side panel only at `lg:`. Prevents the 380 px drawer from crushing the list in a half-screen window.
+
+- **Old todos backfilled** — `loadTodos()` migration backfills all existing records with an empty `details` object and empty `rawInput`; no data loss on upgrade.
+
+---
+
 ## [0.7.58] — 2026-06-13
 
 ### Added

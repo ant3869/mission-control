@@ -58,3 +58,13 @@ CLAWMETRY_GAP_MAP_FOR_AGENT.md
 # ─── Logs ─────────────────────────────────────────────────────────────────────
 *.log
 npm-debug.log*
+
+# ─── Temporary / debug scripts ────────────────────────────────────────────────
+__*.mjs
+__*.js
+
+# ─── Screenshot / dropped images (not intentional public assets) ──────────────
+public/-1.png
+public/1 AM.png
+public/M.png
+public/d-1.png
