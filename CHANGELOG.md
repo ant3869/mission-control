@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.7.62] — 2026-06-14
+
+### Changed — merged To-Do and Tasks into one page
+
+- **The To-Do page is now a single combined view** with a tab switcher: **To-Do** (default, personal quick-capture list) · **Tasks** (the kanban board) · **Approvals** · **Inbox**. The standalone **Tasks** sidebar item was removed; its open count folds into the To-Do badge (now To-Do + Tasks + Approvals + Inbox). Built on the shared `TabHub` (new `src/views/TodoTasks.tsx`); the old `TasksApprovals.tsx` wrapper was deleted.
+- **Deep-links rerouted** to the combined page's correct tab — command palette (create task/approval, jump to a task/approval/inbox item), Home (Approvals stat + attention items), the Inbox "Open" action, and the Links "create task" action. `openTasksTab()` now drives the `todos` hub via `openHubTab`; the bespoke `TASKS_TAB_EVENT` / storage key were retired.
+
+---
+
 ## [0.7.61] — 2026-06-14
 
 ### Changed — audit-driven navigation consolidation

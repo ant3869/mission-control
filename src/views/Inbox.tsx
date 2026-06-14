@@ -10,7 +10,7 @@ import {
   focusApprovalRequest,
   focusTaskCard,
   clearStoredValue, INBOX_ITEM_EVENT, INBOX_ITEM_STORAGE_KEY,
-  openTasksTab, readStoredValue, requestNavigate,
+  openHubTab, readStoredValue,
 } from '../lib/quickActions'
 import { friendlyError } from '../lib/friendlyError'
 
@@ -147,8 +147,9 @@ export function Inbox() {
     if (item.kind === 'task') {
       focusTaskCard(item.itemId)
     }
-    requestNavigate(item.routeView)
-    if (item.routeView === 'tasks' && item.routeTab) openTasksTab(item.routeTab as 'tasks' | 'approvals' | 'inbox')
+    // To-Do / Tasks / Approvals are tabs of the combined 'todos' page now.
+    const tab = item.kind === 'approval' ? 'approvals' : item.kind === 'task' ? 'tasks' : 'todo'
+    openHubTab('todos', tab)
   }
 
   return (

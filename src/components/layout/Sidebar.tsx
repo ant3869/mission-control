@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import {
-  CheckSquare, ListTodo, BookOpen, FolderKanban, Radar,
+  ListTodo, BookOpen, FolderKanban, Radar,
   MessageSquare, Calendar, Brain, Wallet,
   Activity, Target, Package, Lightbulb,
   Cog, ChevronLeft, ChevronRight, FlaskConical,
@@ -27,7 +27,6 @@ const NAV: NavSection[] = [
       { id: 'todos',    label: 'To-Do',    icon: <ListTodo      size={iconSize} /> },
       { id: 'tobuy',    label: 'To-Buy',   icon: <ShoppingCart  size={iconSize} /> },
       { id: 'spend',    label: 'Spend',    icon: <Wallet        size={iconSize} /> },
-      { id: 'tasks',    label: 'Tasks',    icon: <CheckSquare   size={iconSize} /> },
       { id: 'council',  label: 'Chats',    icon: <MessageSquare size={iconSize} /> },
       { id: 'calendar', label: 'Calendar', icon: <Calendar      size={iconSize} /> },
     ],
@@ -104,12 +103,12 @@ export function Sidebar({ activeView, onNavigate }: SidebarProps) {
   }, [])
 
   const getBadge = (id: View): number | undefined => {
-    // Roll tasks + approvals + inbox badge into the combined Tasks nav item
-    if (id === 'tasks') {
-      const total = (tasksBadge ?? 0) + (approvalsBadge ?? 0) + (inboxBadge ?? 0)
+    // The To-Do nav item now hosts To-Do + Tasks + Approvals + Inbox, so roll all
+    // their open counts into its single badge.
+    if (id === 'todos') {
+      const total = (todosBadge ?? 0) + (tasksBadge ?? 0) + (approvalsBadge ?? 0) + (inboxBadge ?? 0)
       return total > 0 ? total : undefined
     }
-    if (id === 'todos') return todosBadge
     if (id === 'tobuy') return toBuyBadge
     return undefined
   }

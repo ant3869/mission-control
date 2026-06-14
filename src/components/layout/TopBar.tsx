@@ -93,7 +93,7 @@ function GlobalSearch({ onClose, onNavigate, views }: { onClose: () => void; onN
               label: x.title,
               sub: x.status ?? 'task',
               icon: <CheckSquare size={13} />,
-              onSelect: () => { focusTaskCard(x.id); openTasksTab('tasks'); onNavigate('tasks') },
+              onSelect: () => { focusTaskCard(x.id); openTasksTab('tasks') },
             }))
           : [])
         setApprovalRows(a.status === 'fulfilled'
@@ -106,7 +106,7 @@ function GlobalSearch({ onClose, onNavigate, views }: { onClose: () => void; onN
                 label: entry.title,
                 sub: entry.status === 'pending' ? `${entry.urgency} · pending` : `${entry.status} · ${entry.createdAgo ?? 'approval'}`,
                 icon: <ShieldCheck size={13} />,
-                onSelect: () => { focusApprovalRequest(entry.id); openTasksTab('approvals'); onNavigate('tasks') },
+                onSelect: () => { focusApprovalRequest(entry.id); openTasksTab('approvals') },
               }))
           : [])
         setInboxRows(i.status === 'fulfilled'
@@ -123,7 +123,7 @@ function GlobalSearch({ onClose, onNavigate, views }: { onClose: () => void; onN
                 label: entry.title,
                 sub: `${entry.kind} · ${entry.status} · ${entry.eventAgo}`,
                 icon: <InboxIcon size={13} />,
-                onSelect: () => { openInboxItem(entry.id); openTasksTab('inbox'); onNavigate('tasks') },
+                onSelect: () => { openInboxItem(entry.id); openTasksTab('inbox') },
               }))
           : [])
       } catch { setNotes([]); setDocs([]); setTaskRows([]); setApprovalRows([]); setInboxRows([]) }
@@ -140,7 +140,7 @@ function GlobalSearch({ onClose, onNavigate, views }: { onClose: () => void; onN
         label: 'Open Inbox',
         sub: 'Tasks & Approvals',
         icon: <InboxIcon size={13} />,
-        onSelect: () => { openTasksTab('inbox'); onNavigate('tasks') },
+        onSelect: () => { openTasksTab('inbox') },
       },
       {
         kind: 'action',
@@ -190,7 +190,6 @@ function GlobalSearch({ onClose, onNavigate, views }: { onClose: () => void; onN
         onSelect: async () => {
           await tasksApi.create({ title: qTrimmed, status: 'queued', priority: 'medium' })
           openTasksTab('tasks')
-          onNavigate('tasks')
         },
       },
       {
@@ -215,7 +214,6 @@ function GlobalSearch({ onClose, onNavigate, views }: { onClose: () => void; onN
         onSelect: async () => {
           await approvals.create({ title: qTrimmed, type: 'action', urgency: 'normal' })
           openTasksTab('approvals')
-          onNavigate('tasks')
         },
       },
     )

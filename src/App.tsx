@@ -13,7 +13,7 @@ import { NAVIGATE_EVENT } from './lib/quickActions'
 const ScheduledTasks    = lazy(() => import('./views/ScheduledTasks').then(m => ({ default: m.ScheduledTasks })))
 const Memory            = lazy(() => import('./views/Memory').then(m => ({ default: m.Memory })))
 const Chats             = lazy(() => import('./views/Chats').then(m => ({ default: m.Chats })))
-const TasksApprovals    = lazy(() => import('./views/TasksApprovals').then(m => ({ default: m.TasksApprovals })))
+const TodoTasks         = lazy(() => import('./views/TodoTasks').then(m => ({ default: m.TodoTasks })))
 const DocsNotes         = lazy(() => import('./views/DocsNotes').then(m => ({ default: m.DocsNotes })))
 const ProjectsPipeline  = lazy(() => import('./views/ProjectsPipeline').then(m => ({ default: m.ProjectsPipeline })))
 const Settings          = lazy(() => import('./views/Settings').then(m => ({ default: m.Settings })))
@@ -22,7 +22,6 @@ const Factory           = lazy(() => import('./views/Factory').then(m => ({ defa
 const Evaluations       = lazy(() => import('./views/Evaluations').then(m => ({ default: m.Evaluations })))
 const HarnessBenchmarks = lazy(() => import('./views/HarnessBenchmarks').then(m => ({ default: m.HarnessBenchmarks })))
 const News              = lazy(() => import('./views/News').then(m => ({ default: m.News })))
-const Todos             = lazy(() => import('./views/Todos'))
 const ToBuy             = lazy(() => import('./views/ToBuy'))
 const Spend             = lazy(() => import('./views/Spend').then(m => ({ default: m.Spend })))
 // Consolidated AI-Ops hubs (each pulls its now-tabbed sub-views on first visit)
@@ -35,7 +34,6 @@ const VIEW_TITLES: Record<View, string> = {
   todos:       'To-Do',
   tobuy:       'To-Buy',
   spend:       'Spend',
-  tasks:       'Tasks & Approvals',
   council:     'Chats',
   calendar:    'Scheduled Tasks',
   docs:        'Docs & Notes',
@@ -116,10 +114,9 @@ export default function App() {
         <main className="flex-1 overflow-hidden bg-base relative">
 
           <ViewPane view="home"        active={activeView} mounted={mounted}><Home onNavigate={navigate} /></ViewPane>
-          <ViewPane view="todos"       active={activeView} mounted={mounted}><Todos /></ViewPane>
+          <ViewPane view="todos"       active={activeView} mounted={mounted}><TodoTasks /></ViewPane>
           <ViewPane view="tobuy"       active={activeView} mounted={mounted}><ToBuy /></ViewPane>
           <ViewPane view="spend"       active={activeView} mounted={mounted}><Spend /></ViewPane>
-          <ViewPane view="tasks"       active={activeView} mounted={mounted}><TasksApprovals /></ViewPane>
           <ViewPane view="council"     active={activeView} mounted={mounted}><Chats /></ViewPane>
           <ViewPane view="calendar"    active={activeView} mounted={mounted}><ScheduledTasks /></ViewPane>
           <ViewPane view="docs"        active={activeView} mounted={mounted}><DocsNotes /></ViewPane>

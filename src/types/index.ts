@@ -12,10 +12,9 @@ export type NavItem = {
 
 export type View =
   | 'home'        // Landing overview — hero + at-a-glance summaries
-  | 'todos'        // Personal quick-capture to-do list
+  | 'todos'        // Combined To-Do + Tasks + Approvals + Inbox page
   | 'tobuy'        // Personal shopping list with research + running total
   | 'spend'        // Personal money command center (AI cost + things)
-  | 'tasks'       // Tasks + Approvals
   | 'council'     // Chats
   | 'calendar'
   // ── Knowledge ──

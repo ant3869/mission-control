@@ -7,14 +7,12 @@ export type TasksTabId = 'tasks' | 'approvals' | 'inbox'
 export const NAVIGATE_EVENT = 'mc:navigate'
 export const HUB_TAB_EVENT = 'mc:hub-tab'
 export const DOCS_TAB_EVENT = 'mc:docs-tab'
-export const TASKS_TAB_EVENT = 'mc:tasks-tab'
 export const NOTES_PAGE_EVENT = 'mc:notes-page'
 export const DOCS_FILE_EVENT = 'mc:docs-file'
 export const TASK_FOCUS_EVENT = 'mc:task-focus'
 export const APPROVAL_FOCUS_EVENT = 'mc:approval-focus'
 export const INBOX_ITEM_EVENT = 'mc:inbox-item'
 export const DOCS_TAB_STORAGE_KEY = 'mc:docs:tab'
-export const TASKS_TAB_STORAGE_KEY = 'mc:tasks:tab'
 export const NOTES_PAGE_STORAGE_KEY = 'mc:notes:page'
 export const DOCS_FILE_STORAGE_KEY = 'mc:docs:file'
 export const TASK_FOCUS_STORAGE_KEY = 'mc:tasks:focus'
@@ -68,9 +66,10 @@ export function openDocsTab(tab: DocsTabId): void {
   window.dispatchEvent(new CustomEvent(DOCS_TAB_EVENT, { detail: { tab } }))
 }
 
+// To-Do, Tasks, Approvals and Inbox are now tabs of one combined page (view
+// 'todos'); this routes the old tasks-tab deep-links onto that hub.
 export function openTasksTab(tab: TasksTabId): void {
-  try { localStorage.setItem(TASKS_TAB_STORAGE_KEY, JSON.stringify(tab)) } catch { /* ignore */ }
-  window.dispatchEvent(new CustomEvent(TASKS_TAB_EVENT, { detail: { tab } }))
+  openHubTab('todos', tab)
 }
 
 export function openNotePage(pageId: string): void {

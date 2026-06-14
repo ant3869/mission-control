@@ -185,7 +185,8 @@ function buildAttention(
       icon:   <Inbox size={14} />,
       title:  a.title,
       sub:    `${a.type} approval · ${a.agentName} · ${a.createdAgo}`,
-      view:   'tasks',
+      view:   'todos',
+      tab:    'approvals',
     })
   }
 
@@ -396,7 +397,6 @@ export function Home({ onNavigate }: { onNavigate: (view: View) => void }) {
 
   function openInboxHub(): void {
     openTasksTab('inbox')
-    onNavigate('tasks')
   }
 
   function openLinksHub(): void {
@@ -407,7 +407,6 @@ export function Home({ onNavigate }: { onNavigate: (view: View) => void }) {
   function openFocusedInboxItem(item: InboxItem): void {
     focusInboxItem(item.id)
     openTasksTab('inbox')
-    onNavigate('tasks')
   }
 
   // Telemetry ticker — duplicated once in the DOM for a seamless loop.
@@ -521,7 +520,7 @@ export function Home({ onNavigate }: { onNavigate: (view: View) => void }) {
           <StatTile icon={<Inbox size={14} />} label="Approvals"
             sub={pending.length > 0 ? 'awaiting your decision' : 'queue clear'}
             value={pending.length} accent={ACCENT.purple}
-            delay={120} onClick={() => onNavigate('tasks')} />
+            delay={120} onClick={() => openHubTab('todos', 'approvals')} />
           <StatTile icon={<Bell size={14} />} label="Active alerts"
             sub={alerts.length > 0 ? 'firing now' : 'quiet skies'}
             value={alerts.length} accent={alerts.length > 0 ? ACCENT.amber : ACCENT.green}
