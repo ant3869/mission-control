@@ -1,76 +1,105 @@
 /**
- * Google OAuth 2.0 flow.
+ * Google OAuth 2.0 flow → /api/auth
  *
- * Usage:
- *   1. Visit http://localhost:3001/api/auth/google  → redirects to Google consent
+ * New durable flow (no more copy-paste):
+ *   1. Visit http://localhost:3001/api/auth/google  → Google consent
  *   2. Google calls back to /api/auth/google/callback
- *   3. Copy the printed refresh_token into your .env as GOOGLE_REFRESH_TOKEN
- *   4. Restart the server — calendar will use the token automatically
+ *   3. The refresh token is persisted to data/google-tokens.json automatically
+ *      and refreshed in the background — no .env editing, no server restart.
+ *
+ * IMPORTANT: to avoid Google expiring the refresh token after 7 days, publish
+ * your OAuth consent screen ("In production") in Google Cloud Console. While it
+ * is in "Testing" mode Google revokes refresh tokens weekly.
  */
 import { Router } from 'express'
-import { google } from 'googleapis'
+import {
+  buildAuthUrl, exchangeCode, getConnectionStatus, disconnect, isConfigured,
+} from '../lib/googleAuth.js'
 
 export const authRouter = Router()
 
-function oauthClient() {
-  return new google.auth.OAuth2(
-    process.env.GOOGLE_CLIENT_ID,
-    process.env.GOOGLE_CLIENT_SECRET,
-    'http://localhost:3001/api/auth/google/callback',
-  )
-}
+const APP_URL = process.env.APP_URL?.trim() || 'http://localhost:5173'
 
 authRouter.get('/google', (_req, res) => {
-  if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) {
+  if (!isConfigured()) {
     return res.status(400).json({
       error: 'GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET must be set in .env',
     })
   }
-  const url = oauthClient().generateAuthUrl({
-    access_type: 'offline',
-    prompt: 'consent',
-    scope: [
-      'https://www.googleapis.com/auth/calendar.readonly',
-    ],
-  })
-  res.redirect(url)
-})
-
-authRouter.get('/google/callback', async (req, res) => {
-  const { code } = req.query as { code?: string }
-  if (!code) return res.status(400).send('Missing code')
-
   try {
-    const { tokens } = await oauthClient().getToken(code)
-    const refreshToken = tokens.refresh_token
-
-    console.log('\n✅ Google OAuth complete!')
-    if (refreshToken) {
-      console.log(`Add to .env:\nGOOGLE_REFRESH_TOKEN=${refreshToken}\n`)
-    }
-
-    res.send(`
-      <html><body style="font-family:monospace;background:#0d1117;color:#e6edf3;padding:2rem">
-        <h2 style="color:#3fb950">✅ Google Calendar connected!</h2>
-        <p>Copy this token into your <code>.env</code> as <code>GOOGLE_REFRESH_TOKEN</code>, then restart the server.</p>
-        ${refreshToken ? `<pre style="background:#161b22;padding:1rem;border-radius:6px;overflow-x:auto">GOOGLE_REFRESH_TOKEN=${refreshToken}</pre>` : '<p>Token already stored — refresh token only appears on first consent.</p>'}
-        <p>You can close this tab.</p>
-      </body></html>
-    `)
-  } catch (err) {
-    console.error(err)
-    res.status(500).send('OAuth failed — check server logs')
+    res.redirect(buildAuthUrl())
+  } catch (err: any) {
+    res.status(500).json({ error: err.message })
   }
 })
 
-authRouter.get('/status', (_req, res) => {
-  res.json({
-    google: {
-      clientConfigured: !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET),
-      tokenConfigured:  !!process.env.GOOGLE_REFRESH_TOKEN,
-    },
-    anthropic: {
-      keyConfigured: !!process.env.ANTHROPIC_API_KEY,
-    },
-  })
+authRouter.get('/google/callback', async (req, res) => {
+  const { code, error } = req.query as { code?: string; error?: string }
+  if (error) return res.status(400).send(consentPage('error', `Google returned: ${error}`))
+  if (!code) return res.status(400).send(consentPage('error', 'Missing authorization code.'))
+
+  try {
+    const status = await exchangeCode(code)
+    console.log('\n✅ Google connected — tokens stored in data/google-tokens.json')
+    res.send(consentPage('ok', status.email ? `Connected as ${status.email}.` : 'Calendar access granted.'))
+  } catch (err: any) {
+    console.error('[auth/google/callback]', err?.message ?? err)
+    res.status(500).send(consentPage('error', err?.message ?? 'OAuth exchange failed — check server logs.'))
+  }
 })
+
+// Live connection status (real probe, cached ~60s). `?force=1` bypasses the cache.
+authRouter.get('/status', async (req, res) => {
+  try {
+    const google = await getConnectionStatus(req.query.force === '1')
+    res.json({
+      google: {
+        // Back-compat fields used by existing UI:
+        clientConfigured: google.clientConfigured,
+        tokenConfigured:  google.hasToken,
+        // Richer status:
+        state:         google.state,
+        connected:     google.connected,
+        email:         google.email,
+        scopes:        google.scopes,
+        grantedScopes: google.grantedScopes,
+        missingScopes: google.missingScopes,
+        connectedAt:   google.connectedAt,
+        checkedAt:     google.checkedAt,
+        error:         google.error,
+      },
+      anthropic: {
+        keyConfigured: !!process.env.ANTHROPIC_API_KEY,
+      },
+    })
+  } catch (err: any) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// Clean reconnect: forget the stored token (and revoke it) so /google starts fresh.
+authRouter.post('/google/disconnect', async (_req, res) => {
+  try {
+    await disconnect()
+    res.json({ ok: true })
+  } catch (err: any) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// ─── Callback HTML ────────────────────────────────────────────────────────────
+
+function consentPage(kind: 'ok' | 'error', detail: string): string {
+  const ok = kind === 'ok'
+  const color = ok ? '#3fb950' : '#f85149'
+  const heading = ok ? '✅ Google Calendar connected!' : '⚠️ Connection failed'
+  const body = ok
+    ? `<p>${detail}</p><p>You can close this tab — no token to copy, nothing to restart. The connection refreshes itself from now on.</p>`
+    : `<p>${detail}</p><p>Close this tab and try reconnecting from Settings.</p>`
+  return `
+    <html><body style="font-family:system-ui,monospace;background:#0d1117;color:#e6edf3;padding:2.5rem;max-width:560px;margin:auto">
+      <h2 style="color:${color}">${heading}</h2>
+      ${body}
+      <p style="margin-top:1.5rem"><a href="${APP_URL}" style="color:#58a6ff">← Back to Mission Control</a></p>
+    </body></html>`
+}

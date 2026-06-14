@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { clsx } from 'clsx'
 import {
-  Archive, CheckSquare, ExternalLink, Globe, Link2, Loader2,
+  Archive, CheckSquare, ExternalLink, Globe,
   NotebookPen, Pencil, Pin, PinOff, Plus, RefreshCw, Search, Trash2, X,
 } from 'lucide-react'
 import { links, tasks, type LinkCreateBody, type LinkItem } from '../lib/api'

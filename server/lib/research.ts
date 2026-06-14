@@ -9,6 +9,8 @@ import { randomUUID } from 'crypto'
 import type { AgentSource } from './agentEvents.js'
 import { ensureConnected, request as ocRequest } from './openclawLive.js'
 import { hermesChat } from './hermesApiServer.js'
+import { getEvent } from './googleCalendar.js'
+import { isConfigured as googleConfigured, hasToken as googleHasToken } from './googleAuth.js'
 
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
 
@@ -151,6 +153,37 @@ interface TodoDetailsCtx {
   customFields?: Record<string, string>
 }
 
+// Full task context handed to the agent — title plus status, priority, due date,
+// every detail field, and the linked Google Calendar event when one exists.
+export interface TodoResearchContext {
+  id:                     string
+  title:                  string
+  notes?:                 string
+  details?:               TodoDetailsCtx
+  rawInput?:              string
+  severity?:              string
+  dueDate?:               string
+  done?:                  boolean
+  googleCalendarEventId?: string
+  calendarSyncEnabled?:   boolean
+  calendarSyncStatus?:    string
+}
+
+// Build a one-line calendar context string. Best-effort: if the task is linked to
+// a real event and Google is connected, fetch and include the live event detail.
+async function resolveCalendarContext(todo: TodoResearchContext): Promise<string> {
+  if (!todo.calendarSyncEnabled && !todo.googleCalendarEventId) return ''
+  const base = `Calendar sync ${todo.calendarSyncEnabled ? 'enabled' : 'disabled'}${todo.calendarSyncStatus ? ` (status: ${todo.calendarSyncStatus})` : ''}.`
+  if (todo.googleCalendarEventId && googleConfigured() && googleHasToken()) {
+    try {
+      const ev = await getEvent(todo.googleCalendarEventId)
+      if (ev) return `${base} Linked Google Calendar event "${ev.name}"${ev.startIso ? ` starting ${ev.startIso}` : ''}${ev.location ? ` at ${ev.location}` : ''} (event id ${ev.id}).`
+    } catch { /* best-effort — never block research on calendar */ }
+    return `${base} Linked Google Calendar event id ${todo.googleCalendarEventId}.`
+  }
+  return base
+}
+
 // Render the optional Additional Details into a compact "Label: value" list the
 // agent can use as ground truth (don't re-discover an address the user gave us).
 function renderDetails(d?: TodoDetailsCtx): string {
@@ -169,8 +202,13 @@ function renderDetails(d?: TodoDetailsCtx): string {
   return parts.join('; ')
 }
 
-function buildTodoPrompt(todo: { title: string; notes?: string; details?: TodoDetailsCtx; rawInput?: string }, guidance?: string): string {
+function buildTodoPrompt(todo: TodoResearchContext, guidance?: string, calendarContext?: string): string {
   const details = renderDetails(todo.details)
+  const taskMeta = [
+    `Status: ${todo.done ? 'completed' : 'open'}.`,
+    todo.severity ? `Priority: ${todo.severity}.` : '',
+    todo.dueDate ? `Due: ${new Date(todo.dueDate).toLocaleString()}.` : '',
+  ].filter(Boolean).join(' ')
   return [
     'You are a research assistant for a personal to-do list. Research the task below using web search.',
     'Your goal: gather whatever helps the user complete the task fastest — direct links, key facts, numbers, deadlines, calculations.',
@@ -181,7 +219,9 @@ function buildTodoPrompt(todo: { title: string; notes?: string; details?: TodoDe
     'links (array of {title,url} — direct, actionable pages: official sites, payment portals, forms, documentation),',
     'data (object of short key:value facts, figures, prices, deadlines, or calculations that aid the task).',
     `Task: "${todo.title.trim()}".`,
+    taskMeta,
     details ? `Known details — ${details}.` : '',
+    calendarContext ? calendarContext : '',
     todo.notes?.trim() ? `User notes: ${todo.notes.trim()}` : '',
     !details && todo.rawInput?.trim() && todo.rawInput.trim() !== todo.title.trim() ? `Original raw input: ${todo.rawInput.trim()}` : '',
     guidance?.trim() ? `IMPORTANT — the user is re-running this research and gave specific guidance on what to do differently this time. Prioritise it above all else: ${guidance.trim()}` : '',
@@ -192,12 +232,12 @@ function isTodoResult(json: any): json is TodoResearchResult {
   return Boolean(json && (json.summary || json.steps?.length || json.links?.length))
 }
 
-async function researchTodoOpenClaw(todo: { id: string; title: string; notes?: string; details?: TodoDetailsCtx; rawInput?: string }, guidance?: string): Promise<TodoResearchResult> {
+async function researchTodoOpenClaw(todo: TodoResearchContext, guidance?: string, calendarContext?: string): Promise<TodoResearchResult> {
   await ensureConnected(12_000)
   // Fresh session per run so a previous answer in the same session can't be
   // returned by the poller before the (guided) re-run actually completes.
   const sessionKey = `agent:main:dashboard-todo:${todo.id.slice(0, 8)}:${randomUUID().slice(0, 8)}`
-  await ocRequest('chat.send', { sessionKey, message: buildTodoPrompt(todo, guidance), deliver: false, idempotencyKey: randomUUID() }, 12_000)
+  await ocRequest('chat.send', { sessionKey, message: buildTodoPrompt(todo, guidance, calendarContext), deliver: false, idempotencyKey: randomUUID() }, 12_000)
   for (let i = 0; i < 36; i++) {
     await sleep(5000)
     const h = await ocRequest('chat.history', { sessionKey, limit: 8, maxChars: 120_000 }, 10_000).catch(() => null)
@@ -209,20 +249,22 @@ async function researchTodoOpenClaw(todo: { id: string; title: string; notes?: s
   throw new Error('agent did not return structured data within ~3 minutes')
 }
 
-async function researchTodoHermes(todo: { id: string; title: string; notes?: string; details?: TodoDetailsCtx; rawInput?: string }, guidance?: string): Promise<TodoResearchResult> {
-  const r = await hermesChat(buildTodoPrompt(todo, guidance), { timeoutMs: 180_000 })
+async function researchTodoHermes(todo: TodoResearchContext, guidance?: string, calendarContext?: string): Promise<TodoResearchResult> {
+  const r = await hermesChat(buildTodoPrompt(todo, guidance, calendarContext), { timeoutMs: 180_000 })
   if (!r.ok) throw new Error(`Hermes API server rejected the request (${r.triedUrl}): ${r.error ?? 'unknown'}`)
   const json = extractJson(r.answer)
   if (isTodoResult(json)) return json
   throw new Error('Hermes returned an answer but no parseable JSON.')
 }
 
-export async function researchTodo(todo: { id: string; title: string; notes?: string; details?: TodoDetailsCtx; rawInput?: string }, source: AgentSource, guidance?: string): Promise<TodoResearchResult> {
-  if (source === 'openclaw') return researchTodoOpenClaw(todo, guidance)
+export async function researchTodo(todo: TodoResearchContext, source: AgentSource, guidance?: string): Promise<TodoResearchResult> {
+  // Resolve the calendar context once so both providers get identical context.
+  const calendarContext = await resolveCalendarContext(todo)
+  if (source === 'openclaw') return researchTodoOpenClaw(todo, guidance, calendarContext)
   if (source === 'hermes') {
-    return researchTodoHermes(todo, guidance).catch(err => {
+    return researchTodoHermes(todo, guidance, calendarContext).catch(err => {
       if (String(err?.message).includes('unavailable') || String(err?.message).includes('no supported')) {
-        return researchTodoOpenClaw(todo, guidance)
+        return researchTodoOpenClaw(todo, guidance, calendarContext)
       }
       throw err
     })

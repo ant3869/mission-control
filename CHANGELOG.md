@@ -6,6 +6,48 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.7.61] — 2026-06-14
+
+### Changed — audit-driven navigation consolidation
+
+- **Removed audience-less pages.** Mission Control is a personal dashboard, so the pages that only carried data for a public-facing bot (inbound human messages, testimonials, published replies) were removed: **People**, **Content**, **Feedback**, **Office**, and the **Workspace** hub. Their client APIs (`peopleApi` / `publicationsApi` / `inboundApi`) and the inbox `feedback` / `publication` item kinds were removed with them; the now-dead `/people`, `/publications`, `/inbound` routes were deleted from the OpenClaw/Hermes routers.
+- **Telemetry consolidated from ~13 destinations to 5**, all reusing a new shared `TabHub` shell — the underlying data views were regrouped as tabs, not rewritten:
+  - **Activity** = Watch (Live) + Flow (Sessions) + Brain + Agents + Flow Map (Map)
+  - **Usage** = Radar + Model Ops (Models)
+  - **Health** = System + Security + Alerts + OpenClaw + Hermes
+  - **Benchmarks** (Harness) and **Evals** (Evaluations) remain as dedicated views.
+- **Sidebar regrouped** into Work · Knowledge · Build · AI Ops (~25 nav items → ~18). The hardware loop is promoted into a **Build** section (Projects · Inventory · **Ideas**=Factory, relocated out of the former Workspace hub).
+
+### Added
+
+- **Spend view** — a personal money command center that aggregates existing endpoints (radar + model-ops + to-buy + inventory). Keeps **Claude Code** (subscription, shown as token-equivalent *value*) separate from **OpenClaw/Hermes** (real per-token API spend), plus a "things" lane (open To-Buy total + value of owned hardware). 30-day trend and projected monthly.
+- **Hub deep-linking** — `openHubTab(view, tab)` / `HUB_TAB_EVENT` let Home cards land on the exact inner tab (e.g. "Active alerts" → Health → Alerts).
+
+### Notes
+
+- The `derive{People,Publications,Inbound}` helpers in `server/lib/agentEvents.ts` are now unused (their callers were removed) and can be deleted in a follow-up.
+
+---
+
+## [0.7.60] — 2026-06-13
+
+### Fixed / Changed — durable Google connection layer
+
+- **Root cause of the repeated re-auth.** The old flow printed the refresh token and asked you to paste it into `.env` and restart; the running server could never persist a refreshed/rotated token, so any rotation — or the 7-day refresh-token expiry of an unpublished ("Testing") OAuth consent screen — forced a manual reconnect. Auth was also reported as "connected" purely because the env vars were set, even when the token was dead (`invalid_grant`).
+
+### Added
+
+- **Centralized Google auth service** (`server/lib/googleAuth.ts`) — single OAuth2 client; tokens persisted to `data/google-tokens.json` (git-ignored) and **refreshed automatically** via the client's `tokens` event. An existing `GOOGLE_REFRESH_TOKEN` in `.env` is imported into the store on first run (backward compatible). Real connection status with live probe: `connected · disconnected · reconnect_required · missing_scopes · auth_error · not_configured`, cached 60s. New endpoints: `GET /api/auth/status` (rich), `POST /api/auth/google/disconnect`. Callback now stores the token and shows a "you're connected — nothing to copy" page.
+- **Dedicated Calendar service** (`server/lib/googleCalendar.ts`) — read (events across calendars, by range, upcoming), plus **create / update / delete** events. Scopes widened to `calendar.events` + `calendar.readonly` (minimal set that supports writes). Calendar route gains `POST/PATCH/DELETE /api/calendar/events/:id` and `GET /api/calendar/range`, all returning a `state` the UI can act on.
+- **To-Do → Calendar sync** (`server/lib/todoCalendarSync.ts`) — opt-in per task. A dated To-Do can sync to Google Calendar; the event carries title, date/time, location, notes, phone, cost, URL, priority, category and custom fields. The event id is stored on the task so edits **update the same event (no duplicates)**. New task fields: `calendarSyncEnabled`, `googleCalendarEventId`, `calendarSyncStatus`, `lastCalendarSyncAt`, `calendarSyncError` (old rows backfilled). Deleting a task deletes its event; removing the date or disabling sync removes the event; completing a task does not.
+- **UI** — Settings → Google connection card (connect / reconnect / disconnect, shows account + state); To-Do drawer "Google Calendar" sync toggle with live status; To-Do rows show a sync indicator; Office shows the real Google Calendar status. The false "Gmail enabled" claim was removed (no Gmail scope is requested).
+- **Agent context** — task research now passes status, priority, due date, all detail fields, and the linked Google Calendar event (id + live details) to OpenClaw/Hermes.
+- **Calendar view rebuilt** — four views (**Day / Week / Month / Agenda**) with **prev / today / next** navigation and a period label. Events are now matched to their actual local date (the old view matched by weekday, so it broke past the current week) and fetched per visible window via `GET /api/calendar/events?start=&end=` (all calendars, span-clamped to 62 days). Month cells show up to 3 events + "+N more" and click through to that day; Agenda groups upcoming events by date (narrow/half-screen friendly). All-day events no longer drift a day in negative-offset timezones.
+
+- **Add / edit / delete calendar events** — a "New event" button (and a `+` on each day) opens an event composer: title, all-day toggle, date, start/end time, location, notes. New events are created on your primary calendar; clicking an existing event opens it to edit or delete. Events now carry their source `calendarId` + a `writable` flag, so read-only calendars (e.g. holidays) open as read-only instead of failing. Backed by `POST/PATCH/DELETE /api/calendar/events`.
+
+---
+
 ## [0.7.59] — 2026-06-13
 
 ### Added

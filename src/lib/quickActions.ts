@@ -5,6 +5,7 @@ export type DocsTabId = 'docs' | 'notes' | 'links'
 export type TasksTabId = 'tasks' | 'approvals' | 'inbox'
 
 export const NAVIGATE_EVENT = 'mc:navigate'
+export const HUB_TAB_EVENT = 'mc:hub-tab'
 export const DOCS_TAB_EVENT = 'mc:docs-tab'
 export const TASKS_TAB_EVENT = 'mc:tasks-tab'
 export const NOTES_PAGE_EVENT = 'mc:notes-page'
@@ -41,6 +42,25 @@ export function clearStoredValue(key: string): void {
 
 export function requestNavigate(view: View): void {
   window.dispatchEvent(new CustomEvent(NAVIGATE_EVENT, { detail: { view } }))
+}
+
+// ── Consolidated hub tab targeting ──────────────────────────────────────────
+// Lets a deep-link (e.g. Home → "system error") navigate to a tab-hub view AND
+// land on the right inner tab. Each hub stores its tab under a per-view key and
+// listens for HUB_TAB_EVENT (matching its own view) to switch while mounted.
+export function hubTabStorageKey(view: View): string {
+  return `mc:hub:${view}:tab`
+}
+
+export function readHubTab(view: View): string | null {
+  return readStoredValue(hubTabStorageKey(view))
+}
+
+/** Navigate to a hub view and select one of its inner tabs. */
+export function openHubTab(view: View, tab: string): void {
+  storeValue(hubTabStorageKey(view), tab)
+  requestNavigate(view)
+  window.dispatchEvent(new CustomEvent(HUB_TAB_EVENT, { detail: { view, tab } }))
 }
 
 export function openDocsTab(tab: DocsTabId): void {

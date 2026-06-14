@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { clsx } from 'clsx'
 import {
   Settings as SettingsIcon, RefreshCw, AlertCircle, CheckCircle2, XCircle,
-  Loader, Plug, KeyRound, Save, Zap,
+  Loader, Plug, KeyRound, Save, Zap, CalendarDays, Unplug,
 } from 'lucide-react'
 import {
   settings as settingsApi, auth as authApi,
@@ -308,6 +308,87 @@ function EnvRow({ name, ok, detail }: { name: string; ok: boolean; detail: strin
   )
 }
 
+// ─── Google connection card ──────────────────────────────────────────────────
+
+const GOOGLE_STATE_META: Record<string, { label: string; cls: string }> = {
+  connected:          { label: 'Connected',          cls: 'bg-green-950/50 border-green-900/50 text-green-400' },
+  disconnected:       { label: 'Not connected',      cls: 'bg-card border-border text-text-muted' },
+  reconnect_required: { label: 'Reconnect required', cls: 'bg-amber-950/50 border-amber-900/50 text-amber-300' },
+  missing_scopes:     { label: 'Missing scope',      cls: 'bg-amber-950/50 border-amber-900/50 text-amber-300' },
+  auth_error:         { label: 'Auth error',         cls: 'bg-red-950/50 border-red-900/50 text-red-400' },
+  not_configured:     { label: 'Not configured',     cls: 'bg-card border-border text-text-muted' },
+}
+
+function GoogleConnectionCard({ status, onChanged }: { status: AuthStatus['google'] | undefined; onChanged: () => void }) {
+  const [busy, setBusy] = useState(false)
+
+  // Tolerate the older status shape (clientConfigured/tokenConfigured only).
+  const state = status?.state
+    ?? (status?.tokenConfigured ? 'connected' : status?.clientConfigured ? 'disconnected' : 'not_configured')
+  const meta          = GOOGLE_STATE_META[state] ?? GOOGLE_STATE_META.disconnected
+  const configured    = status?.clientConfigured ?? false
+  const connected     = state === 'connected'
+  const needsReconnect = state === 'reconnect_required' || state === 'missing_scopes' || state === 'auth_error'
+
+  const connect = () => { window.location.href = authApi.googleAuthUrl() }
+  async function disconnect() {
+    setBusy(true)
+    try { await authApi.disconnect() } catch { /* ignore */ }
+    finally { setBusy(false); onChanged() }
+  }
+
+  return (
+    <div className="rounded-xl border border-border bg-card p-4 max-w-2xl">
+      <div className="flex items-start gap-3">
+        <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-base border border-border shrink-0 text-base select-none">📅</div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-sm font-semibold text-text-primary">Google Calendar</span>
+            <span className={clsx('flex items-center gap-1 px-1.5 py-0.5 rounded border text-xxs font-semibold', meta.cls)}>
+              {connected ? <CheckCircle2 size={11} /> : needsReconnect ? <AlertCircle size={11} /> : <Plug size={11} />}
+              {meta.label}
+            </span>
+          </div>
+          <p className="text-xxs text-text-muted mt-1">
+            {connected && status?.email
+              ? <>Connected as <span className="text-text-secondary">{status.email}</span> · auto-refreshing</>
+              : state === 'not_configured'
+              ? 'Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in .env, then connect.'
+              : state === 'disconnected'
+              ? 'Connect once — the token is stored and refreshed automatically (no copy-paste).'
+              : (status?.error || 'Reconnect to restore calendar access.')}
+          </p>
+
+          <div className="flex items-center gap-2 mt-3">
+            {connected ? (
+              <>
+                <button onClick={connect}
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-border bg-base hover:bg-card-hover text-text-secondary hover:text-text-primary text-xs">
+                  <RefreshCw size={11} /> Reconnect
+                </button>
+                <button onClick={disconnect} disabled={busy}
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-red-900/40 bg-red-950/20 text-red-400 hover:bg-red-950/40 text-xs disabled:opacity-50">
+                  {busy ? <Loader size={11} className="animate-spin" /> : <Unplug size={11} />} Disconnect
+                </button>
+              </>
+            ) : (
+              <button onClick={connect} disabled={!configured}
+                className={clsx('flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium',
+                  configured
+                    ? (needsReconnect
+                        ? 'border-amber-500/40 bg-amber-500/15 text-amber-300 hover:bg-amber-500/25'
+                        : 'border-accent-blue/40 bg-accent-blue/15 text-accent-blue hover:bg-accent-blue/25')
+                    : 'border-border bg-card text-text-muted cursor-not-allowed')}>
+                <CalendarDays size={12} /> {needsReconnect ? 'Reconnect Google' : 'Connect Google'}
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── Main view ───────────────────────────────────────────────────────────────
 
 export function Settings() {
@@ -383,17 +464,18 @@ export function Settings() {
           </div>
         )}
 
+        {/* Google connection */}
+        <p className="text-xxs font-semibold uppercase tracking-wider text-text-muted mt-8 mb-3 flex items-center gap-1.5">
+          <CalendarDays size={11} /> Google
+        </p>
+        <GoogleConnectionCard status={authStatus?.google} onChanged={load} />
+
         {/* Read-only env credentials */}
         <p className="text-xxs font-semibold uppercase tracking-wider text-text-muted mt-8 mb-3 flex items-center gap-1.5">
           <KeyRound size={11} /> Environment credentials
           <span className="font-normal normal-case tracking-normal opacity-60">· edit in .env, then restart the server</span>
         </p>
         <div className="flex flex-col divide-y divide-border rounded-lg border border-border overflow-hidden max-w-2xl">
-          <EnvRow
-            name="Google OAuth"
-            ok={!!authStatus?.google.tokenConfigured}
-            detail={authStatus?.google.clientConfigured ? 'Client configured · Calendar access' : 'GOOGLE_CLIENT_ID / SECRET / REFRESH_TOKEN'}
-          />
           <EnvRow
             name="Anthropic API"
             ok={!!authStatus?.anthropic.keyConfigured}

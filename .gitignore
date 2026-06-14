@@ -38,6 +38,9 @@ RUN.bat
 # ─── Connector secrets (gateway base URLs + tokens) ───────────────────────────
 data/connectors.json
 
+# ─── Google OAuth tokens (refresh/access token store) ─────────────────────────
+data/google-tokens.json
+
 # ─── Runtime task storage (seeded automatically on first run) ─────────────────
 data/tasks.json
 

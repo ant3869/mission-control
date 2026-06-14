@@ -10,6 +10,7 @@ import {
   ListTodo, RefreshCw, AlertCircle, Plus, Trash2, Sparkles, Loader2,
   Circle, CheckCircle2, ExternalLink, Pencil, Check, X, CalendarDays,
   ChevronDown, MapPin, Phone, DollarSign, Clock, Link2, User, Tag, Wand2,
+  CalendarCheck,
 } from 'lucide-react'
 import { useEscapeKey } from '../hooks/useEscapeKey'
 import { isRefreshPaused } from '../lib/refreshBus'
@@ -55,6 +56,8 @@ function hasAnyDetail(d?: TodoDetails | null): boolean {
   return Boolean(d.date || d.time || d.location || d.phone || d.cost || d.url || d.contact || d.category || Object.keys(d.customFields ?? {}).length)
 }
 
+type CalendarSyncStatus = 'idle' | 'synced' | 'pending' | 'error' | 'disabled'
+
 interface Todo {
   id:          string
   title:       string
@@ -69,9 +72,15 @@ interface Todo {
   details:     TodoDetails
   rawInput:    string
   research:    TodoResearch
+  // Google Calendar sync metadata (backfilled server-side for old rows)
+  calendarSyncEnabled?:   boolean
+  googleCalendarEventId?: string
+  calendarSyncStatus?:    CalendarSyncStatus
+  lastCalendarSyncAt?:    string
+  calendarSyncError?:     string
 }
 
-type TodoPatch = Partial<Pick<Todo, 'title' | 'notes' | 'severity' | 'horizon' | 'dueDate' | 'done' | 'details' | 'rawInput'>>
+type TodoPatch = Partial<Pick<Todo, 'title' | 'notes' | 'severity' | 'horizon' | 'dueDate' | 'done' | 'details' | 'rawInput' | 'calendarSyncEnabled'>>
 
 // ─── API ──────────────────────────────────────────────────────────────────────
 
@@ -495,6 +504,14 @@ function TodoRow({ todo, active, onToggle, onClick }: {
           )}>
             {todo.severity}
           </span>
+          {todo.calendarSyncEnabled && (
+            <span className="w-4 flex justify-center shrink-0"
+                  title={todo.calendarSyncStatus === 'error' ? (todo.calendarSyncError || 'Calendar sync error') : 'Synced to Google Calendar'}>
+              {todo.calendarSyncStatus === 'pending' && <Loader2 size={11} className="animate-spin text-accent-blue" />}
+              {todo.calendarSyncStatus === 'synced'  && <CalendarCheck size={12} className="text-emerald-400/80" />}
+              {todo.calendarSyncStatus === 'error'   && <CalendarDays size={12} className="text-red-400/70" />}
+            </span>
+          )}
           <span className="w-4 flex justify-center shrink-0">
             {r.status === 'pending' && <Loader2 size={12} className="text-violet-400 animate-spin" />}
             {r.status === 'done'    && <Sparkles size={12} className="text-violet-400" />}
@@ -717,6 +734,44 @@ function TodoDrawer({ todo, onClose, onToggle, onSave, onDelete, onResearch }: {
             )}
           </>
         )}
+
+        {/* Calendar sync — opt-in per task; only enable-able once a date exists */}
+        {(() => {
+          const canSync = Boolean(todo.details?.date || todo.dueDate)
+          const enabled = Boolean(todo.calendarSyncEnabled)
+          const st      = todo.calendarSyncStatus
+          return (
+            <div className="rounded-lg border border-border bg-base/40 p-3">
+              <div className="flex items-center justify-between gap-2">
+                <span className="flex items-center gap-1.5 text-xs font-medium text-text-secondary">
+                  {enabled && st === 'synced'
+                    ? <CalendarCheck size={13} className="text-emerald-400" />
+                    : <CalendarDays size={13} className="text-accent-blue" />}
+                  Google Calendar
+                </span>
+                <button
+                  role="switch" aria-checked={enabled}
+                  onClick={() => onSave(todo, { calendarSyncEnabled: !enabled })}
+                  disabled={!enabled && !canSync}
+                  title={!canSync && !enabled ? 'Add a date to enable calendar sync' : enabled ? 'Stop syncing' : 'Sync to calendar'}
+                  className={clsx('relative w-9 h-5 rounded-full transition-colors shrink-0 disabled:opacity-40',
+                    enabled ? 'bg-emerald-500/70' : 'bg-card border border-border')}
+                >
+                  <span className={clsx('absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform', enabled && 'translate-x-4')} />
+                </button>
+              </div>
+              <p className={clsx('text-[11px] mt-2 leading-snug',
+                st === 'error' ? 'text-red-400' : st === 'synced' ? 'text-emerald-400/90' : 'text-text-muted')}>
+                {!enabled
+                  ? (canSync ? 'Off — turn on to add this task to your Google Calendar.' : 'Add a date or due date to enable calendar sync.')
+                  : st === 'pending' ? 'Syncing to Google Calendar…'
+                  : st === 'synced'  ? `On your calendar${todo.lastCalendarSyncAt ? ` · synced ${fmtAgo(todo.lastCalendarSyncAt)}` : ''}.`
+                  : st === 'error'   ? friendlyError(todo.calendarSyncError, 'Google Calendar')
+                  : 'Will sync when you save a date.'}
+              </p>
+            </div>
+          )
+        })()}
 
         {/* Research section */}
         <div className="rounded-lg border border-violet-900/30 bg-violet-950/15 p-3">

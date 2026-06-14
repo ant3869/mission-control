@@ -1,130 +1,148 @@
 /**
  * Google Calendar → /api/calendar
  *
- * Requires: GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REFRESH_TOKEN in .env
+ * All Google access is delegated to server/lib/googleCalendar.ts (which gets its
+ * auth from server/lib/googleAuth.ts). This router is a thin HTTP surface.
  *
- * GET /api/calendar/events?days=7        → upcoming events for N days
- * GET /api/calendar/calendars            → list all calendars
+ *   GET    /api/calendar/events?days=7        → upcoming events (all calendars)
+ *   GET    /api/calendar/range?start=&end=    → events on primary in a range
+ *   GET    /api/calendar/calendars            → list calendars
+ *   POST   /api/calendar/events               → create an event
+ *   PATCH  /api/calendar/events/:id           → update an event
+ *   DELETE /api/calendar/events/:id           → delete an event
  */
 import { Router } from 'express'
-import { google } from 'googleapis'
+import { GoogleAuthError, isConfigured, hasToken } from '../lib/googleAuth.js'
+import {
+  listCalendars, listEventsAcrossCalendars, listEventsRange,
+  createEvent, updateEvent, deleteEvent,
+} from '../lib/googleCalendar.js'
 
 export const calendarRouter = Router()
 
-function getCalendarClient() {
-  const { GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REFRESH_TOKEN } = process.env
-  if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET || !GOOGLE_REFRESH_TOKEN) return null
-
-  const auth = new google.auth.OAuth2(GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET)
-  auth.setCredentials({ refresh_token: GOOGLE_REFRESH_TOKEN })
-  return google.calendar({ version: 'v3', auth })
+// Turn any thrown error into a consistent status + state the frontend can act on.
+function fail(res: any, err: any) {
+  if (err instanceof GoogleAuthError) {
+    const httpStatus =
+      err.state === 'not_configured' || err.state === 'disconnected' ? 503 :
+      err.state === 'reconnect_required' || err.state === 'missing_scopes' ? 401 : 502
+    return res.status(httpStatus).json({ error: err.message, state: err.state })
+  }
+  return res.status(500).json({ error: err?.message ?? 'Calendar error' })
 }
 
+function guard(res: any): boolean {
+  if (!isConfigured()) {
+    res.status(503).json({ error: 'Google Calendar not configured', state: 'not_configured',
+      hint: 'Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in .env.' })
+    return false
+  }
+  if (!hasToken()) {
+    res.status(503).json({ error: 'Google Calendar not connected', state: 'disconnected',
+      hint: 'Visit /api/auth/google to connect.' })
+    return false
+  }
+  return true
+}
+
+// GET /api/calendar/events  — aggregated across all readable calendars.
+//   ?days=N                  → now … now+N days   (legacy)
+//   ?start=ISO&end=ISO       → explicit window     (used by Day/Week/Month/Agenda)
 calendarRouter.get('/events', async (req, res) => {
-  const cal = getCalendarClient()
-  if (!cal) {
-    return res.status(503).json({
-      error: 'Google Calendar not configured',
-      hint:  'Visit /api/auth/google to authenticate, then set GOOGLE_REFRESH_TOKEN in .env',
-    })
-  }
-
-  const days = Math.min(Number(req.query.days ?? 7), 30)
-  const now  = new Date()
-  const end  = new Date(now)
-  end.setDate(end.getDate() + days)
-
+  if (!guard(res)) return
   try {
-    // Get all calendars the user has
-    const calList = await cal.calendarList.list({ minAccessRole: 'reader' })
-    const calIds  = (calList.data.items ?? []).map(c => c.id!).filter(Boolean)
+    const { start, end } = req.query as { start?: string; end?: string }
+    let timeMin: string, timeMax: string, days: number
 
-    // Fetch events from all calendars in parallel
-    const results = await Promise.allSettled(
-      calIds.map(id =>
-        cal.events.list({
-          calendarId:   id,
-          timeMin:      now.toISOString(),
-          timeMax:      end.toISOString(),
-          singleEvents: true,
-          orderBy:      'startTime',
-          maxResults:   50,
-        })
-      )
-    )
-
-    const events = results
-      .filter((r): r is PromiseFulfilledResult<typeof r extends PromiseFulfilledResult<infer T> ? T : never> => r.status === 'fulfilled')
-      .flatMap(r => (r.value as any).data.items ?? [])
-      .sort((a: any, b: any) => {
-        const aTime = a.start?.dateTime ?? a.start?.date ?? ''
-        const bTime = b.start?.dateTime ?? b.start?.date ?? ''
-        return aTime.localeCompare(bTime)
-      })
-
-    const mapped = events.map((ev: any) => {
-      const startRaw = ev.start?.dateTime ?? ev.start?.date
-      const endRaw   = ev.end?.dateTime   ?? ev.end?.date
-      const start    = startRaw ? new Date(startRaw) : null
-      const end      = endRaw   ? new Date(endRaw)   : null
-
-      // Compute timeMinutes for the calendar grid (hours * 60 + minutes)
-      const timeMinutes = start
-        ? start.getHours() * 60 + start.getMinutes()
-        : 0
-
-      // Which days of the week this falls on (0=Sun, 6=Sat)
-      const dayOfWeek = start ? start.getDay() : null
-
-      return {
-        id:           ev.id,
-        name:         ev.summary ?? '(No title)',
-        description:  ev.description ?? '',
-        location:     ev.location ?? '',
-        htmlLink:     ev.htmlLink ?? '',
-        status:       ev.status,
-        allDay:       !ev.start?.dateTime,
-        startIso:     startRaw ?? null,
-        endIso:       endRaw   ?? null,
-        timeDisplay:  start ? start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'All day',
-        timeMinutes,
-        dayOfWeek,
-        organizer:    ev.organizer?.email ?? '',
-        attendees:    (ev.attendees ?? []).map((a: any) => ({
-          email:            a.email,
-          displayName:      a.displayName,
-          responseStatus:   a.responseStatus,
-          self:             a.self ?? false,
-        })),
-        calendarColor: ev.colorId ?? null,
-        recurrence:   ev.recurrence ? true : false,
-        meetLink:     ev.conferenceData?.entryPoints?.find((e: any) => e.entryPointType === 'video')?.uri ?? null,
+    if (start && end) {
+      const s = new Date(start), e = new Date(end)
+      if (Number.isNaN(s.getTime()) || Number.isNaN(e.getTime()) || e <= s) {
+        return res.status(400).json({ error: 'invalid start/end (need ISO with end > start)' })
       }
-    })
+      // Clamp the span so a bad request can't fan out across months × calendars.
+      const maxEnd = new Date(s.getTime() + 62 * 864e5)
+      timeMin = s.toISOString()
+      timeMax = (e > maxEnd ? maxEnd : e).toISOString()
+      days    = Math.round((new Date(timeMax).getTime() - s.getTime()) / 864e5)
+    } else {
+      days    = Math.min(Math.max(Number(req.query.days ?? 7), 1), 62)
+      const now = new Date()
+      timeMin = now.toISOString()
+      timeMax = new Date(now.getTime() + days * 864e5).toISOString()
+    }
 
-    res.json({ events: mapped, fetchedAt: new Date().toISOString(), days })
-  } catch (err: any) {
-    console.error('[calendar/events]', err.message)
-    res.status(500).json({ error: err.message })
-  }
+    const events = await listEventsAcrossCalendars(timeMin, timeMax)
+    res.json({ events, fetchedAt: new Date().toISOString(), days, start: timeMin, end: timeMax })
+  } catch (err) { fail(res, err) }
 })
 
-calendarRouter.get('/calendars', async (_req, res) => {
-  const cal = getCalendarClient()
-  if (!cal) return res.status(503).json({ error: 'Google Calendar not configured' })
-
+// GET /api/calendar/range?start=ISO&end=ISO  — primary calendar, explicit window
+calendarRouter.get('/range', async (req, res) => {
+  if (!guard(res)) return
+  const start = String(req.query.start ?? '')
+  const end   = String(req.query.end ?? '')
+  if (!start || !end) return res.status(400).json({ error: 'start and end (ISO) are required' })
   try {
-    const list = await cal.calendarList.list({ minAccessRole: 'reader' })
-    const items = (list.data.items ?? []).map(c => ({
-      id:          c.id,
-      summary:     c.summary,
-      description: c.description,
-      primary:     c.primary ?? false,
-      color:       c.backgroundColor,
-      accessRole:  c.accessRole,
-    }))
-    res.json({ calendars: items })
-  } catch (err: any) {
-    res.status(500).json({ error: err.message })
-  }
+    const events = await listEventsRange(start, end)
+    res.json({ events, fetchedAt: new Date().toISOString() })
+  } catch (err) { fail(res, err) }
 })
+
+// GET /api/calendar/calendars
+calendarRouter.get('/calendars', async (_req, res) => {
+  if (!guard(res)) return
+  try {
+    res.json({ calendars: await listCalendars() })
+  } catch (err) { fail(res, err) }
+})
+
+// POST /api/calendar/events  { title, description?, location?, start, end?, allDay?, calendarId? }
+calendarRouter.post('/events', async (req, res) => {
+  if (!guard(res)) return
+  if (!String(req.body?.title ?? req.body?.summary ?? '').trim()) {
+    return res.status(400).json({ error: 'title is required' })
+  }
+  try {
+    const event = await createEvent(buildResource(req.body), req.body?.calendarId || 'primary')
+    res.status(201).json({ event })
+  } catch (err) { fail(res, err) }
+})
+
+// PATCH /api/calendar/events/:id  (?calendarId= or body.calendarId)
+calendarRouter.patch('/events/:id', async (req, res) => {
+  if (!guard(res)) return
+  const calendarId = String(req.body?.calendarId || req.query.calendarId || 'primary')
+  try {
+    const event = await updateEvent(req.params.id, buildResource(req.body), calendarId)
+    res.json({ event })
+  } catch (err) { fail(res, err) }
+})
+
+// DELETE /api/calendar/events/:id  (?calendarId=)
+calendarRouter.delete('/events/:id', async (req, res) => {
+  if (!guard(res)) return
+  const calendarId = String(req.query.calendarId || 'primary')
+  try {
+    await deleteEvent(req.params.id, calendarId)
+    res.json({ ok: true })
+  } catch (err) { fail(res, err) }
+})
+
+// Map a loose JSON body into a Calendar event resource.
+function buildResource(body: any) {
+  const b = body ?? {}
+  const resource: any = {
+    summary:     b.summary ?? b.title ?? '(No title)',
+    description: b.description ?? '',
+    location:    b.location || undefined,
+  }
+  if (b.allDay && b.start) {
+    resource.start = { date: String(b.start).slice(0, 10) }
+    resource.end   = { date: String(b.end ?? b.start).slice(0, 10) }
+  } else if (b.start) {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
+    resource.start = { dateTime: new Date(b.start).toISOString(), timeZone: tz }
+    resource.end   = { dateTime: new Date(b.end ?? b.start).toISOString(), timeZone: tz }
+  }
+  return resource
+}

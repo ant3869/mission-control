@@ -56,14 +56,31 @@ async function del<T>(path: string): Promise<T> {
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
 
+export type GoogleConnectionState =
+  | 'connected' | 'disconnected' | 'reconnect_required'
+  | 'missing_scopes' | 'auth_error' | 'not_configured'
+
 export interface AuthStatus {
-  google:    { clientConfigured: boolean; tokenConfigured: boolean }
+  google: {
+    clientConfigured: boolean
+    tokenConfigured:  boolean
+    state:            GoogleConnectionState
+    connected:        boolean
+    email:            string
+    scopes:           string[]
+    grantedScopes:    string[]
+    missingScopes:    string[]
+    connectedAt:      string
+    checkedAt:        string
+    error:            string
+  }
   anthropic: { keyConfigured: boolean }
 }
 
 export const auth = {
-  status: ()          => get<AuthStatus>('/auth/status'),
-  googleAuthUrl: ()   => '/api/auth/google',
+  status:        (force = false) => get<AuthStatus>('/auth/status', force ? { force: 1 } : undefined),
+  googleAuthUrl: ()              => '/api/auth/google',
+  disconnect:    ()             => post<{ ok: boolean }>('/auth/google/disconnect', {}),
 }
 
 // ─── Calendar ─────────────────────────────────────────────────────────────────
@@ -86,17 +103,36 @@ export interface CalendarEvent {
   calendarColor: string | null
   recurrence:    boolean
   meetLink:      string | null
+  calendarId?:   string
+  writable?:     boolean
 }
 
 export interface CalendarEventsResponse {
   events:    CalendarEvent[]
   fetchedAt: string
   days:      number
+  start?:    string
+  end?:      string
+}
+
+export interface CalendarEventInput {
+  title:        string
+  description?: string
+  location?:    string
+  allDay?:      boolean
+  start:        string   // ISO datetime, or YYYY-MM-DD when allDay
+  end?:         string
+  calendarId?:  string
 }
 
 export const calendar = {
-  events:    (days = 7)  => get<CalendarEventsResponse>('/calendar/events', { days }),
-  calendars: ()          => get<{ calendars: any[] }>('/calendar/calendars'),
+  events:        (days = 7)                  => get<CalendarEventsResponse>('/calendar/events', { days }),
+  eventsBetween: (start: string, end: string) => get<CalendarEventsResponse>('/calendar/events', { start, end }),
+  calendars:     ()                          => get<{ calendars: any[] }>('/calendar/calendars'),
+  create:        (body: CalendarEventInput)  => post<{ event: CalendarEvent }>('/calendar/events', body),
+  update:        (id: string, body: CalendarEventInput) => patch<{ event: CalendarEvent }>(`/calendar/events/${encodeURIComponent(id)}`, body),
+  remove:        (id: string, calendarId?: string) =>
+                   del<{ ok: boolean }>(`/calendar/events/${encodeURIComponent(id)}${calendarId ? `?calendarId=${encodeURIComponent(calendarId)}` : ''}`),
 }
 
 // ─── System ───────────────────────────────────────────────────────────────────
@@ -380,63 +416,6 @@ export const chats = {
   session:  (id: string) => get<ChatSessionResponse>(`/chats/sessions/${id}`),
 }
 
-// ─── People (real conversation participants, derived from agent events) ────────
-
-export interface AgentPerson {
-  id:           string
-  name:         string
-  platform:     string
-  channels:     string[]
-  messageCount: number
-  firstSeen:    string
-  lastSeen:     string
-  lastSeenAgo:  string
-  source:       ConnectorId
-}
-export interface PeopleResponse { people: AgentPerson[]; fetchedAt: string; error?: string }
-
-export const peopleApi = {
-  openclaw: () => get<PeopleResponse>('/openclaw/people'),
-  hermes:   () => get<PeopleResponse>('/hermes/people'),
-}
-
-export interface AgentPublication {
-  id:        string
-  title:     string
-  type:      string
-  preview:   string
-  content:   string
-  wordCount: number
-  channel:   string
-  ts:        string
-  tsAgo:     string
-  source:    ConnectorId
-}
-export interface PublicationsResponse { publications: AgentPublication[]; fetchedAt: string; error?: string }
-
-export const publicationsApi = {
-  openclaw: () => get<PublicationsResponse>('/openclaw/publications'),
-  hermes:   () => get<PublicationsResponse>('/hermes/publications'),
-}
-
-export type InboundSentiment = 'positive' | 'negative' | 'neutral'
-export interface InboundMessage {
-  id:        string
-  sender:    string
-  channel:   string
-  content:   string
-  preview:   string
-  sentiment: InboundSentiment
-  ts:        string
-  tsAgo:     string
-  source:    ConnectorId
-}
-export interface InboundResponse { inbound: InboundMessage[]; fetchedAt: string; error?: string }
-
-export const inboundApi = {
-  openclaw: () => get<InboundResponse>('/openclaw/inbound'),
-  hermes:   () => get<InboundResponse>('/hermes/inbound'),
-}
 
 export const openclawChats = {
   sessions: (limit = 50) => get<ChatsListResponse>('/openclaw/sessions', { limit }),
@@ -1115,6 +1094,7 @@ export const approvals = {
 
 export type TodoSeverity = 'low' | 'medium' | 'high' | 'critical'
 export type TodoHorizon = 'short' | 'long'
+export type TodoCalendarSyncStatus = 'idle' | 'synced' | 'pending' | 'error' | 'disabled'
 
 export interface LiveTodo {
   id: string
@@ -1127,13 +1107,19 @@ export interface LiveTodo {
   createdAt: string
   updatedAt: string
   completedAt: string
+  // Google Calendar sync metadata
+  calendarSyncEnabled: boolean
+  googleCalendarEventId: string
+  calendarSyncStatus: TodoCalendarSyncStatus
+  lastCalendarSyncAt: string
+  calendarSyncError: string
 }
 
 export const todosApi = {
   list: () => get<{ todos: LiveTodo[]; fetchedAt: string }>('/todos'),
-  create: (body: { title: string; severity?: TodoSeverity; horizon?: TodoHorizon; dueDate?: string }) =>
+  create: (body: { title: string; severity?: TodoSeverity; horizon?: TodoHorizon; dueDate?: string; calendarSyncEnabled?: boolean }) =>
     post<{ todo: LiveTodo }>('/todos', body),
-  update: (id: string, body: Partial<Pick<LiveTodo, 'title' | 'notes' | 'severity' | 'horizon' | 'dueDate' | 'done'>>) =>
+  update: (id: string, body: Partial<Pick<LiveTodo, 'title' | 'notes' | 'severity' | 'horizon' | 'dueDate' | 'done' | 'calendarSyncEnabled'>>) =>
     patch<{ todo: LiveTodo }>(`/todos/${id}`, body),
 }
 
@@ -1178,7 +1164,7 @@ export const links = {
 
 // ─── Inbox ────────────────────────────────────────────────────────────────────
 
-export type InboxKind = 'approval' | 'task' | 'todo' | 'feedback' | 'publication'
+export type InboxKind = 'approval' | 'task' | 'todo'
 export type InboxStatus = 'active' | 'snoozed' | 'done'
 export type InboxPriority = 'critical' | 'high' | 'medium' | 'low'
 
@@ -1193,7 +1179,7 @@ export interface InboxItem {
   status: InboxStatus
   source: 'local' | 'openclaw' | 'hermes'
   sourceLabel: string
-  routeView: 'tasks' | 'todos' | 'feedback' | 'content'
+  routeView: 'tasks' | 'todos'
   routeTab: 'tasks' | 'approvals' | 'inbox' | ''
   eventAt: string
   eventAgo: string

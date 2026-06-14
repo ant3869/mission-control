@@ -14,6 +14,7 @@ import { homedir } from 'os'
 import { join, basename } from 'path'
 import { getHealth } from '../lib/agentSources.js'
 import type { AgentSource } from '../lib/agentEvents.js'
+import { getConnectionStatus } from '../lib/googleAuth.js'
 
 export const officeRouter = Router()
 
@@ -111,21 +112,34 @@ officeRouter.get('/integrations', async (_req, res) => {
   const now = new Date().toISOString()
   const nowLabel = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 
-  // ── 1. Auth connections from .env ─────────────────────────────────────────
-  const hasGoogle    = !!(process.env.GOOGLE_REFRESH_TOKEN && process.env.GOOGLE_CLIENT_ID)
+  // ── 1. Auth connections ───────────────────────────────────────────────────
+  // Live Google status (real token probe), not just "are env vars set".
+  const g = await getConnectionStatus()
+  const googleStatus: IntegrationStatus =
+    g.state === 'connected' ? 'connected'
+    : g.state === 'disconnected' || g.state === 'not_configured' ? 'disconnected'
+    : 'error'
+  const googleDetail =
+    g.state === 'connected'          ? 'Google Calendar connected'
+    : g.state === 'reconnect_required' ? 'Reconnect required — token expired or revoked'
+    : g.state === 'missing_scopes'    ? 'Calendar write scope not granted — reconnect'
+    : g.state === 'not_configured'    ? 'Set GOOGLE_CLIENT_ID / SECRET in .env'
+    : g.state === 'disconnected'      ? 'Not connected — connect in Settings'
+    : (g.error || 'Auth error')
   const hasAnthropic = !!process.env.ANTHROPIC_API_KEY
 
   integrations.push({
     id:          'auth-google',
-    name:        'Google',
-    description: 'Google account authentication',
+    name:        'Google Calendar',
+    description: 'Google Calendar events & scheduling',
     category:    'auth',
-    status:      hasGoogle ? 'connected' : 'disconnected',
-    icon:        '🔑',
-    connectedAs: hasGoogle ? process.env.GOOGLE_EMAIL ?? 'OAuth configured' : undefined,
-    detail:      hasGoogle ? 'Calendar, Gmail access enabled' : 'Not authenticated',
+    status:      googleStatus,
+    icon:        '📅',
+    connectedAs: g.email || (g.connected ? 'Calendar connected' : undefined),
+    detail:      googleDetail,
+    error:       googleStatus === 'error' ? g.error : undefined,
     source:      'auth',
-    lastSync:    hasGoogle ? nowLabel : undefined,
+    lastSync:    g.connected ? nowLabel : undefined,
   })
 
   integrations.push({
