@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.7.64] — 2026-06-14
+
+### Changed
+
+- **Bulk inventory research now runs entirely through OpenClaw** when it's connected, instead of splitting items 50/50 between OpenClaw and Hermes. Hermes is only used as a fallback when OpenClaw is down — it isn't reliable for research right now, so the old split left half the batch failing or stuck.
+
+---
+
 ## [0.7.63] — 2026-06-14
 
 ### Added — Inventory bulk add
