@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.7.63] — 2026-06-14
+
+### Added — Inventory bulk add
+
+- **Paste-to-add for the inventory.** A new **Bulk add** button on the Inventory page opens a modal where you paste a free-form list (one item per line). A forgiving parser handles leading bullets, `xN` / `×N` quantities, `(Model: …)` tags (extra notes like "2230 stubbies" split into tags), markdown bold, and skips section headers (e.g. `Multiples:` / `Singles (x1):`). Size (e.g. `512GB`), form factor (`2230`/`m.2`/`2.5"`) and interface (`NVMe`/`SATA`/`PCIe`) are auto-detected into tags. A live preview shows the parsed items + total units before you commit; a single category applies to the batch, and an opt-in checkbox queues agent research on everything added so specs/value/form-factor fill in automatically.
+- Implemented on the existing `POST /api/inventory/bulk` and `/research-all` endpoints; added an `inventory.bulk` API method and an exported `parseBulkInput` helper in `Inventory.tsx`.
+
+---
+
 ## [0.7.62] — 2026-06-14
 
 ### Changed — merged To-Do and Tasks into one page

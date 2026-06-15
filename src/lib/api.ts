@@ -646,6 +646,7 @@ export const inventory = {
   list:      ()                              => get<InventoryResponse>('/inventory'),
   get:       (id: string)                    => get<{ item: InventoryItem }>(`/inventory/${id}`),
   create:    (body: InventoryBody)           => post<{ item: InventoryItem }>('/inventory', body),
+  bulk:      (items: InventoryBody[])        => post<{ created: InventoryItem[]; count: number }>('/inventory/bulk', { items }),
   update:    (id: string, body: Partial<InventoryBody>) => patch<{ item: InventoryItem }>(`/inventory/${id}`, body),
   remove:    (id: string)                    => del<{ ok: boolean }>(`/inventory/${id}`),
   setStatus: (id: string, status: 'available' | 'in-use' | 'reserved') => patch<{ item: InventoryItem }>(`/inventory/${id}/status`, { status }),

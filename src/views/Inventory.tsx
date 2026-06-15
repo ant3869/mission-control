@@ -1,10 +1,10 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useEscapeKey } from '../hooks/useEscapeKey'
 import { clsx } from 'clsx'
 import {
   Boxes, Clock, Plus, Minus, Search, RefreshCw, X, Trash2, Pencil, ExternalLink,
   MapPin, DollarSign, Hash, Bot, FileText, AlertCircle, Layers, Sparkles, Save,
-  CheckCircle2, Zap, LockKeyhole, ChevronDown, ChevronRight,
+  CheckCircle2, Zap, LockKeyhole, ChevronDown, ChevronRight, ListPlus,
 } from 'lucide-react'
 import { inventory as invApi, type InventoryItem, type InventoryStats, type InventoryBody } from '../lib/api'
 import { ProjectBacklog } from '../components/inventory/ProjectBacklog'
@@ -348,6 +348,144 @@ function ItemForm({ initial, categories, conditions, onSave, onClose }: {
   )
 }
 
+// ─── Bulk add (paste a list → many items, agent fills the details) ──────────────
+
+interface ParsedRow { name: string; quantity: number; model: string; tags: string[] }
+
+// Parse a pasted, free-form list (e.g. a Discord drive dump) into rows. Handles
+// bullets, "xN" quantities, "(Model: ...)" tags, markdown bold, and skips section
+// headers. Deliberately forgiving — the agent research pass fills the real specs.
+export function parseBulkInput(text: string): ParsedRow[] {
+  const rows: ParsedRow[] = []
+  for (const raw of text.split('\n')) {
+    let line = raw.replace(/\*\*/g, '').trim()        // drop markdown bold
+    if (!line) continue
+    line = line.replace(/^[-*•·▪◦●]\s*/, '').trim()   // strip leading bullet
+    if (!line || /:\s*$/.test(line)) continue          // skip section headers ("Multiples:")
+
+    const tags: string[] = []
+
+    // (Model: XXX[, extra note]) — first segment is the model, extras become tags
+    let model = ''
+    const modelMatch = line.match(/\(?\s*model:\s*([^)\n]+)\)?/i)
+    if (modelMatch) {
+      const segs = modelMatch[1].split(',').map(s => s.trim()).filter(Boolean)
+      model = segs[0] ?? ''
+      for (const extra of segs.slice(1)) tags.push(extra)
+      line = line.replace(modelMatch[0], ' ')
+    }
+
+    // Quantity: "x4" / "×4" / "(x4)" — default 1
+    let quantity = 1
+    const qty = line.match(/\(?\s*[x×]\s*(\d{1,4})\s*\)?(?=\s|$)/i)
+    if (qty) { quantity = Math.max(1, parseInt(qty[1], 10) || 1); line = line.replace(qty[0], ' ') }
+
+    // Detected attributes the user cares about (size / form factor / interface)
+    const size  = line.match(/\b(\d+(?:\.\d+)?\s?[GT]B)\b/i)
+    if (size) tags.push(size[1].replace(/\s+/g, '').toUpperCase())
+    const ff    = line.match(/\b(2230|2242|2260|2280|22110|mSATA|m\.?2|2\.5")\b/i)
+    if (ff) tags.push(ff[1].toLowerCase())
+    const iface = line.match(/\b(NVMe|SATA|PCIe(?:\s?\d(?:\.\d)?)?|Gen\s?\d)\b/i)
+    if (iface) tags.push(iface[1].toUpperCase().replace(/\s+/g, ''))
+
+    const name = line.replace(/\(\s*\)/g, '').replace(/[\s\-–—,]+$/, '').replace(/\s{2,}/g, ' ').trim()
+    if (!name && !model) continue
+    rows.push({ name: name || model, quantity, model, tags: [...new Set(tags)] })
+  }
+  return rows
+}
+
+function BulkAddModal({ categories, onClose, onSubmit }: {
+  categories: string[]
+  onClose: () => void
+  onSubmit: (items: InventoryBody[], research: boolean) => Promise<void>
+}) {
+  useEscapeKey(onClose)
+  const [text, setText]         = useState('')
+  const [category, setCategory] = useState('storage')
+  const [research, setResearch] = useState(true)
+  const [saving, setSaving]     = useState(false)
+  const [err, setErr]           = useState<string | null>(null)
+
+  const parsed     = useMemo(() => parseBulkInput(text), [text])
+  const totalUnits = parsed.reduce((s, r) => s + r.quantity, 0)
+
+  const submit = async () => {
+    if (parsed.length === 0) { setErr('Nothing to add — paste a list first.'); return }
+    setSaving(true); setErr(null)
+    try {
+      const items: InventoryBody[] = parsed.map(r => ({
+        name: r.name, quantity: r.quantity, model: r.model, category, tags: r.tags, addedBy: 'bulk',
+      }))
+      await onSubmit(items, research)
+    } catch (e: any) { setErr(e.message ?? 'Bulk add failed'); setSaving(false) }
+  }
+
+  const input = 'w-full px-2.5 py-1.5 rounded-lg bg-base border border-border text-xs text-text-primary placeholder:text-text-muted outline-none focus:border-accent-blue/50'
+  return (
+    <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
+      <div className="w-full max-w-2xl max-h-full overflow-y-auto rounded-xl border border-border bg-surface p-5" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-1">
+          <h2 className="text-sm font-semibold text-text-primary flex items-center gap-2"><ListPlus size={15} /> Bulk add</h2>
+          <button aria-label="Close" onClick={onClose} className="p-1 rounded hover:bg-card text-text-muted hover:text-text-primary"><X size={15} /></button>
+        </div>
+        <p className="text-xxs text-text-muted mb-3">Paste one item per line. Quantities (<span className="font-mono">x4</span>) and <span className="font-mono">(Model: …)</span> are detected; the agent fills specs, value, and form factor afterward.</p>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <label className="flex flex-col gap-1 md:col-span-2">
+            <span className="text-xxs text-text-muted">List</span>
+            <textarea
+              className={clsx(input, 'resize-none h-44 font-mono leading-relaxed')}
+              value={text}
+              onChange={e => setText(e.target.value)}
+              autoFocus
+              placeholder={'Western Digital PC SN810 512GB x4 (Model: SDCPNRY-512G-1006)\nSamsung PM9A1 512GB x3 (Model: MZ-VL2512A)\nKingston 256GB (Model: OM3PDP3256B-A01)'}
+            />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-xxs text-text-muted">Category (all items)</span>
+            <select className={input} value={category} onChange={e => setCategory(e.target.value)}>
+              {categories.map(c => <option key={c} value={c}>{catMeta(c).icon} {catMeta(c).label}</option>)}
+            </select>
+          </label>
+          <label className="flex items-end gap-2 pb-1.5">
+            <input type="checkbox" checked={research} onChange={e => setResearch(e.target.checked)} className="accent-violet-500" />
+            <span className="text-xxs text-text-secondary">Research all with agent after adding</span>
+          </label>
+        </div>
+
+        {/* Live preview of what will be created */}
+        <div className="mt-3">
+          <div className="flex items-center justify-between mb-1.5">
+            <span className="text-xxs font-semibold uppercase tracking-wide text-text-muted">Preview</span>
+            <span className="text-xxs text-text-muted tabular-nums">{parsed.length} item{parsed.length !== 1 ? 's' : ''} · {totalUnits} unit{totalUnits !== 1 ? 's' : ''}</span>
+          </div>
+          <div className="rounded-lg border border-border bg-base max-h-44 overflow-y-auto divide-y divide-border/60">
+            {parsed.length === 0 ? (
+              <p className="text-xxs text-text-muted px-3 py-3">Parsed items appear here as you paste.</p>
+            ) : parsed.map((r, i) => (
+              <div key={i} className="flex items-center gap-2 px-3 py-1.5">
+                <span className="text-xs text-text-primary truncate flex-1">{r.name}</span>
+                {r.quantity > 1 && <span className="text-xxs font-semibold tabular-nums text-accent-blue shrink-0">×{r.quantity}</span>}
+                {r.model && <span className="text-xxs font-mono text-text-muted truncate max-w-[30%] shrink-0">{r.model}</span>}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {err && <p className="text-xxs text-red-400 mt-2">{err}</p>}
+        <div className="flex items-center gap-2 mt-4">
+          <button onClick={submit} disabled={saving || parsed.length === 0}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-accent-blue/40 bg-accent-blue/15 text-accent-blue hover:bg-accent-blue/25 disabled:opacity-40 text-xs font-medium">
+            <ListPlus size={12} /> {saving ? 'Adding…' : `Add ${parsed.length || ''} item${parsed.length !== 1 ? 's' : ''}`.trim()}
+          </button>
+          <button onClick={onClose} className="px-3 py-1.5 rounded-lg border border-border bg-card hover:bg-card-hover text-text-secondary text-xs">Cancel</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── Category section colors ───────────────────────────────────────────────────
 
 const CAT_COLORS: Record<string, { bar: string; label: string; border: string; bg: string }> = {
@@ -448,6 +586,7 @@ export function Inventory() {
   const [condFilter, setCondFilter] = useState<string>('all')
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [editing, setEditing]       = useState<InventoryItem | null | 'new'>(null)
+  const [bulkOpen, setBulkOpen]     = useState(false)
   const [researchingAll, setResearchingAll] = useState(false)
   const [view, setView]                     = useState<'catalog' | 'backlog'>('catalog')
   const { toast, show: showToast }  = useToast()
@@ -562,6 +701,17 @@ export function Inventory() {
     } catch (e: any) { showToast('error', e.message ?? 'Could not start bulk research'); setResearchingAll(false) }
   }
 
+  const bulkAdd = async (newItems: InventoryBody[], research: boolean) => {
+    showToast('saving', `Adding ${newItems.length} item${newItems.length !== 1 ? 's' : ''}…`)
+    try {
+      const r = await invApi.bulk(newItems)
+      setBulkOpen(false)
+      await load()
+      showToast('saved', `Added ${r.count} item${r.count !== 1 ? 's' : ''}`)
+      if (research) await researchAll()   // queues the freshly-added (unenriched) items
+    } catch (e: any) { showToast('error', e.message ?? 'Bulk add failed') }
+  }
+
   const catCounts = stats?.byCategory ?? []
   const unresearchedCount = items.filter(i => !i.enriched && i.researchStatus !== 'pending').length
   const pendingCount = items.filter(i => i.researchStatus === 'pending').length
@@ -603,6 +753,9 @@ export function Inventory() {
             >
               <Sparkles size={13} /> Build Ideas
             </button>
+            {view === 'catalog' && (
+              <button onClick={() => setBulkOpen(true)} title="Paste a list to add many items at once" className="flex items-center gap-1.5 px-3 py-1.5 rounded border border-border bg-card hover:bg-card-hover text-text-secondary hover:text-text-primary text-xs font-medium"><ListPlus size={13} /> Bulk add</button>
+            )}
             {view === 'catalog' && (
               <button onClick={() => setEditing('new')} className="flex items-center gap-1.5 px-3 py-1.5 rounded border border-accent-blue/40 bg-accent-blue/15 text-accent-blue hover:bg-accent-blue/25 text-xs font-medium"><Plus size={13} /> Add item</button>
             )}
@@ -702,6 +855,9 @@ export function Inventory() {
 
       {editing && (
         <ItemForm initial={editing === 'new' ? null : editing} categories={categories} conditions={conditions} onSave={saveItem} onClose={() => setEditing(null)} />
+      )}
+      {bulkOpen && (
+        <BulkAddModal categories={categories} onClose={() => setBulkOpen(false)} onSubmit={bulkAdd} />
       )}
 
       <MutationToast toast={toast} />

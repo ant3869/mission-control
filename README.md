@@ -42,7 +42,7 @@ The hardware → ideas → projects loop in one place.
 | View | What you can do |
 |------|----------------|
 | **Projects** | Kanban-style boards for tracking initiatives (drag cards across columns, set owners, attach notes), with a **Pipeline** tab — a multi-stage run monitor (card grid or Gantt timeline) with step-level traces and a cron jobs panel. |
-| **Inventory** | Hardware catalog with SQLite-backed persistence. Search and filter items, view status (available / in-use / reserved), trigger per-item agent research, and inline-edit any field. |
+| **Inventory** | Hardware catalog with SQLite-backed persistence. Search and filter items, view status (available / in-use / reserved), trigger per-item agent research, and inline-edit any field. **Bulk add** lets you paste a free-form list (bullets, `xN` quantities, `(Model: …)`) — it parses each line into an item, shows a live preview, and can queue agent research on the whole batch so specs, value, and form factor get filled in automatically. |
 | **Ideas** | Idea Factory — browse and triage the buildable project ideas the agents generate *from your inventory* (confidence/coolness scores, difficulty, cost/time, parts lists). Like / snooze / reject, filter by status, and trigger a new generation run. |
 
 ### AI Ops
