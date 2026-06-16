@@ -33,7 +33,7 @@ The sidebar is grouped into four sections — **Work**, **Knowledge**, **Build**
 |------|----------------|
 | **Docs** | Documentation browser connected to your agent knowledge base, with a **Notes** tab (quick-capture scratchpad) and a **Links** tab — save, tag, pin, and archive bookmarks; add manually or via the Inbox "save as link" action. |
 | **News** | Real-time curated news dashboard with three tabs: **Feed** (17 RSS/Atom sources across AI, computing, code, and robotics), **GitHub** (trending repos by time range and language), and **Buzz** (top discussions from HN, Reddit, and Lobsters). ADHD-friendly magazine-style hero, cross-source "Top right now" strip, category/platform filters, and 5-minute auto-refresh. |
-| **Memory** | Inspect and manage agent memory stores. Read, search, and update memory entries across all connected agents. |
+| **Memory** | A live operational dashboard over your agent's **real memory system**, read over SSH from the agent machine: an **Activity** timeline of memory events (recall / dream / promotion, each expandable to the actual content), **Daily** logs + workspace files with a full-text index over every day, **Recall** (semantic chunks + similarity scores + concept tags), **Dreaming** (the nightly Light / Deep / REM consolidation and promotions into long-term `MEMORY.md`), **Health** (LanceDB vector store + pipeline freshness/staleness), and **Metrics** (per-day volume, dream phases, top concepts). Configure the SSH connection via `OPENCLAW_SSH_*`. |
 
 ### Build
 
@@ -43,7 +43,7 @@ The hardware → ideas → projects loop in one place.
 |------|----------------|
 | **Projects** | Kanban-style boards for tracking initiatives (drag cards across columns, set owners, attach notes), with a **Pipeline** tab — a multi-stage run monitor (card grid or Gantt timeline) with step-level traces and a cron jobs panel. |
 | **Inventory** | Hardware catalog with SQLite-backed persistence. Search and filter items, view status (available / in-use / reserved), trigger per-item agent research, and inline-edit any field. **Bulk add** lets you paste a free-form list (bullets, `xN` quantities, `(Model: …)`) — it parses each line into an item, shows a live preview, and can queue agent research on the whole batch so specs, value, and form factor get filled in automatically. |
-| **Ideas** | Idea Factory — browse and triage the buildable project ideas the agents generate *from your inventory* (confidence/coolness scores, difficulty, cost/time, parts lists). Like / snooze / reject, filter by status, and trigger a new generation run. |
+| **Ideas** | Idea Factory — browse and triage the buildable project ideas the agents generate *from your inventory*. Confidence/coolness score bars, difficulty, cost/time, and parts-on-hand / still-need lists. A **Buildable now** filter surfaces projects you can build with parts you already own; sort by Best / Coolest / Cheapest / Newest, search across ideas, like / snooze / **Built it!** / reject-with-reason, and trigger a new generation run. |
 
 ### AI Ops
 
@@ -102,6 +102,9 @@ Required variables (see `.env.example` for details):
 | `GOOGLE_CLIENT_SECRET` | Google OAuth client secret |
 | `ANTHROPIC_API_KEY` | Anthropic API key (Radar analytics) |
 | `GITHUB_TOKEN` | GitHub personal access token — optional; raises the Search API rate limit for the News → GitHub tab |
+| `OPENCLAW_SSH_HOST` | Agent machine host — reads the OpenClaw memory system (daily logs, dreaming, LanceDB recall) over SSH for the Memory view |
+| `OPENCLAW_SSH_USER` | SSH username on the agent machine |
+| `OPENCLAW_SSH_KEY` | SSH private key — absolute path, or a key name resolved under `~/.ssh` |
 
 **Google Calendar:** set the two `GOOGLE_*` values, then connect from **Settings → Google** (or visit `/api/auth/google`). The refresh token is stored in `data/google-tokens.json` and refreshed automatically — no copy-paste. Publish your OAuth consent screen ("In production") in Google Cloud Console; while it is in "Testing" mode Google expires the refresh token after 7 days.
 

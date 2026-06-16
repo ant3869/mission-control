@@ -6,6 +6,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.7.65] — 2026-06-16
+
+### Added — live OpenClaw memory dashboard
+
+- **The Memory view is now an end-to-end operational dashboard** over OpenClaw's real on-disk memory system, read live over **SSH** from the agent machine (the gateway only exposes a 7-file whitelist, so SSH is how we reach the daily logs + dreaming pipeline). Tabs:
+  - **Activity** — the real memory-pipeline events (recall / dream / promotion) as a compact timeline; each row expands to the *actual content* (e.g. the dream report) instead of raw JSON.
+  - **Daily** — the agent's daily logs (clean curated prose) + the workspace memory files (SOUL / USER / MEMORY.md …), with a local full-text index over all ~100+ days for instant search.
+  - **Recall** — the semantic-recall layer (memory chunks, similarity scores, cleaned concept tags).
+  - **Dreaming** — the nightly sleep-cycle consolidation (Light / Deep / REM reports), promotions into long-term `MEMORY.md`.
+  - **Health** — LanceDB vector-store state + pipeline-freshness/staleness; the gateway's "embedding unavailable" is correctly surfaced as a false alarm, not an error.
+  - **Metrics** — per-day memory volume, dream phases, recall activity, top concepts.
+- New server libs: `remoteMemoryFs` (SSH reader, env-configured), `memoryDoctor`, `memoryStore` (SQLite + FTS/LIKE index), `memoryCollector`, `memorySync`; API in `routes/memoryops.ts` (`/api/memory/disk/*`).
+- **SSH connection details are environment-only** (`OPENCLAW_SSH_HOST` / `OPENCLAW_SSH_USER` / `OPENCLAW_SSH_KEY`) — see `.env.example`. Nothing about the operator's machine is committed.
+
+### Changed — Idea Factory refresh
+
+- **Re-themed the Idea Factory cards to match the Inventory project backlog** (confidence/coolness score bars, "Parts on hand" / "Still need" sections, "Why it fits", status-colored cards, always-visible Like / Reject / Snooze / **Built it!** actions).
+- **New tooling:** a **Buildable now** detector + quick filter (projects you can build with parts already on hand), smart **sort** (Best / Coolest / Cheapest / Newest), **search**, a summary **stats strip**, and **reject-with-reason** so the agent learns what you don't want.
+
+---
+
 ## [0.7.64] — 2026-06-14
 
 ### Changed
