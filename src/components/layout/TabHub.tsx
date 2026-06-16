@@ -8,7 +8,7 @@
 import { useState, useEffect } from 'react'
 import { clsx } from 'clsx'
 import type { View } from '../../types'
-import { HUB_TAB_EVENT, readHubTab } from '../../lib/quickActions'
+import { HUB_TAB_EVENT, readHubTab, writeHubTab } from '../../lib/quickActions'
 
 export type HubTab = {
   id: string
@@ -41,7 +41,7 @@ export function TabHub({ view, tabs }: { view: View; tabs: HubTab[] }) {
     <div className="flex flex-col h-full">
       <div className="flex items-center gap-1 px-6 border-b border-border shrink-0 overflow-x-auto bg-surface">
         {tabs.map(t => (
-          <button key={t.id} onClick={() => setTab(t.id)}
+          <button key={t.id} onClick={() => { setTab(t.id); writeHubTab(view, t.id) }}
             className={clsx('flex items-center gap-1.5 px-3 py-2.5 text-xs font-medium border-b-2 -mb-px transition-colors whitespace-nowrap',
               tab === t.id ? 'border-text-primary text-text-primary' : 'border-transparent text-text-muted hover:text-text-secondary')}>
             {t.icon}{t.label}

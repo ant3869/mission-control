@@ -89,13 +89,23 @@ authRouter.post('/google/disconnect', async (_req, res) => {
 
 // ─── Callback HTML ────────────────────────────────────────────────────────────
 
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#x27;')
+}
+
 function consentPage(kind: 'ok' | 'error', detail: string): string {
   const ok = kind === 'ok'
+  const safe = escapeHtml(detail)
   const color = ok ? '#3fb950' : '#f85149'
   const heading = ok ? '✅ Google Calendar connected!' : '⚠️ Connection failed'
   const body = ok
-    ? `<p>${detail}</p><p>You can close this tab — no token to copy, nothing to restart. The connection refreshes itself from now on.</p>`
-    : `<p>${detail}</p><p>Close this tab and try reconnecting from Settings.</p>`
+    ? `<p>${safe}</p><p>You can close this tab — no token to copy, nothing to restart. The connection refreshes itself from now on.</p>`
+    : `<p>${safe}</p><p>Close this tab and try reconnecting from Settings.</p>`
   return `
     <html><body style="font-family:system-ui,monospace;background:#0d1117;color:#e6edf3;padding:2.5rem;max-width:560px;margin:auto">
       <h2 style="color:${color}">${heading}</h2>

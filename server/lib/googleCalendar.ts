@@ -127,7 +127,9 @@ export function resolveTodoDateTime(todo: TodoLike): ResolvedDateTime | null {
   let ymd = parseLooseDate(todo.details?.date)
   if (!ymd && todo.dueDate) {
     const d = new Date(todo.dueDate)
-    if (!Number.isNaN(d.getTime())) ymd = { y: d.getFullYear(), m: d.getMonth(), d: d.getDate() }
+    // Use UTC components to preserve the calendar date the user selected, regardless
+    // of the server's local timezone (the UI stores dueDate as an ISO instant).
+    if (!Number.isNaN(d.getTime())) ymd = { y: d.getUTCFullYear(), m: d.getUTCMonth(), d: d.getUTCDate() }
   }
   if (!ymd) return null
 

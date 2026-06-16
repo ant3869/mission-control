@@ -54,6 +54,10 @@ export function readHubTab(view: View): string | null {
   return readStoredValue(hubTabStorageKey(view))
 }
 
+export function writeHubTab(view: View, tab: string): void {
+  storeValue(hubTabStorageKey(view), tab)
+}
+
 /** Navigate to a hub view and select one of its inner tabs. */
 export function openHubTab(view: View, tab: string): void {
   storeValue(hubTabStorageKey(view), tab)

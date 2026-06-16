@@ -85,7 +85,9 @@ function loadTokens(): StoredTokens {
     if (envToken) {
       const seeded: StoredTokens = {
         refresh_token: envToken,
-        scope:         GOOGLE_SCOPES.join(' '),
+        // Do NOT assert the current GOOGLE_SCOPES here: the legacy token was minted
+        // by the old read-only OAuth flow and may lack calendar.events write access.
+        // Leave scope unset so getConnectionStatus probes and reports accurately.
         connectedAt:   new Date().toISOString(),
         updatedAt:     new Date().toISOString(),
         seededFromEnv: true,

@@ -137,8 +137,18 @@ function buildResource(body: any) {
     location:    b.location || undefined,
   }
   if (b.allDay && b.start) {
-    resource.start = { date: String(b.start).slice(0, 10) }
-    resource.end   = { date: String(b.end ?? b.start).slice(0, 10) }
+    const startDate = String(b.start).slice(0, 10)
+    // Google Calendar all-day events are [start, end) — end must be the day *after* start.
+    let endDate: string
+    if (b.end) {
+      endDate = String(b.end).slice(0, 10)
+    } else {
+      const d = new Date(startDate)
+      d.setUTCDate(d.getUTCDate() + 1)
+      endDate = d.toISOString().slice(0, 10)
+    }
+    resource.start = { date: startDate }
+    resource.end   = { date: endDate }
   } else if (b.start) {
     const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
     resource.start = { dateTime: new Date(b.start).toISOString(), timeZone: tz }

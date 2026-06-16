@@ -88,12 +88,12 @@ export async function syncTodoCalendar(todo: SyncableTodo): Promise<CalendarSync
 
   // ── Cases that should remove the event: disabled, or enabled-but-no-date ──
   if (!wantsSync) {
-    if (prev.googleCalendarEventId) await deleteLinkedEvent(todo)
+    await deleteLinkedEvent(todo)
     return {
       calendarSyncEnabled:  prev.calendarSyncEnabled,
       googleCalendarEventId: '',
       calendarSyncStatus:   prev.calendarSyncEnabled ? 'idle' : 'disabled',
-      lastCalendarSyncAt:   prev.googleCalendarEventId ? new Date().toISOString() : prev.lastCalendarSyncAt,
+      lastCalendarSyncAt:   new Date().toISOString(),
       calendarSyncError:    '',
     }
   }
