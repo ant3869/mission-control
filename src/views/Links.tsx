@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { clsx } from 'clsx'
 import {
-  Archive, CheckSquare, ExternalLink, Globe, Link2, Loader2,
+  Archive, CheckSquare, ExternalLink, Globe,
   NotebookPen, Pencil, Pin, PinOff, Plus, RefreshCw, Search, Trash2, X,
 } from 'lucide-react'
 import { links, tasks, type LinkCreateBody, type LinkItem } from '../lib/api'
-import { createQuickNotePage, openDocsTab, openNotePage, requestNavigate } from '../lib/quickActions'
+import { createQuickNotePage, openDocsTab, openHubTab, openNotePage, requestNavigate } from '../lib/quickActions'
 import { friendlyError } from '../lib/friendlyError'
 
 function TagsInput({ value, onChange }: { value: string[]; onChange: (tags: string[]) => void }) {
@@ -207,7 +207,7 @@ export function Links() {
         status: 'queued',
         tags: [...new Set(['link', item.domain, ...item.tags])],
       })
-      requestNavigate('tasks')
+      openHubTab('todos', 'tasks')
     } catch (err: any) {
       setError(err?.message ?? 'Could not create task from link')
     } finally {

@@ -21,7 +21,7 @@ import {
 } from '../lib/api'
 import { Histogram, SegmentBar, Donut, fmtNum } from '../components/charts'
 import { isRefreshPaused } from '../lib/refreshBus'
-import { openDocsTab, openInboxItem as focusInboxItem, openTasksTab } from '../lib/quickActions'
+import { openDocsTab, openInboxItem as focusInboxItem, openTasksTab, openHubTab } from '../lib/quickActions'
 import type { View } from '../types'
 
 // ─── Theme accents (mirror tailwind.config.js — never introduce new colors) ───
@@ -141,6 +141,7 @@ interface AttentionItem {
   title:  string
   sub:    string
   view:   View
+  tab?:   string          // optional inner tab for hub views (e.g. Health → alerts)
 }
 
 function buildAttention(
@@ -156,7 +157,8 @@ function buildAttention(
       icon:   <ShieldAlert size={14} />,
       title:  a.message,
       sub:    [a.ruleName, a.source, agoShort(a.firedAt)].filter(Boolean).join(' · '),
-      view:   'alerts',
+      view:   'health',
+      tab:    'alerts',
     })
   }
 
@@ -183,7 +185,8 @@ function buildAttention(
       icon:   <Inbox size={14} />,
       title:  a.title,
       sub:    `${a.type} approval · ${a.agentName} · ${a.createdAgo}`,
-      view:   'tasks',
+      view:   'todos',
+      tab:    'approvals',
     })
   }
 
@@ -196,7 +199,8 @@ function buildAttention(
       icon:   <ServerCrash size={14} />,
       title:  `${c.name} ${c.status === 'error' ? 'reporting errors' : 'offline'}`,
       sub:    c.error || c.description || c.type,
-      view:   'ops',
+      view:   'health',
+      tab:    'system',
     })
   }
 
@@ -393,7 +397,6 @@ export function Home({ onNavigate }: { onNavigate: (view: View) => void }) {
 
   function openInboxHub(): void {
     openTasksTab('inbox')
-    onNavigate('tasks')
   }
 
   function openLinksHub(): void {
@@ -404,7 +407,6 @@ export function Home({ onNavigate }: { onNavigate: (view: View) => void }) {
   function openFocusedInboxItem(item: InboxItem): void {
     focusInboxItem(item.id)
     openTasksTab('inbox')
-    onNavigate('tasks')
   }
 
   // Telemetry ticker — duplicated once in the DOM for a seamless loop.
@@ -472,7 +474,7 @@ export function Home({ onNavigate }: { onNavigate: (view: View) => void }) {
                     {hhmm}<span className="text-text-muted text-base">:{ss}</span>
                   </p>
                 </div>
-                <button onClick={() => onNavigate('ops')} className="group text-left">
+                <button onClick={() => onNavigate('spend')} className="group text-left">
                   <p className="text-[10px] font-semibold uppercase tracking-wider text-text-muted flex items-center gap-1.5">
                     <TrendingUp size={10} /> Est. spend · 7 days
                     <ArrowUpRight size={10} className="opacity-0 group-hover:opacity-100 transition-opacity" />
@@ -518,11 +520,11 @@ export function Home({ onNavigate }: { onNavigate: (view: View) => void }) {
           <StatTile icon={<Inbox size={14} />} label="Approvals"
             sub={pending.length > 0 ? 'awaiting your decision' : 'queue clear'}
             value={pending.length} accent={ACCENT.purple}
-            delay={120} onClick={() => onNavigate('tasks')} />
+            delay={120} onClick={() => openHubTab('todos', 'approvals')} />
           <StatTile icon={<Bell size={14} />} label="Active alerts"
             sub={alerts.length > 0 ? 'firing now' : 'quiet skies'}
             value={alerts.length} accent={alerts.length > 0 ? ACCENT.amber : ACCENT.green}
-            delay={180} onClick={() => onNavigate('alerts')} />
+            delay={180} onClick={() => openHubTab('health', 'alerts')} />
           <StatTile icon={<FolderKanban size={14} />} label="Active projects"
             sub={`${projects.length} total tracked`}
             value={activeProjects} accent={ACCENT.teal}
@@ -553,7 +555,7 @@ export function Home({ onNavigate }: { onNavigate: (view: View) => void }) {
               {attention.map(item => (
                 <li key={item.key} className="bg-card">
                   <button
-                    onClick={() => onNavigate(item.view)}
+                    onClick={() => item.tab ? openHubTab(item.view, item.tab) : onNavigate(item.view)}
                     className="group flex items-start gap-3 w-full px-4 py-3 hover:bg-card-hover transition-colors text-left"
                   >
                     <span
@@ -697,7 +699,7 @@ export function Home({ onNavigate }: { onNavigate: (view: View) => void }) {
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
 
           {/* Usage — spans 2 */}
-          <PanelCard title="Usage — last 7 days" icon={<Radar size={14} />} view="ops" onNavigate={onNavigate}
+          <PanelCard title="Usage — last 7 days" icon={<Radar size={14} />} view="usage" onNavigate={onNavigate}
             accent={ACCENT.purple} delay={220} className="xl:col-span-2">
             {!usage ? (
               <EmptyNote icon={<Activity size={20} />} text={loaded ? 'Usage data unavailable' : 'Loading usage…'} />
@@ -811,7 +813,7 @@ export function Home({ onNavigate }: { onNavigate: (view: View) => void }) {
           </PanelCard>
 
           {/* Alerts & errors */}
-          <PanelCard title="Alerts & errors" icon={<Bell size={14} />} view="alerts" onNavigate={onNavigate} accent={ACCENT.amber} delay={400}>
+          <PanelCard title="Alerts & errors" icon={<Bell size={14} />} view="health" onNavigate={() => openHubTab('health', 'alerts')} accent={ACCENT.amber} delay={400}>
             {alerts.length === 0 && sysErrors.length === 0 ? (
               <EmptyNote icon={<CheckCircle2 size={20} className="text-accent-green" />} text={loaded ? 'No active alerts — quiet skies' : 'Loading…'} />
             ) : (
@@ -841,7 +843,7 @@ export function Home({ onNavigate }: { onNavigate: (view: View) => void }) {
           </PanelCard>
 
           {/* System health */}
-          <PanelCard title="System health" icon={<Activity size={14} />} view="ops" onNavigate={onNavigate} accent={ACCENT.green} delay={460}>
+          <PanelCard title="System health" icon={<Activity size={14} />} view="health" onNavigate={() => openHubTab('health', 'system')} accent={ACCENT.green} delay={460}>
             {components.length === 0 ? (
               <EmptyNote icon={<Cpu size={20} />} text={loaded ? 'No component data' : 'Loading…'} />
             ) : (

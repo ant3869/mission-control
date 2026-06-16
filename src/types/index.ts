@@ -12,31 +12,26 @@ export type NavItem = {
 
 export type View =
   | 'home'        // Landing overview — hero + at-a-glance summaries
-  | 'tasks'       // Tasks + Approvals
-  | 'watch'       // Watch + Agents
+  | 'todos'        // Combined To-Do + Tasks + Approvals + Inbox page
+  | 'tobuy'        // Personal shopping list with research + running total
+  | 'spend'        // Personal money command center (AI cost + things)
+  | 'council'     // Chats
+  | 'calendar'
+  // ── Knowledge ──
   | 'docs'        // Docs + Notes
   | 'news'        // News — live RSS, GitHub trending, social buzz
-  | 'projects'    // Projects + Pipeline
-  | 'ops'         // Radar + System + ModelOps
-  | 'workspace'   // People + Office + Factory
-  | 'content'
-  | 'council'
-  | 'calendar'
   | 'memory'
-  | 'inventory'
-  | 'feedback'
-  | 'settings'
-  | 'openclaw'
-  | 'hermes'
-  | 'flowmap'
-  | 'evaluations'
+  // ── Build (hardware → ideas → projects) ──
+  | 'projects'    // Projects + Pipeline
+  | 'inventory'   // Physical hardware inventory
+  | 'factory'     // Idea factory (project ideas from inventory)
+  // ── AI Ops (consolidated agent telemetry) ──
+  | 'activity'     // Live + Sessions + Brain + Agents + Map
+  | 'usage'        // Radar + ModelOps (cost / models)
   | 'harness'      // Harness Benchmarks (OpenClaw/Hermes)
-  | 'brain'        // Agent event brain / activity stream
-  | 'flow'         // Agent run flow
-  | 'alerts'       // Alert rules + active alerts
-  | 'security'     // Security posture + diagnostics
-  | 'todos'        // Personal quick-capture to-do list
-  | 'tobuy'        // Personal shopping list with research + running total
+  | 'evaluations'
+  | 'health'       // System + Security + Alerts + OpenClaw + Hermes
+  | 'settings'
 
 export type TaskColor =
   | 'red'

@@ -13,56 +13,41 @@ import { NAVIGATE_EVENT } from './lib/quickActions'
 const ScheduledTasks    = lazy(() => import('./views/ScheduledTasks').then(m => ({ default: m.ScheduledTasks })))
 const Memory            = lazy(() => import('./views/Memory').then(m => ({ default: m.Memory })))
 const Chats             = lazy(() => import('./views/Chats').then(m => ({ default: m.Chats })))
-const TasksApprovals    = lazy(() => import('./views/TasksApprovals').then(m => ({ default: m.TasksApprovals })))
-const WatchAgents       = lazy(() => import('./views/WatchAgents').then(m => ({ default: m.WatchAgents })))
+const TodoTasks         = lazy(() => import('./views/TodoTasks').then(m => ({ default: m.TodoTasks })))
 const DocsNotes         = lazy(() => import('./views/DocsNotes').then(m => ({ default: m.DocsNotes })))
 const ProjectsPipeline  = lazy(() => import('./views/ProjectsPipeline').then(m => ({ default: m.ProjectsPipeline })))
-const SystemOps         = lazy(() => import('./views/SystemOps').then(m => ({ default: m.SystemOps })))
-const WorkspaceHub      = lazy(() => import('./views/WorkspaceHub').then(m => ({ default: m.WorkspaceHub })))
-const Content           = lazy(() => import('./views/Content').then(m => ({ default: m.Content })))
-const Feedback          = lazy(() => import('./views/Feedback').then(m => ({ default: m.Feedback })))
 const Settings          = lazy(() => import('./views/Settings').then(m => ({ default: m.Settings })))
-const OpenClawMetrics   = lazy(() => import('./views/PlatformMetrics').then(m => ({ default: m.OpenClawMetrics })))
-const HermesMetrics     = lazy(() => import('./views/PlatformMetrics').then(m => ({ default: m.HermesMetrics })))
 const Inventory         = lazy(() => import('./views/Inventory').then(m => ({ default: m.Inventory })))
-const FlowMap           = lazy(() => import('./views/FlowMap').then(m => ({ default: m.FlowMap })))
+const Factory           = lazy(() => import('./views/Factory').then(m => ({ default: m.Factory })))
 const Evaluations       = lazy(() => import('./views/Evaluations').then(m => ({ default: m.Evaluations })))
 const HarnessBenchmarks = lazy(() => import('./views/HarnessBenchmarks').then(m => ({ default: m.HarnessBenchmarks })))
 const News              = lazy(() => import('./views/News').then(m => ({ default: m.News })))
-const Brain             = lazy(() => import('./views/Brain'))
-const Todos             = lazy(() => import('./views/Todos'))
 const ToBuy             = lazy(() => import('./views/ToBuy'))
-const Flow              = lazy(() => import('./views/Flow'))
-const Alerts            = lazy(() => import('./views/Alerts'))
-const Security          = lazy(() => import('./views/Security'))
+const Spend             = lazy(() => import('./views/Spend').then(m => ({ default: m.Spend })))
+// Consolidated AI-Ops hubs (each pulls its now-tabbed sub-views on first visit)
+const Activity          = lazy(() => import('./views/Activity').then(m => ({ default: m.Activity })))
+const Usage             = lazy(() => import('./views/Usage').then(m => ({ default: m.Usage })))
+const Health            = lazy(() => import('./views/Health').then(m => ({ default: m.Health })))
 
 const VIEW_TITLES: Record<View, string> = {
   home:        'Home',
   todos:       'To-Do',
   tobuy:       'To-Buy',
-  tasks:       'Tasks & Approvals',
-  watch:       'Watch & Agents',
-  docs:        'Docs & Notes',
-  news:        'News',
-  projects:    'Projects & Pipeline',
-  ops:         'Ops',
-  workspace:   'Workspace',
-  content:     'Content',
+  spend:       'Spend',
   council:     'Chats',
   calendar:    'Scheduled Tasks',
+  docs:        'Docs & Notes',
+  news:        'News',
   memory:      'Memory',
+  projects:    'Projects & Pipeline',
   inventory:   'Inventory',
-  feedback:    'Feedback',
-  settings:    'Settings',
-  openclaw:    'OpenClaw Metrics',
-  hermes:      'Hermes Metrics',
-  flowmap:     'Flow Map',
-  evaluations: 'Evaluations',
+  factory:     'Idea Factory',
+  activity:    'Activity',
+  usage:       'Usage',
   harness:     'Harness Benchmarks',
-  brain:       'Brain',
-  flow:        'Flow',
-  alerts:      'Alerts',
-  security:    'Security',
+  evaluations: 'Evaluations',
+  health:      'Health',
+  settings:    'Settings',
 }
 
 // Render each view once (on first visit) and keep it mounted — hidden via CSS.
@@ -129,31 +114,23 @@ export default function App() {
         <main className="flex-1 overflow-hidden bg-base relative">
 
           <ViewPane view="home"        active={activeView} mounted={mounted}><Home onNavigate={navigate} /></ViewPane>
-          <ViewPane view="calendar"    active={activeView} mounted={mounted}><ScheduledTasks /></ViewPane>
-          <ViewPane view="todos"       active={activeView} mounted={mounted}><Todos /></ViewPane>
+          <ViewPane view="todos"       active={activeView} mounted={mounted}><TodoTasks /></ViewPane>
           <ViewPane view="tobuy"       active={activeView} mounted={mounted}><ToBuy /></ViewPane>
-          <ViewPane view="tasks"       active={activeView} mounted={mounted}><TasksApprovals /></ViewPane>
-          <ViewPane view="watch"       active={activeView} mounted={mounted}><WatchAgents /></ViewPane>
+          <ViewPane view="spend"       active={activeView} mounted={mounted}><Spend /></ViewPane>
+          <ViewPane view="council"     active={activeView} mounted={mounted}><Chats /></ViewPane>
+          <ViewPane view="calendar"    active={activeView} mounted={mounted}><ScheduledTasks /></ViewPane>
           <ViewPane view="docs"        active={activeView} mounted={mounted}><DocsNotes /></ViewPane>
           <ViewPane view="news"        active={activeView} mounted={mounted}><News /></ViewPane>
-          <ViewPane view="projects"    active={activeView} mounted={mounted}><ProjectsPipeline /></ViewPane>
-          <ViewPane view="ops"         active={activeView} mounted={mounted}><SystemOps /></ViewPane>
-          <ViewPane view="workspace"   active={activeView} mounted={mounted}><WorkspaceHub /></ViewPane>
           <ViewPane view="memory"      active={activeView} mounted={mounted}><Memory /></ViewPane>
-          <ViewPane view="council"     active={activeView} mounted={mounted}><Chats /></ViewPane>
-          <ViewPane view="content"     active={activeView} mounted={mounted}><Content /></ViewPane>
-          <ViewPane view="feedback"    active={activeView} mounted={mounted}><Feedback /></ViewPane>
-          <ViewPane view="settings"    active={activeView} mounted={mounted}><Settings /></ViewPane>
-          <ViewPane view="openclaw"    active={activeView} mounted={mounted}><OpenClawMetrics onNavigate={navigate} /></ViewPane>
-          <ViewPane view="hermes"      active={activeView} mounted={mounted}><HermesMetrics onNavigate={navigate} /></ViewPane>
+          <ViewPane view="projects"    active={activeView} mounted={mounted}><ProjectsPipeline /></ViewPane>
           <ViewPane view="inventory"   active={activeView} mounted={mounted}><Inventory /></ViewPane>
-          <ViewPane view="flowmap"     active={activeView} mounted={mounted}><FlowMap /></ViewPane>
-          <ViewPane view="evaluations" active={activeView} mounted={mounted}><Evaluations /></ViewPane>
+          <ViewPane view="factory"     active={activeView} mounted={mounted}><Factory /></ViewPane>
+          <ViewPane view="activity"    active={activeView} mounted={mounted}><Activity /></ViewPane>
+          <ViewPane view="usage"       active={activeView} mounted={mounted}><Usage /></ViewPane>
           <ViewPane view="harness"     active={activeView} mounted={mounted}><HarnessBenchmarks /></ViewPane>
-          <ViewPane view="brain"       active={activeView} mounted={mounted}><Brain /></ViewPane>
-          <ViewPane view="flow"        active={activeView} mounted={mounted}><Flow /></ViewPane>
-          <ViewPane view="alerts"      active={activeView} mounted={mounted}><Alerts /></ViewPane>
-          <ViewPane view="security"    active={activeView} mounted={mounted}><Security /></ViewPane>
+          <ViewPane view="evaluations" active={activeView} mounted={mounted}><Evaluations /></ViewPane>
+          <ViewPane view="health"      active={activeView} mounted={mounted}><Health /></ViewPane>
+          <ViewPane view="settings"    active={activeView} mounted={mounted}><Settings /></ViewPane>
 
         </main>
       </div>

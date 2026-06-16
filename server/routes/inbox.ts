@@ -1,11 +1,10 @@
 import { Router } from 'express'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
 import { join } from 'path'
-import { deriveInbound, derivePublications } from '../lib/agentEvents.js'
 
 export const inboxRouter = Router()
 
-type InboxKind = 'approval' | 'task' | 'todo' | 'feedback' | 'publication'
+type InboxKind = 'approval' | 'task' | 'todo'
 type InboxStatus = 'active' | 'snoozed' | 'done'
 type InboxPriority = 'critical' | 'high' | 'medium' | 'low'
 
@@ -60,7 +59,7 @@ interface InboxItem {
   status: InboxStatus
   source: 'local' | 'openclaw' | 'hermes'
   sourceLabel: string
-  routeView: 'tasks' | 'todos' | 'feedback' | 'content'
+  routeView: 'tasks' | 'todos'
   routeTab: 'tasks' | 'approvals' | 'inbox' | ''
   eventAt: string
   eventAgo: string
@@ -115,10 +114,6 @@ function timeAgo(iso: string): string {
   const days = Math.floor(hours / 24)
   if (days < 30) return `${days}d ago`
   return `${Math.floor(days / 30)}mo ago`
-}
-
-function hoursSince(iso: string): number {
-  return (Date.now() - new Date(iso).getTime()) / 3_600_000
 }
 
 function daysUntil(iso: string): number {
@@ -247,72 +242,6 @@ function aggregateItems(): InboxItem[] {
       reviewedAt: state?.reviewedAt ?? '',
       convertedTo: state?.convertedTo ?? null,
       badges: [todo.severity, todo.dueDate ? (overdue ? 'overdue' : 'scheduled') : ''].filter(Boolean),
-    })
-  }
-
-  const inbound = [
-    ...deriveInbound('openclaw').map(entry => ({ ...entry, source: 'openclaw' as const })),
-    ...deriveInbound('hermes').map(entry => ({ ...entry, source: 'hermes' as const })),
-  ]
-
-  for (const message of inbound) {
-    const qualifies = message.sentiment === 'negative' || hoursSince(message.ts) <= 24
-    if (!qualifies) continue
-    const id = makeId('feedback', message.source, message.id)
-    const state = overlayFor(id, overlay)
-    const status = normalizeStatus(state)
-    items.push({
-      id,
-      kind: 'feedback',
-      itemId: message.id,
-      title: `${message.sender} in ${message.channel}`,
-      summary: message.preview,
-      content: message.content,
-      priority: message.sentiment === 'negative' ? 'high' : message.sentiment === 'neutral' ? 'medium' : 'low',
-      status,
-      source: message.source,
-      sourceLabel: sourceLabel(message.source),
-      routeView: 'feedback',
-      routeTab: '',
-      eventAt: message.ts,
-      eventAgo: timeAgo(message.ts),
-      snoozedUntil: state?.snoozedUntil ?? '',
-      reviewedAt: state?.reviewedAt ?? '',
-      convertedTo: state?.convertedTo ?? null,
-      badges: [message.sentiment, message.channel].filter(Boolean),
-    })
-  }
-
-  const publications = [
-    ...derivePublications('openclaw').map(entry => ({ ...entry, source: 'openclaw' as const })),
-    ...derivePublications('hermes').map(entry => ({ ...entry, source: 'hermes' as const })),
-  ]
-
-  for (const publication of publications) {
-    const qualifies = publication.type.toLowerCase() !== 'reply' && hoursSince(publication.ts) <= 72
-    if (!qualifies) continue
-    const id = makeId('publication', publication.source, publication.id)
-    const state = overlayFor(id, overlay)
-    const status = normalizeStatus(state)
-    items.push({
-      id,
-      kind: 'publication',
-      itemId: publication.id,
-      title: publication.title,
-      summary: publication.preview,
-      content: publication.content,
-      priority: publication.type.toLowerCase().includes('status') ? 'high' : 'medium',
-      status,
-      source: publication.source,
-      sourceLabel: sourceLabel(publication.source),
-      routeView: 'content',
-      routeTab: '',
-      eventAt: publication.ts,
-      eventAgo: timeAgo(publication.ts),
-      snoozedUntil: state?.snoozedUntil ?? '',
-      reviewedAt: state?.reviewedAt ?? '',
-      convertedTo: state?.convertedTo ?? null,
-      badges: [publication.type, publication.channel].filter(Boolean),
     })
   }
 

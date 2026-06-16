@@ -1,16 +1,16 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { clsx } from 'clsx'
 import {
-  BellRing, BookOpen, Check, CheckSquare, Clock3, FileText,
-  Inbox as InboxIcon, ListTodo, MessageSquare, RefreshCw, Search,
-  Undo2,
+  BellRing, Check, Clock3,
+  Inbox as InboxIcon, ListTodo, RefreshCw, Search,
+  Undo2, CheckSquare,
 } from 'lucide-react'
-import { inbox, tasks, type InboxItem, type InboxKind, type InboxStatus } from '../lib/api'
+import { inbox, type InboxItem, type InboxKind, type InboxStatus } from '../lib/api'
 import {
   focusApprovalRequest,
   focusTaskCard,
-  clearStoredValue, createQuickNotePage, INBOX_ITEM_EVENT, INBOX_ITEM_STORAGE_KEY,
-  openNotePage, openTasksTab, readStoredValue, requestNavigate,
+  clearStoredValue, INBOX_ITEM_EVENT, INBOX_ITEM_STORAGE_KEY,
+  openHubTab, readStoredValue,
 } from '../lib/quickActions'
 import { friendlyError } from '../lib/friendlyError'
 
@@ -18,8 +18,6 @@ const KIND_META: Record<InboxKind, { label: string; icon: React.ReactNode; badge
   approval:    { label: 'Approval',    icon: <BellRing size={12} />,     badge: 'bg-violet-950/40 border-violet-900/40 text-violet-300' },
   task:        { label: 'Task',        icon: <CheckSquare size={12} />,  badge: 'bg-blue-950/40 border-blue-900/40 text-blue-300' },
   todo:        { label: 'To-Do',       icon: <ListTodo size={12} />,     badge: 'bg-amber-950/40 border-amber-900/40 text-amber-300' },
-  feedback:    { label: 'Feedback',    icon: <MessageSquare size={12} />,badge: 'bg-red-950/30 border-red-900/30 text-red-300' },
-  publication: { label: 'Publication', icon: <FileText size={12} />,     badge: 'bg-green-950/30 border-green-900/30 text-green-300' },
 }
 
 const PRIORITY_BADGE: Record<InboxItem['priority'], string> = {
@@ -27,10 +25,6 @@ const PRIORITY_BADGE: Record<InboxItem['priority'], string> = {
   high: 'bg-amber-950/30 border-amber-900/30 text-amber-300',
   medium: 'bg-blue-950/30 border-blue-900/30 text-blue-300',
   low: 'bg-card border-border text-text-muted',
-}
-
-function buildNoteContent(item: InboxItem): string {
-  return [`# ${item.title}`, '', item.summary, '', item.content].filter(Boolean).join('\n')
 }
 
 function snoozeUntil(days: number): string {
@@ -118,8 +112,6 @@ export function Inbox() {
       approval: 0,
       task: 0,
       todo: 0,
-      feedback: 0,
-      publication: 0,
     } as Record<InboxStatus | InboxKind, number>,
   )
 
@@ -148,42 +140,6 @@ export function Inbox() {
     }
   }
 
-  async function createTaskFromItem(item: InboxItem) {
-    setBusyId(item.id)
-    try {
-      const result = await tasks.create({
-        title: item.title,
-        description: [item.summary, item.content, `Source: ${item.kind} · ${item.sourceLabel}`].filter(Boolean).join('\n\n'),
-        priority: item.priority === 'critical' ? 'urgent' : item.priority === 'high' ? 'high' : 'medium',
-        status: 'queued',
-        tags: ['inbox', item.kind, item.source],
-      })
-      await inbox.update(item.id, { status: 'done', convertedTo: { kind: 'task', id: result.task.id } })
-      requestNavigate('tasks')
-      openTasksTab('tasks')
-      await load()
-    } catch (err: any) {
-      setError(err?.message ?? 'Could not create task')
-    } finally {
-      setBusyId(null)
-    }
-  }
-
-  async function createNoteFromItem(item: InboxItem) {
-    setBusyId(item.id)
-    try {
-      const note = await createQuickNotePage({ title: item.title, content: buildNoteContent(item), tags: ['inbox', item.kind, item.source] })
-      await inbox.update(item.id, { status: 'done', convertedTo: { kind: 'note', id: note.page.id } })
-      openNotePage(note.page.id)
-      requestNavigate('docs')
-      await load()
-    } catch (err: any) {
-      setError(err?.message ?? 'Could not create note')
-    } finally {
-      setBusyId(null)
-    }
-  }
-
   function openSource(item: InboxItem) {
     if (item.kind === 'approval') {
       focusApprovalRequest(item.itemId)
@@ -191,8 +147,9 @@ export function Inbox() {
     if (item.kind === 'task') {
       focusTaskCard(item.itemId)
     }
-    requestNavigate(item.routeView)
-    if (item.routeView === 'tasks' && item.routeTab) openTasksTab(item.routeTab as 'tasks' | 'approvals' | 'inbox')
+    // To-Do / Tasks / Approvals are tabs of the combined 'todos' page now.
+    const tab = item.kind === 'approval' ? 'approvals' : item.kind === 'task' ? 'tasks' : 'todo'
+    openHubTab('todos', tab)
   }
 
   return (
@@ -275,12 +232,6 @@ export function Inbox() {
                   </div>
                   <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5 max-w-[260px]">
                     <button onClick={() => openSource(item)} className="rounded border border-border px-2.5 py-1 text-xxs text-text-secondary hover:bg-card-hover">Open</button>
-                    {(item.kind === 'feedback' || item.kind === 'publication') && (
-                      <>
-                        <button onClick={() => createTaskFromItem(item)} className="rounded border border-border px-2.5 py-1 text-xxs text-text-secondary hover:bg-card-hover"><CheckSquare size={11} className="inline mr-1" />Task</button>
-                        <button onClick={() => createNoteFromItem(item)} className="rounded border border-border px-2.5 py-1 text-xxs text-text-secondary hover:bg-card-hover"><BookOpen size={11} className="inline mr-1" />Note</button>
-                      </>
-                    )}
                     {item.status === 'active' && (
                       <button onClick={() => patchItem(item.id, { status: 'snoozed', snoozedUntil: snoozeUntil(1) })} className="rounded border border-border px-2.5 py-1 text-xxs text-text-secondary hover:bg-card-hover"><Clock3 size={11} className="inline mr-1" />Snooze</button>
                     )}

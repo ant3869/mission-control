@@ -56,14 +56,31 @@ async function del<T>(path: string): Promise<T> {
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
 
+export type GoogleConnectionState =
+  | 'connected' | 'disconnected' | 'reconnect_required'
+  | 'missing_scopes' | 'auth_error' | 'not_configured'
+
 export interface AuthStatus {
-  google:    { clientConfigured: boolean; tokenConfigured: boolean }
+  google: {
+    clientConfigured: boolean
+    tokenConfigured:  boolean
+    state:            GoogleConnectionState
+    connected:        boolean
+    email:            string
+    scopes:           string[]
+    grantedScopes:    string[]
+    missingScopes:    string[]
+    connectedAt:      string
+    checkedAt:        string
+    error:            string
+  }
   anthropic: { keyConfigured: boolean }
 }
 
 export const auth = {
-  status: ()          => get<AuthStatus>('/auth/status'),
-  googleAuthUrl: ()   => '/api/auth/google',
+  status:        (force = false) => get<AuthStatus>('/auth/status', force ? { force: 1 } : undefined),
+  googleAuthUrl: ()              => '/api/auth/google',
+  disconnect:    ()             => post<{ ok: boolean }>('/auth/google/disconnect', {}),
 }
 
 // ─── Calendar ─────────────────────────────────────────────────────────────────
@@ -86,17 +103,36 @@ export interface CalendarEvent {
   calendarColor: string | null
   recurrence:    boolean
   meetLink:      string | null
+  calendarId?:   string
+  writable?:     boolean
 }
 
 export interface CalendarEventsResponse {
   events:    CalendarEvent[]
   fetchedAt: string
   days:      number
+  start?:    string
+  end?:      string
+}
+
+export interface CalendarEventInput {
+  title:        string
+  description?: string
+  location?:    string
+  allDay?:      boolean
+  start:        string   // ISO datetime, or YYYY-MM-DD when allDay
+  end?:         string
+  calendarId?:  string
 }
 
 export const calendar = {
-  events:    (days = 7)  => get<CalendarEventsResponse>('/calendar/events', { days }),
-  calendars: ()          => get<{ calendars: any[] }>('/calendar/calendars'),
+  events:        (days = 7)                  => get<CalendarEventsResponse>('/calendar/events', { days }),
+  eventsBetween: (start: string, end: string) => get<CalendarEventsResponse>('/calendar/events', { start, end }),
+  calendars:     ()                          => get<{ calendars: any[] }>('/calendar/calendars'),
+  create:        (body: CalendarEventInput)  => post<{ event: CalendarEvent }>('/calendar/events', body),
+  update:        (id: string, body: CalendarEventInput) => patch<{ event: CalendarEvent }>(`/calendar/events/${encodeURIComponent(id)}`, body),
+  remove:        (id: string, calendarId?: string) =>
+                   del<{ ok: boolean }>(`/calendar/events/${encodeURIComponent(id)}${calendarId ? `?calendarId=${encodeURIComponent(calendarId)}` : ''}`),
 }
 
 // ─── System ───────────────────────────────────────────────────────────────────
@@ -380,63 +416,6 @@ export const chats = {
   session:  (id: string) => get<ChatSessionResponse>(`/chats/sessions/${id}`),
 }
 
-// ─── People (real conversation participants, derived from agent events) ────────
-
-export interface AgentPerson {
-  id:           string
-  name:         string
-  platform:     string
-  channels:     string[]
-  messageCount: number
-  firstSeen:    string
-  lastSeen:     string
-  lastSeenAgo:  string
-  source:       ConnectorId
-}
-export interface PeopleResponse { people: AgentPerson[]; fetchedAt: string; error?: string }
-
-export const peopleApi = {
-  openclaw: () => get<PeopleResponse>('/openclaw/people'),
-  hermes:   () => get<PeopleResponse>('/hermes/people'),
-}
-
-export interface AgentPublication {
-  id:        string
-  title:     string
-  type:      string
-  preview:   string
-  content:   string
-  wordCount: number
-  channel:   string
-  ts:        string
-  tsAgo:     string
-  source:    ConnectorId
-}
-export interface PublicationsResponse { publications: AgentPublication[]; fetchedAt: string; error?: string }
-
-export const publicationsApi = {
-  openclaw: () => get<PublicationsResponse>('/openclaw/publications'),
-  hermes:   () => get<PublicationsResponse>('/hermes/publications'),
-}
-
-export type InboundSentiment = 'positive' | 'negative' | 'neutral'
-export interface InboundMessage {
-  id:        string
-  sender:    string
-  channel:   string
-  content:   string
-  preview:   string
-  sentiment: InboundSentiment
-  ts:        string
-  tsAgo:     string
-  source:    ConnectorId
-}
-export interface InboundResponse { inbound: InboundMessage[]; fetchedAt: string; error?: string }
-
-export const inboundApi = {
-  openclaw: () => get<InboundResponse>('/openclaw/inbound'),
-  hermes:   () => get<InboundResponse>('/hermes/inbound'),
-}
 
 export const openclawChats = {
   sessions: (limit = 50) => get<ChatsListResponse>('/openclaw/sessions', { limit }),
@@ -667,6 +646,7 @@ export const inventory = {
   list:      ()                              => get<InventoryResponse>('/inventory'),
   get:       (id: string)                    => get<{ item: InventoryItem }>(`/inventory/${id}`),
   create:    (body: InventoryBody)           => post<{ item: InventoryItem }>('/inventory', body),
+  bulk:      (items: InventoryBody[])        => post<{ created: InventoryItem[]; count: number }>('/inventory/bulk', { items }),
   update:    (id: string, body: Partial<InventoryBody>) => patch<{ item: InventoryItem }>(`/inventory/${id}`, body),
   remove:    (id: string)                    => del<{ ok: boolean }>(`/inventory/${id}`),
   setStatus: (id: string, status: 'available' | 'in-use' | 'reserved') => patch<{ item: InventoryItem }>(`/inventory/${id}/status`, { status }),
@@ -782,6 +762,160 @@ export interface MemoryEntriesResponse {
 export const memory = {
   entries: () => get<MemoryEntriesResponse>('/memory/entries'),
   index:   () => get<{ content: string | null; fetchedAt: string }>('/memory/index'),
+}
+
+// ─── Memory operations (live monitoring) ────────────────────────────────────────
+
+export type MemorySource = 'openclaw' | 'hermes'
+export type MemoryEventType =
+  | 'created' | 'updated' | 'retrieved' | 'embedded'
+  | 'consolidated' | 'skipped' | 'deleted' | 'error'
+
+export interface MemoryEvent {
+  id:         string
+  source:     MemorySource
+  type:       MemoryEventType
+  trigger:    'auto' | 'manual' | 'cron'
+  status:     'ok' | 'fail'
+  objectId:   string | null
+  sessionKey: string | null
+  tool:       string | null
+  title:      string
+  summary:    string
+  latencyMs:  number | null
+  origin:     'live' | 'push'
+  payload:    any
+  ts:         string
+}
+
+export interface MemoryVectorView {
+  recordCount: number | null
+  collections: Array<{ name: string; count: number | null }>
+  dimensions:  number | null
+  indexType:   string | null
+  status:      string
+}
+
+export interface MemoryHealth {
+  source:    MemorySource
+  reachable: boolean
+  embedding: any | null
+  vector:    MemoryVectorView | null
+  store:     { files: number; bytes: number } | null
+  doctorRaw: any | null
+  error:     string | null
+  fetchedAt: string
+}
+
+export interface MemoryFileInfo {
+  name: string; size: number; updatedAt: string | null; path?: string; missing?: boolean
+}
+
+export interface MemoryVectorStat {
+  id: string; source: MemorySource; collection: string; recordCount: number
+  dimensions: number | null; indexType: string | null; orphanCount: number; health: string; ts: string
+}
+
+export interface MemoryConsolidationRun {
+  id: string; source: MemorySource; trigger: string; status: string
+  inputs: number; merged: number; pruned: number; summarized: number
+  notes: string; durationMs: number; startedAt: string; ts: string
+}
+
+export interface MemoryOpsOverview {
+  source:       MemorySource
+  counts:       { total: number; today: number; errors24h: number; retrieved24h: number }
+  health:       MemoryHealth | null
+  files:        MemoryFileInfo[]
+  recentEvents: MemoryEvent[]
+  vectorSeries: MemoryVectorStat[]
+  fetchedAt:    string
+}
+
+export interface MemoryMetrics {
+  source: string
+  hours:  number
+  buckets: Array<{ ts: string; created: number; retrieved: number; consolidated: number; errors: number; total: number; latencyP50: number | null }>
+  byType: Record<string, number>
+}
+
+export interface DailySession {
+  key: string; title: string; channel: string; model: string
+  startedAt: string; updatedAt: string; status: string; runtimeMs: number; isHeartbeat: boolean
+}
+export interface DailyGroup {
+  date: string; label: string; sessionCount: number; channels: string[]; sessions: DailySession[]
+}
+export interface SessionTranscriptMsg { role: string; content: string; timestamp: string }
+export interface SessionTranscript {
+  id: string; title: string; messageCount: number; messages: SessionTranscriptMsg[]
+  source?: string; cwd?: string; startedAt?: string; lastActiveAt?: string
+}
+
+// On-disk memory system (read live over SSH from the agent machine)
+export interface RemoteMemoryStatus { reachable: boolean; host: string; memDir: string | null; dailyCount: number; dreamCount: number; error: string | null }
+export interface DailyLogMeta { date: string; size: number; mtime: string; preview: string }
+export interface DreamMeta { phase: string; date: string; size: number }
+export interface DreamEvent {
+  type: string; timestamp: string; phase?: string; reportPath?: string; lineCount?: number
+  query?: string; resultCount?: number; applied?: number; candidates?: Array<{ path: string; score: number; recallCount?: number }>
+}
+export interface RecallChunk {
+  path: string; startLine: number; endLine: number; snippet: string
+  recallCount: number; dailyCount: number; totalScore: number; conceptTags: string[]; lastRecalledAt: string | null
+}
+export interface RecallSummary { total: number; updatedAt: string | null; topChunks: RecallChunk[]; topTags: Array<{ tag: string; count: number }> }
+export interface PhaseSignalSummary { total: number; updatedAt: string | null; topSignals: Array<{ key: string; path: string; lightHits: number; remHits: number; lastLightAt: string | null }> }
+export interface DailySearchHit { date: string; size: number; snippet: string }
+export interface DailyIndexMeta { count: number; lastSynced: string | null; oldest: string | null; newest: string | null; bytes: number; fts: boolean }
+export interface MemoryDiskSummary {
+  reachable: boolean; dailyLogs: number; dreamReports: number; bytes: number
+  recallChunks: number; recallEvents: number; dreams: number; promotions: number
+  embedding: 'active' | 'idle' | 'ok' | 'off' | 'error' | 'unknown'
+  plugin: 'ok' | 'off' | 'error' | 'unknown'
+  vectorStore: { present: boolean; bytes: number; lastWrite: string | null } | null
+  freshness: { lastDailyLog: string | null; lastDream: string | null; lastRecallUpdate: string | null; lastEvent: string | null }
+  stale: boolean
+  fetchedAt: string
+}
+
+export const MEMORY_STREAM_URL = '/api/memory/stream'
+
+export const memoryOps = {
+  overview:      (source: MemorySource, force = false) =>
+    get<MemoryOpsOverview>('/memory/overview', { source, ...(force ? { force: 1 } : {}) }),
+  events:        (source?: MemorySource, type = 'all', limit = 200) =>
+    get<{ events: MemoryEvent[]; fetchedAt: string }>('/memory/events', { ...(source ? { source } : {}), type, limit }),
+  health:        (source: MemorySource) => get<MemoryHealth>('/memory/health', { source }),
+  vector:        (source: MemorySource) =>
+    get<{ source: MemorySource; current: MemoryVectorView | null; series: MemoryVectorStat[]; fetchedAt: string }>('/memory/vector', { source }),
+  metrics:       (source: MemorySource | undefined, hours = 24) =>
+    get<MemoryMetrics>('/memory/metrics', { ...(source ? { source } : {}), hours }),
+  consolidation: (source?: MemorySource) =>
+    get<{ runs: MemoryConsolidationRun[]; fetchedAt: string }>('/memory/consolidation', source ? { source } : undefined),
+  files:         (source: MemorySource) =>
+    get<{ files: MemoryFileInfo[]; objects: any[]; error?: string }>('/memory/files', { source }),
+  file:          (source: MemorySource, name: string) =>
+    get<{ name: string; content: string; path: string }>('/memory/file', { source, name }),
+  daily:         (source: MemorySource) =>
+    get<{ source: MemorySource; total: number; days: DailyGroup[]; error?: string }>('/memory/daily', { source }),
+  session:       (source: MemorySource, key: string) =>
+    get<{ session: SessionTranscript }>('/memory/session', { source, key }),
+  disk: {
+    status:       () => get<RemoteMemoryStatus>('/memory/disk/status'),
+    summary:      () => get<MemoryDiskSummary>('/memory/disk/summary'),
+    daily:        () => get<{ logs: DailyLogMeta[]; fetchedAt: string }>('/memory/disk/daily'),
+    dailyContent: (date: string) => get<{ date: string; content: string }>(`/memory/disk/daily/${date}`),
+    dreams:       () => get<{ dreams: DreamMeta[]; fetchedAt: string }>('/memory/disk/dreams'),
+    dream:        (phase: string, date: string) => get<{ phase: string; date: string; content: string }>('/memory/disk/dream', { phase, date }),
+    events:       (limit = 250) => get<{ events: DreamEvent[]; fetchedAt: string }>('/memory/disk/events', { limit }),
+    recall:       () => get<RecallSummary>('/memory/disk/recall'),
+    phaseSignals: () => get<PhaseSignalSummary>('/memory/disk/phase-signals'),
+    longterm:     () => get<{ content: string; fetchedAt: string }>('/memory/disk/longterm'),
+    sync:         () => post<{ indexed: number; total: number; error?: string }>('/memory/disk/sync', {}),
+    index:        () => get<DailyIndexMeta>('/memory/disk/index'),
+    search:       (q: string) => get<{ q: string; results: DailySearchHit[]; index: DailyIndexMeta }>('/memory/disk/search', { q }),
+  },
 }
 
 // ─── Docs ─────────────────────────────────────────────────────────────────────
@@ -1115,6 +1249,7 @@ export const approvals = {
 
 export type TodoSeverity = 'low' | 'medium' | 'high' | 'critical'
 export type TodoHorizon = 'short' | 'long'
+export type TodoCalendarSyncStatus = 'idle' | 'synced' | 'pending' | 'error' | 'disabled'
 
 export interface LiveTodo {
   id: string
@@ -1127,13 +1262,19 @@ export interface LiveTodo {
   createdAt: string
   updatedAt: string
   completedAt: string
+  // Google Calendar sync metadata
+  calendarSyncEnabled: boolean
+  googleCalendarEventId: string
+  calendarSyncStatus: TodoCalendarSyncStatus
+  lastCalendarSyncAt: string
+  calendarSyncError: string
 }
 
 export const todosApi = {
   list: () => get<{ todos: LiveTodo[]; fetchedAt: string }>('/todos'),
-  create: (body: { title: string; severity?: TodoSeverity; horizon?: TodoHorizon; dueDate?: string }) =>
+  create: (body: { title: string; severity?: TodoSeverity; horizon?: TodoHorizon; dueDate?: string; calendarSyncEnabled?: boolean }) =>
     post<{ todo: LiveTodo }>('/todos', body),
-  update: (id: string, body: Partial<Pick<LiveTodo, 'title' | 'notes' | 'severity' | 'horizon' | 'dueDate' | 'done'>>) =>
+  update: (id: string, body: Partial<Pick<LiveTodo, 'title' | 'notes' | 'severity' | 'horizon' | 'dueDate' | 'done' | 'calendarSyncEnabled'>>) =>
     patch<{ todo: LiveTodo }>(`/todos/${id}`, body),
 }
 
@@ -1178,7 +1319,7 @@ export const links = {
 
 // ─── Inbox ────────────────────────────────────────────────────────────────────
 
-export type InboxKind = 'approval' | 'task' | 'todo' | 'feedback' | 'publication'
+export type InboxKind = 'approval' | 'task' | 'todo'
 export type InboxStatus = 'active' | 'snoozed' | 'done'
 export type InboxPriority = 'critical' | 'high' | 'medium' | 'low'
 
@@ -1193,7 +1334,7 @@ export interface InboxItem {
   status: InboxStatus
   source: 'local' | 'openclaw' | 'hermes'
   sourceLabel: string
-  routeView: 'tasks' | 'todos' | 'feedback' | 'content'
+  routeView: 'tasks' | 'todos'
   routeTab: 'tasks' | 'approvals' | 'inbox' | ''
   eventAt: string
   eventAgo: string

@@ -8,6 +8,8 @@ import { modelOpsRouter } from './routes/modelops.js'
 import { authRouter } from './routes/auth.js'
 import { chatsRouter } from './routes/chats.js'
 import { memoryRouter } from './routes/memory.js'
+import { memoryOpsRouter } from './routes/memoryops.js'
+import { startMemoryCollector } from './lib/memoryCollector.js'
 import { docsRouter }   from './routes/docs.js'
 import { agentsRouter }   from './routes/agents.js'
 import { pipelineRouter } from './routes/pipeline.js'
@@ -47,6 +49,7 @@ app.use('/api/radar',    radarRouter)
 app.use('/api/modelops', modelOpsRouter)
 app.use('/api/chats',    chatsRouter)
 app.use('/api/memory',  memoryRouter)
+app.use('/api/memory',  memoryOpsRouter)
 app.use('/api/docs',    docsRouter)
 app.use('/api/agents',   agentsRouter)
 app.use('/api/pipeline', pipelineRouter)
@@ -77,4 +80,7 @@ app.get('/api/health', (_req, res) => res.json({ ok: true, ts: new Date().toISOS
 
 app.listen(PORT, () => {
   console.log(`Mission Control API → http://localhost:${PORT}`)
+  // Begin capturing memory operations from the OpenClaw live stream immediately,
+  // so "the agent just remembered X" is recorded even before the UI is opened.
+  startMemoryCollector()
 })

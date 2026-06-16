@@ -1,10 +1,19 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { format, startOfWeek, addDays, isToday } from 'date-fns'
 import { clsx } from 'clsx'
-import { Zap, Clock, RefreshCw, AlertCircle, ExternalLink, Video, Pause, Play, Loader2 } from 'lucide-react'
-import { calendar, agentCron, type CalendarEvent, type AgentCronJob, type ConnectorId, type CronAction } from '../lib/api'
+import {
+  Zap, Clock, RefreshCw, AlertCircle, ExternalLink, Video, Pause, Play, Loader2,
+  ChevronLeft, ChevronRight, CalendarDays, Plus, Trash2, Check, X, MapPin, AlignLeft,
+} from 'lucide-react'
+import { calendar, agentCron, type CalendarEvent, type CalendarEventInput, type AgentCronJob, type ConnectorId, type CronAction } from '../lib/api'
+import { useEscapeKey } from '../hooks/useEscapeKey'
+import { friendlyError } from '../lib/friendlyError'
 
 const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+
+type ViewMode = 'day' | 'week' | 'month' | 'agenda'
+const VIEW_MODES: ViewMode[] = ['day', 'week', 'month', 'agenda']
+const AGENDA_DAYS = 30
 
 // Pick a stable colour for each event based on its id
 const EVENT_COLORS = [
@@ -23,12 +32,60 @@ function colorForEvent(id: string) {
   return EVENT_COLORS[Math.abs(hash) % EVENT_COLORS.length]
 }
 
+// ─── Date helpers ───────────────────────────────────────────────────────────
+// Match events to days by their LOCAL calendar date. All-day events carry a
+// bare YYYY-MM-DD start (no time) — use it verbatim so they don't drift a day in
+// negative-offset timezones; timed events resolve through the local Date.
+
+const pad2 = (n: number) => String(n).padStart(2, '0')
+const dateKey = (d: Date) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`
+
+// Local date math (kept here rather than imported — avoids a date-fns module-
+// resolution quirk under this tsconfig, and these are one-liners anyway).
+const startOfDay   = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate())
+const startOfMonth = (d: Date) => new Date(d.getFullYear(), d.getMonth(), 1)
+const addWeeks     = (d: Date, n: number) => addDays(d, n * 7)
+const addMonths    = (d: Date, n: number) => {
+  const t = new Date(d.getFullYear(), d.getMonth() + n, 1)
+  t.setDate(Math.min(d.getDate(), new Date(t.getFullYear(), t.getMonth() + 1, 0).getDate()))
+  return t
+}
+const isSameMonth  = (a: Date, b: Date) => a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth()
+
+function eventDateKey(e: CalendarEvent): string {
+  if (!e.startIso) return ''
+  if (e.allDay) return e.startIso.slice(0, 10)
+  return dateKey(new Date(e.startIso))
+}
+
+/** The fetch + display window for a given view, anchored on `anchor`. */
+function getRange(view: ViewMode, anchor: Date): { start: Date; end: Date } {
+  if (view === 'day')   { const s = startOfDay(anchor);                    return { start: s, end: addDays(s, 1) } }
+  if (view === 'week')  { const s = startOfWeek(anchor);                   return { start: s, end: addDays(s, 7) } }
+  if (view === 'agenda'){ const s = startOfDay(anchor);                    return { start: s, end: addDays(s, AGENDA_DAYS) } }
+  /* month */           { const s = startOfWeek(startOfMonth(anchor));     return { start: s, end: addDays(s, 42) } }
+}
+
+function periodLabel(view: ViewMode, anchor: Date): string {
+  if (view === 'day')   return format(anchor, 'EEE, MMM d, yyyy')
+  if (view === 'month') return format(anchor, 'MMMM yyyy')
+  if (view === 'agenda') {
+    const s = startOfDay(anchor)
+    return `${format(s, 'MMM d')} – ${format(addDays(s, AGENDA_DAYS - 1), 'MMM d')}`
+  }
+  const ws = startOfWeek(anchor)
+  return `${format(ws, 'MMM d')} – ${format(addDays(ws, 6), 'MMM d, yyyy')}`
+}
+
 // ─── Event card ───────────────────────────────────────────────────────────────
 
-function EventCard({ event }: { event: CalendarEvent }) {
+function EventCard({ event, onClick }: { event: CalendarEvent; onClick?: () => void }) {
   const color = colorForEvent(event.id)
   return (
-    <div className={clsx('flex flex-col gap-0.5 px-2.5 py-2 rounded border cursor-pointer hover:opacity-90 transition-opacity group', color)}>
+    <div
+      onClick={onClick}
+      className={clsx('flex flex-col gap-0.5 px-2.5 py-2 rounded border cursor-pointer hover:opacity-90 transition-opacity group', color)}
+    >
       <div className="flex items-start justify-between gap-1">
         <span className="text-xs font-medium leading-tight truncate flex-1">{event.name}</span>
         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -48,8 +105,7 @@ function EventCard({ event }: { event: CalendarEvent }) {
       </div>
       <div className="flex items-center gap-1 mt-0.5">
         <Clock size={9} className="opacity-50 shrink-0" />
-        <span className="text-xxs opacity-60">{event.timeDisplay}</span>
-        {event.allDay && <span className="text-xxs opacity-50">All day</span>}
+        <span className="text-xxs opacity-60">{event.allDay ? 'All day' : event.timeDisplay}</span>
         {event.recurrence && <span className="text-xxs opacity-40">↻</span>}
         {event.location && (
           <>
@@ -67,6 +123,225 @@ function EventCard({ event }: { event: CalendarEvent }) {
   )
 }
 
+// ─── Event composer (create / edit / delete) ──────────────────────────────────
+
+type ComposerState =
+  | { mode: 'create'; date: Date }
+  | { mode: 'edit'; event: CalendarEvent }
+
+const timeInput = (iso: string | null) =>
+  iso ? `${pad2(new Date(iso).getHours())}:${pad2(new Date(iso).getMinutes())}` : '09:00'
+
+function EventComposer({ state, onClose, onSaved }: {
+  state: ComposerState
+  onClose: () => void
+  onSaved: () => void
+}) {
+  useEscapeKey(onClose)
+  const editing  = state.mode === 'edit'
+  const ev       = editing ? state.event : null
+  const writable = !editing || ev!.writable !== false
+
+  const initDate = editing
+    ? (ev!.allDay ? (ev!.startIso ?? dateKey(new Date())).slice(0, 10)
+                  : ev!.startIso ? dateKey(new Date(ev!.startIso)) : dateKey(new Date()))
+    : dateKey(state.date)
+
+  const [title, setTitle]             = useState(ev?.name ?? '')
+  const [allDay, setAllDay]           = useState(ev?.allDay ?? false)
+  const [date, setDate]               = useState(initDate)
+  const [startTime, setStartTime]     = useState(editing && !ev!.allDay ? timeInput(ev!.startIso) : '09:00')
+  const [endTime, setEndTime]         = useState(editing && !ev!.allDay ? timeInput(ev!.endIso) : '10:00')
+  const [location, setLocation]       = useState(ev?.location ?? '')
+  const [description, setDescription] = useState(ev?.description ?? '')
+  const [busy, setBusy]               = useState(false)
+  const [err, setErr]                 = useState<string | null>(null)
+
+  function buildPayload(): CalendarEventInput {
+    const base = {
+      title: title.trim(),
+      location: location.trim() || undefined,
+      description: description.trim() || undefined,
+      calendarId: ev?.calendarId,
+    }
+    if (allDay) {
+      const next = dateKey(addDays(new Date(`${date}T00:00:00`), 1))
+      return { ...base, allDay: true, start: date, end: next }
+    }
+    const startISO = new Date(`${date}T${startTime}:00`)
+    let endISO = new Date(`${date}T${(endTime || startTime)}:00`)
+    if (endISO <= startISO) endISO = new Date(startISO.getTime() + 60 * 60_000)
+    return { ...base, allDay: false, start: startISO.toISOString(), end: endISO.toISOString() }
+  }
+
+  async function save() {
+    if (!title.trim()) { setErr('Title is required'); return }
+    setBusy(true); setErr(null)
+    try {
+      if (editing) await calendar.update(ev!.id, buildPayload())
+      else         await calendar.create(buildPayload())
+      onSaved()
+    } catch (e: any) { setErr(e.message) } finally { setBusy(false) }
+  }
+
+  async function remove() {
+    if (!ev || !confirm(`Delete "${ev.name}"?`)) return
+    setBusy(true); setErr(null)
+    try { await calendar.remove(ev.id, ev.calendarId); onSaved() }
+    catch (e: any) { setErr(e.message) } finally { setBusy(false) }
+  }
+
+  const inputCls = 'w-full px-2.5 py-1.5 rounded-lg bg-base border border-border text-xs text-text-primary placeholder:text-text-muted outline-none focus:border-accent-blue/50 disabled:opacity-60'
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/50" onClick={onClose} aria-hidden />
+      <div className="animate-rise-in relative w-full max-w-md rounded-xl border border-border bg-surface shadow-2xl shadow-black/40 max-h-[90vh] overflow-y-auto">
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-3.5 border-b border-border">
+          <div className="flex items-center gap-2">
+            <CalendarDays size={15} className="text-accent-blue" />
+            <h2 className="text-sm font-semibold text-text-primary">{editing ? 'Edit event' : 'New event'}</h2>
+          </div>
+          <button onClick={onClose} aria-label="Close" className="p-1 rounded hover:bg-card text-text-muted hover:text-text-primary">
+            <X size={15} />
+          </button>
+        </div>
+
+        <div className="flex flex-col gap-3 p-5">
+          {!writable && (
+            <div className="flex items-start gap-2 rounded-lg border border-amber-900/40 bg-amber-950/20 px-3 py-2 text-amber-300">
+              <AlertCircle size={13} className="shrink-0 mt-0.5" />
+              <p className="text-xxs leading-snug">This event is on a read-only calendar, so it can't be edited here.</p>
+            </div>
+          )}
+
+          {/* Title */}
+          <label className="flex flex-col gap-1">
+            <span className="text-xxs font-semibold uppercase tracking-wide text-text-muted">Title</span>
+            <input autoFocus value={title} disabled={!writable} onChange={e => setTitle(e.target.value)}
+              placeholder="e.g. Start moving into new place"
+              onKeyDown={e => { if (e.key === 'Enter' && writable) save() }}
+              className={inputCls} />
+          </label>
+
+          {/* All-day toggle */}
+          <div className="flex items-center justify-between">
+            <span className="text-xxs font-semibold uppercase tracking-wide text-text-muted">All-day</span>
+            <button role="switch" aria-checked={allDay} disabled={!writable}
+              onClick={() => setAllDay(v => !v)}
+              className={clsx('relative w-9 h-5 rounded-full transition-colors shrink-0 disabled:opacity-40',
+                allDay ? 'bg-accent-blue/70' : 'bg-card border border-border')}>
+              <span className={clsx('absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform', allDay && 'translate-x-4')} />
+            </button>
+          </div>
+
+          {/* Date + time */}
+          <div className="grid grid-cols-2 gap-2">
+            <label className={clsx('flex flex-col gap-1', allDay && 'col-span-2')}>
+              <span className="text-xxs font-semibold uppercase tracking-wide text-text-muted">Date</span>
+              <input type="date" value={date} disabled={!writable} onChange={e => setDate(e.target.value)} className={inputCls} />
+            </label>
+            {!allDay && (
+              <>
+                <label className="flex flex-col gap-1">
+                  <span className="text-xxs font-semibold uppercase tracking-wide text-text-muted">Start</span>
+                  <input type="time" value={startTime} disabled={!writable} onChange={e => setStartTime(e.target.value)} className={inputCls} />
+                </label>
+                <label className="flex flex-col gap-1 col-start-2">
+                  <span className="text-xxs font-semibold uppercase tracking-wide text-text-muted">End</span>
+                  <input type="time" value={endTime} disabled={!writable} onChange={e => setEndTime(e.target.value)} className={inputCls} />
+                </label>
+              </>
+            )}
+          </div>
+
+          {/* Location */}
+          <label className="flex flex-col gap-1">
+            <span className="flex items-center gap-1 text-xxs font-semibold uppercase tracking-wide text-text-muted">
+              <MapPin size={10} /> Location
+            </span>
+            <input value={location} disabled={!writable} onChange={e => setLocation(e.target.value)}
+              placeholder="Address or place" className={inputCls} />
+          </label>
+
+          {/* Description */}
+          <label className="flex flex-col gap-1">
+            <span className="flex items-center gap-1 text-xxs font-semibold uppercase tracking-wide text-text-muted">
+              <AlignLeft size={10} /> Notes
+            </span>
+            <textarea value={description} disabled={!writable} onChange={e => setDescription(e.target.value)} rows={3}
+              placeholder="Any details — what to bring, who to call, costs…" className={clsx(inputCls, 'resize-none')} />
+          </label>
+
+          {err && (
+            <div className="flex items-start gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-red-400">
+              <AlertCircle size={13} className="shrink-0 mt-0.5" />
+              <p className="text-xxs leading-snug">{friendlyError(err, 'Google Calendar')}</p>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center gap-2 px-5 py-3.5 border-t border-border">
+          {writable && (
+            <button onClick={save} disabled={busy || !title.trim()}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-emerald-500/40 bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25 text-xs font-medium disabled:opacity-40">
+              {busy ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />} {editing ? 'Save' : 'Add event'}
+            </button>
+          )}
+          <button onClick={onClose} className="px-3 py-1.5 rounded-lg border border-border bg-card hover:bg-card-hover text-text-secondary text-xs">
+            {writable ? 'Cancel' : 'Close'}
+          </button>
+          {editing && writable && (
+            <button onClick={remove} disabled={busy}
+              className="ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-red-900/40 bg-red-950/20 text-red-400 hover:bg-red-950/40 text-xs disabled:opacity-50">
+              <Trash2 size={12} /> Delete
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Month cell ───────────────────────────────────────────────────────────────
+
+function MonthCell({ date, events, inMonth, onPick }: {
+  date: Date; events: CalendarEvent[]; inMonth: boolean; onPick: (d: Date) => void
+}) {
+  const today = isToday(date)
+  const shown = events.slice(0, 3)
+  const extra = events.length - shown.length
+  return (
+    <button
+      onClick={() => onPick(date)}
+      className={clsx(
+        'flex flex-col gap-0.5 border-r border-b border-border p-1 text-left min-h-[84px] overflow-hidden transition-colors hover:bg-card-hover',
+        !inMonth && 'bg-surface/30',
+        today && 'bg-accent-blue/5',
+      )}
+    >
+      <div className="flex items-center justify-between">
+        <span className={clsx('flex items-center justify-center w-5 h-5 rounded-full text-xxs font-semibold',
+          today ? 'bg-accent-blue text-black' : inMonth ? 'text-text-secondary' : 'text-text-muted/50')}>
+          {format(date, 'd')}
+        </span>
+        {events.length > 0 && <span className="text-[9px] text-text-muted tabular-nums">{events.length}</span>}
+      </div>
+      <div className="flex flex-col gap-0.5">
+        {shown.map(e => (
+          <span key={e.id} title={`${e.allDay ? 'All day' : e.timeDisplay} · ${e.name}`}
+            className={clsx('truncate text-[9px] px-1 py-px rounded border', colorForEvent(e.id))}>
+            {!e.allDay && <span className="opacity-60 mr-0.5">{e.timeDisplay}</span>}{e.name}
+          </span>
+        ))}
+        {extra > 0 && <span className="text-[9px] text-text-muted pl-1">+{extra} more</span>}
+      </div>
+    </button>
+  )
+}
+
 // ─── Not connected banner ─────────────────────────────────────────────────────
 
 function ConnectBanner() {
@@ -76,12 +351,11 @@ function ConnectBanner() {
       <div className="flex-1 min-w-0">
         <p className="text-xs font-medium">Google Calendar needs reconnecting</p>
         <p className="text-xxs opacity-70 mt-0.5">
-          Not connected, or the saved token expired. Ensure your credentials are in{' '}
-          <code className="font-mono">.env</code>, then visit{' '}
+          Not connected, or the saved token expired. Connect from{' '}
           <a href="/api/auth/google" target="_blank" rel="noreferrer" className="underline hover:opacity-100">
-            /api/auth/google
+            Settings → Google
           </a>{' '}
-          to (re)authenticate.
+          to (re)authenticate — the token then refreshes itself.
         </p>
       </div>
     </div>
@@ -134,11 +408,13 @@ function CronPill({ job, busy, onToggle }: { job: AgentCronJob; busy: boolean; o
 // ─── Main view ────────────────────────────────────────────────────────────────
 
 export function ScheduledTasks() {
-  const [viewMode, setViewMode] = useState<'week' | 'today'>('week')
+  const [viewMode, setViewMode] = useState<ViewMode>('week')
+  const [anchor, setAnchor]     = useState<Date>(() => new Date())
   const [events, setEvents]     = useState<CalendarEvent[]>([])
   const [loading, setLoading]   = useState(true)
   const [error, setError]       = useState<string | null>(null)
   const [fetchedAt, setFetchedAt] = useState<string | null>(null)
+  const [composer, setComposer] = useState<ComposerState | null>(null)
 
   // Real recurring agent jobs (OpenClaw + Hermes cron) for the Always Running strip.
   const [cronJobs, setCronJobs]   = useState<AgentCronJob[]>([])
@@ -170,21 +446,13 @@ export function ScheduledTasks() {
     } finally { setBusyJob(null) }
   }
 
-  const today     = new Date()
-  const weekStart = startOfWeek(today)
-
-  const weekDays = Array.from({ length: 7 }, (_, i) => {
-    const date = addDays(weekStart, i)
-    return { dayIndex: i, date, label: DAY_LABELS[i], dayNum: format(date, 'd'), isToday: isToday(date) }
-  })
-
-  const visibleDays = viewMode === 'today' ? weekDays.filter(d => d.isToday) : weekDays
-
-  const loadEvents = async () => {
+  // Fetch events for the current view's window (re-runs when view or anchor changes).
+  const loadEvents = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
-      const data = await calendar.events(7)
+      const { start, end } = getRange(viewMode, anchor)
+      const data = await calendar.eventsBetween(start.toISOString(), end.toISOString())
       setEvents(data.events)
       setFetchedAt(data.fetchedAt)
     } catch (err: any) {
@@ -192,62 +460,122 @@ export function ScheduledTasks() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [viewMode, anchor])
 
-  useEffect(() => { loadEvents(); loadCron() }, [loadCron])
+  useEffect(() => { loadEvents() }, [loadEvents])
+  useEffect(() => { loadCron() }, [loadCron])
 
   const refreshAll = () => { loadEvents(); loadCron() }
 
-  const getEventsForDay = (dayIndex: number) =>
-    events
-      .filter(e => e.dayOfWeek === dayIndex)
-      .sort((a, b) => a.timeMinutes - b.timeMinutes)
+  // Index events by local date for O(1) per-day lookup, sorted within a day.
+  const eventsByDay = useMemo(() => {
+    const map = new Map<string, CalendarEvent[]>()
+    for (const e of events) {
+      const k = eventDateKey(e)
+      if (!k) continue
+      const list = map.get(k)
+      if (list) list.push(e)
+      else map.set(k, [e])
+    }
+    for (const list of map.values()) {
+      list.sort((a, b) => Number(b.allDay) - Number(a.allDay) || a.timeMinutes - b.timeMinutes)
+    }
+    return map
+  }, [events])
+  const eventsForDate = useCallback((d: Date) => eventsByDay.get(dateKey(d)) ?? [], [eventsByDay])
+
+  // Navigation: prev/next move by the view's natural unit; "Today" re-anchors now.
+  const step = (dir: 1 | -1) => setAnchor(a =>
+    viewMode === 'day'    ? addDays(a, dir)
+    : viewMode === 'week'   ? addWeeks(a, dir)
+    : viewMode === 'month'  ? addMonths(a, dir)
+    : addDays(a, dir * 7))   // agenda: page a week at a time
+  const goToday = () => setAnchor(new Date())
+
+  const pickDay = (d: Date) => { setAnchor(d); setViewMode('day') }
 
   // "not configured" (no creds) AND auth failures like invalid_grant (token
   // expired/revoked) both resolve the same way: re-authenticate at /api/auth/google.
-  const needsAuth = !!error && /not configured|invalid_grant|invalid_token|invalid_request|unauthorized|401|credential|refresh token|expired/i.test(error)
+  const needsAuth = !!error && /not configured|disconnected|reconnect|invalid_grant|invalid_token|invalid_request|unauthorized|401|credential|refresh token|expired|missing scope/i.test(error)
+
+  const columns = viewMode === 'day'
+    ? [startOfDay(anchor)]
+    : Array.from({ length: 7 }, (_, i) => addDays(startOfWeek(anchor), i))
+
+  const monthCells = useMemo(
+    () => Array.from({ length: 42 }, (_, i) => addDays(startOfWeek(startOfMonth(anchor)), i)),
+    [anchor],
+  )
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
       {/* Header */}
-      <div className="flex items-start justify-between px-6 pt-5 pb-4 border-b border-border shrink-0">
-        <div>
+      <div className="flex items-start justify-between px-6 pt-5 pb-4 border-b border-border shrink-0 gap-3">
+        <div className="min-w-0">
           <h1 className="text-base font-semibold text-text-primary">Calendar</h1>
           <p className="text-xs text-text-muted mt-0.5">
             {loading
               ? 'Loading events…'
               : error && !needsAuth
               ? <span className="text-red-400">Error: {error}</span>
-              : <><span className="text-text-secondary">{events.length} events this week</span>
+              : <><span className="text-text-secondary">{events.length} event{events.length === 1 ? '' : 's'}</span>
                   {fetchedAt && <>&nbsp;·&nbsp;<span className="opacity-50">updated {new Date(fetchedAt).toLocaleTimeString()}</span></>}
                 </>
             }
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={refreshAll}
-            disabled={loading}
-            className="flex items-center gap-1 px-2 py-1 rounded border border-border bg-card text-text-muted hover:text-text-secondary transition-colors text-xs"
-            title="Refresh"
-          >
+        <div className="flex items-center gap-2 flex-wrap justify-end">
+          {/* Period navigation */}
+          <div className="flex items-center gap-1">
+            <button onClick={() => step(-1)} title="Previous"
+              className="w-7 h-7 flex items-center justify-center rounded border border-border bg-card text-text-muted hover:text-text-primary transition-colors">
+              <ChevronLeft size={14} />
+            </button>
+            <button onClick={goToday} title="Jump to today"
+              className="px-2.5 h-7 rounded border border-border bg-card text-xs text-text-secondary hover:text-text-primary transition-colors">
+              Today
+            </button>
+            <button onClick={() => step(1)} title="Next"
+              className="w-7 h-7 flex items-center justify-center rounded border border-border bg-card text-text-muted hover:text-text-primary transition-colors">
+              <ChevronRight size={14} />
+            </button>
+          </div>
+
+          <span className="text-xs font-medium text-text-secondary tabular-nums min-w-[150px] text-center hidden sm:block">
+            {periodLabel(viewMode, anchor)}
+          </span>
+
+          <button onClick={refreshAll} disabled={loading} title="Refresh"
+            className="w-7 h-7 flex items-center justify-center rounded border border-border bg-card text-text-muted hover:text-text-secondary transition-colors">
             <RefreshCw size={12} className={loading || cronLoading ? 'animate-spin' : ''} />
           </button>
-          <div className="flex items-center gap-1 bg-card rounded border border-border p-0.5">
-            {(['week', 'today'] as const).map(mode => (
+
+          <button onClick={() => setComposer({ mode: 'create', date: anchor })} title="Add an event"
+            className="flex items-center gap-1.5 px-2.5 h-7 rounded border border-emerald-500/40 bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25 transition-colors text-xs font-medium">
+            <Plus size={13} /> New event
+          </button>
+
+          {/* View switcher */}
+          <div className="flex items-center gap-0.5 bg-card rounded border border-border p-0.5">
+            {VIEW_MODES.map(mode => (
               <button
                 key={mode}
                 onClick={() => setViewMode(mode)}
                 className={clsx(
-                  'px-3 py-1 rounded text-xs font-medium capitalize transition-all',
+                  'px-2.5 py-1 rounded text-xs font-medium capitalize transition-all',
                   viewMode === mode ? 'bg-card-hover text-text-primary shadow-sm' : 'text-text-muted hover:text-text-secondary',
                 )}
               >
-                {mode.charAt(0).toUpperCase() + mode.slice(1)}
+                {mode}
               </button>
             ))}
           </div>
         </div>
+      </div>
+
+      {/* Mobile period label (header version is hidden < sm) */}
+      <div className="sm:hidden px-6 py-2 border-b border-border shrink-0">
+        <span className="text-xs font-medium text-text-secondary">{periodLabel(viewMode, anchor)}</span>
       </div>
 
       {/* Always Running — real recurring agent jobs (OpenClaw / Hermes cron) */}
@@ -279,47 +607,126 @@ export function ScheduledTasks() {
       {/* Connect banner */}
       {needsAuth && <ConnectBanner />}
 
-      {/* Calendar grid */}
-      <div className="flex-1 overflow-auto">
-        <div
-          className={clsx('grid h-full min-h-0', viewMode === 'week' ? 'grid-cols-7' : 'grid-cols-1')}
-          style={{ minWidth: viewMode === 'week' ? '700px' : undefined }}
-        >
-          {visibleDays.map(({ dayIndex, label, dayNum, isToday: todayFlag }) => {
-            const dayEvents = getEventsForDay(dayIndex)
-            return (
-              <div key={dayIndex} className={clsx('flex flex-col border-r border-border last:border-r-0', todayFlag && 'bg-surface/30')}>
-                {/* Day header */}
-                <div className={clsx('flex items-center gap-2 px-3 py-2.5 border-b border-border shrink-0', todayFlag && 'bg-surface/60')}>
-                  <span className={clsx('text-xs font-semibold uppercase tracking-wider', todayFlag ? 'text-accent-blue' : 'text-text-muted')}>
-                    {label}
-                  </span>
-                  <span className={clsx('flex items-center justify-center w-5 h-5 rounded-full text-xs font-semibold',
-                    todayFlag ? 'bg-accent-blue text-black' : 'text-text-secondary')}>
-                    {dayNum}
-                  </span>
-                  <span className="ml-auto text-xxs text-text-muted tabular-nums">{dayEvents.length || ''}</span>
-                </div>
+      {/* ── Day / Week grid ── */}
+      {(viewMode === 'day' || viewMode === 'week') && (
+        <div className="flex-1 overflow-auto">
+          <div
+            className={clsx('grid h-full min-h-0', viewMode === 'week' ? 'grid-cols-7' : 'grid-cols-1')}
+            style={{ minWidth: viewMode === 'week' ? '700px' : undefined }}
+          >
+            {columns.map((date, i) => {
+              const dayEvents = eventsForDate(date)
+              const todayFlag = isToday(date)
+              return (
+                <div key={i} className={clsx('flex flex-col border-r border-border last:border-r-0', todayFlag && 'bg-surface/30')}>
+                  <div className={clsx('flex items-center gap-2 px-3 py-2.5 border-b border-border shrink-0', todayFlag && 'bg-surface/60')}>
+                    <span className={clsx('text-xs font-semibold uppercase tracking-wider', todayFlag ? 'text-accent-blue' : 'text-text-muted')}>
+                      {DAY_LABELS[date.getDay()]}
+                    </span>
+                    <span className={clsx('flex items-center justify-center w-5 h-5 rounded-full text-xs font-semibold',
+                      todayFlag ? 'bg-accent-blue text-black' : 'text-text-secondary')}>
+                      {format(date, 'd')}
+                    </span>
+                    {viewMode === 'day' && <span className="text-xs text-text-muted">{format(date, 'MMMM yyyy')}</span>}
+                    <span className="ml-auto text-xxs text-text-muted tabular-nums">{dayEvents.length || ''}</span>
+                    <button onClick={() => setComposer({ mode: 'create', date })} title="Add event to this day"
+                      className="text-text-muted hover:text-emerald-400 transition-colors shrink-0">
+                      <Plus size={13} />
+                    </button>
+                  </div>
 
-                {/* Events */}
-                <div className="flex flex-col gap-1.5 p-2 overflow-y-auto flex-1">
-                  {loading && todayFlag && (
-                    <div className="flex items-center justify-center h-16">
-                      <span className="text-xxs text-text-muted animate-pulse">Loading…</span>
-                    </div>
-                  )}
-                  {!loading && dayEvents.map(ev => <EventCard key={ev.id} event={ev} />)}
-                  {!loading && dayEvents.length === 0 && (
-                    <div className="flex items-center justify-center h-16">
-                      <span className="text-xxs text-text-muted">No events</span>
-                    </div>
-                  )}
+                  <div className="flex flex-col gap-1.5 p-2 overflow-y-auto flex-1">
+                    {loading && (
+                      <div className="flex items-center justify-center h-16">
+                        <span className="text-xxs text-text-muted animate-pulse">Loading…</span>
+                      </div>
+                    )}
+                    {!loading && dayEvents.map(ev => <EventCard key={ev.id} event={ev} onClick={() => setComposer({ mode: 'edit', event: ev })} />)}
+                    {!loading && dayEvents.length === 0 && (
+                      <div className="flex items-center justify-center h-16">
+                        <span className="text-xxs text-text-muted">No events</span>
+                      </div>
+                    )}
+                  </div>
                 </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ── Month grid ── */}
+      {viewMode === 'month' && (
+        <div className="flex-1 overflow-auto">
+          <div className="min-w-[640px] flex flex-col h-full">
+            <div className="grid grid-cols-7 border-b border-border shrink-0">
+              {DAY_LABELS.map(d => (
+                <div key={d} className="px-2 py-1.5 text-xxs font-semibold uppercase tracking-wider text-text-muted border-r border-border last:border-r-0">{d}</div>
+              ))}
+            </div>
+            <div className="grid grid-cols-7 grid-rows-6 flex-1 border-l border-t border-border">
+              {monthCells.map((date, i) => (
+                <MonthCell key={i} date={date} events={eventsForDate(date)} inMonth={isSameMonth(date, anchor)} onPick={pickDay} />
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Agenda list ── */}
+      {viewMode === 'agenda' && (
+        <div className="flex-1 overflow-y-auto">
+          {loading ? (
+            <div className="flex items-center justify-center py-20">
+              <Loader2 size={18} className="animate-spin text-text-muted" />
+            </div>
+          ) : (() => {
+            const days = Array.from({ length: AGENDA_DAYS }, (_, i) => addDays(startOfDay(anchor), i))
+              .map(d => ({ date: d, items: eventsForDate(d) }))
+              .filter(x => x.items.length > 0)
+            if (days.length === 0) {
+              return (
+                <div className="flex flex-col items-center gap-2 py-20 text-text-muted">
+                  <CalendarDays size={22} className="opacity-30" />
+                  <p className="text-xs">No events in the next {AGENDA_DAYS} days.</p>
+                </div>
+              )
+            }
+            return (
+              <div className="flex flex-col">
+                {days.map(({ date, items }) => {
+                  const todayFlag = isToday(date)
+                  return (
+                    <div key={dateKey(date)} className="flex gap-3 px-4 sm:px-6 py-3 border-b border-border-subtle">
+                      <button onClick={() => pickDay(date)} className="shrink-0 w-14 text-left">
+                        <div className={clsx('text-xxs font-semibold uppercase tracking-wider', todayFlag ? 'text-accent-blue' : 'text-text-muted')}>
+                          {DAY_LABELS[date.getDay()]}
+                        </div>
+                        <div className={clsx('text-lg font-semibold leading-none tabular-nums', todayFlag ? 'text-accent-blue' : 'text-text-primary')}>
+                          {format(date, 'd')}
+                        </div>
+                        <div className="text-xxs text-text-muted">{format(date, 'MMM')}</div>
+                      </button>
+                      <div className="flex flex-col gap-1.5 flex-1 min-w-0">
+                        {items.map(ev => <EventCard key={ev.id} event={ev} onClick={() => setComposer({ mode: 'edit', event: ev })} />)}
+                      </div>
+                    </div>
+                  )
+                })}
               </div>
             )
-          })}
+          })()}
         </div>
-      </div>
+      )}
+
+      {/* Event composer (create / edit / delete) */}
+      {composer && (
+        <EventComposer
+          state={composer}
+          onClose={() => setComposer(null)}
+          onSaved={() => { setComposer(null); loadEvents() }}
+        />
+      )}
     </div>
   )
 }

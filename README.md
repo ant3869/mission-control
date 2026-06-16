@@ -4,7 +4,7 @@
 
 # Mission Control
 
-A command-center dashboard for orchestrating AI agents, projects, content pipelines, and day-to-day ops — all from a single pane of glass.
+A personal command-center dashboard for orchestrating AI agents, projects, hardware builds, spend, and day-to-day ops — all from a single pane of glass.
 
 Built with **React 18 + TypeScript + Tailwind CSS** on the frontend and an **Express 5** API server on the backend.
 
@@ -14,68 +14,52 @@ Press **⌘K** (Ctrl+K) anywhere for the command palette — jump to any page or
 
 ## What's Inside
 
-### Work & Projects
+The sidebar is grouped into four sections — **Work**, **Knowledge**, **Build**, and **AI Ops** — plus Settings. Related monitoring views are consolidated into tabbed hubs rather than scattered across many sidebar entries.
+
+### Work
 
 | View | What you can do |
 |------|----------------|
-| **To-Do** | Personal quick-capture task list. Natural-language quick add (`!crit @long tomorrow`), severity levels (low → critical), short/long horizon, due dates with overdue badges, inline editing, and a one-click OpenClaw/Hermes research button that auto-attaches a summary, action steps, links, and key facts to each task. Optional **Additional Details** sub-panel (date, time, location, phone, cost, URL, contact, category, custom fields) with smart auto-detection from free text; all structured context is fed to the research agent as ground truth. |
+| **Home** | Landing overview — mission-control hero, an "at a glance" priority queue (alerts, overdue to-dos, pending approvals, system errors), and quick-view cards for usage, to-dos, projects, alerts, and system health. Every card deep-links to the right hub and tab. |
+| **To-Do** | Personal quick-capture list plus a built-in view switcher — **To-Do** (default), **Tasks** (kanban board), **Approvals**, and **Inbox** — so personal items and agent work live on one page. To-Do: natural-language quick add (`!crit @long tomorrow`), severity levels (low → critical), short/long horizon, due dates with overdue badges, inline editing, a one-click OpenClaw/Hermes research button (summary, action steps, links, key facts), an optional **Additional Details** sub-panel (date, time, location, phone, cost, URL, contact, category, custom fields) with smart auto-detection, and opt-in **Google Calendar sync** for dated items. **Tasks** is a status-column kanban (Active / Queue / Blocked / Completed); **Approvals** reviews agent output (approve / reject / request changes); **Inbox** is a unified priority-sorted feed of approvals, tasks, and to-dos with snooze. |
 | **To-Buy** | Personal shopping list with the same click-to-open drawer as To-Do. Quick add with priority/quantity/price tokens (`power drill !high x1 $89`), a running estimated total, and one-click OpenClaw/Hermes research that returns general info, a fair price + range, online buy links, local store options, and key specs — auto-filling the item's price estimate. |
-| **Tasks** | Create, triage, and filter work items. Assign status and priority. See what's blocked or in flight. Includes an **Inbox** tab — a unified feed aggregating approvals, tasks, to-dos, feedback, and publications with snooze, convert-to-task/note, and priority sorting. |
-| **Approvals** | Review agent-generated output before it ships. Approve, reject, or request changes with a single click. |
-| **Projects** | Kanban-style boards for tracking initiatives. Drag cards across columns, set owners, and attach notes. |
-| **Calendar** | View and manage scheduled tasks. Synced with Google Calendar so your schedule and your agents stay aligned. |
-| **Pipeline** | Multi-stage processing pipeline monitor. Switch between a card grid and a Gantt-style timeline. Click any run to open a full execution trace with step-level status, timing, and token usage. Includes a cron jobs panel showing all scheduled agent tasks. |
+| **Spend** | Personal money command center. Separates **Claude Code** (a subscription — shown as token-equivalent *value*, not billed per-token) from **OpenClaw/Hermes agents** (real per-token API spend), plus a "things" lane (open To-Buy total + the value of hardware you already own). Pure aggregation over existing endpoints; 30-day trend and projected monthly. |
+| **Chats** | Browse Claude / OpenClaw / Hermes conversation sessions. See token counts, cost per session, and open the full message history for any conversation. |
+| **Calendar** | Day / Week / Month / Agenda views of your scheduled tasks and Google Calendar events, with prev / today / next navigation and an in-app event composer (create / edit / delete). |
 
-### Agents & AI
+### Knowledge
 
 | View | What you can do |
 |------|----------------|
-| **Agents** | See which agents are running, their current state, and recent activity at a glance. |
-| **Watch** | Live feed of exactly what your AI agents are doing right now — tool calls, file reads, terminal commands — streamed from both OpenClaw and Hermes. |
-| **Chats** | Browse Claude conversation sessions. See token counts, cost per session, and open the full message history for any conversation. |
-| **Memory** | Inspect and manage agent memory stores. Read, search, and update memory entries across all connected agents. |
-| **Factory** | Idea Factory — browse and triage the buildable project ideas the agents generate from your inventory (confidence/coolness scores, difficulty, cost/time, parts lists). Like / snooze / reject, filter by status, and trigger a new generation run. |
-
-### Platform Monitoring
-
-| View | What you can do |
-|------|----------------|
-| **OpenClaw** (Metrics) | Full operational hub for your OpenClaw agent platform. Tabs for: live overview, activity charts, autonomy metrics, session browser, cron schedules, platform breakdowns, system health, memory file editor, Brain event log, Flow session history, Alerts, and Security posture. |
-| **Hermes** (Metrics) | Same 11-tab metrics hub as OpenClaw, scoped to your Hermes REST agent. Both views share the same sub-views so you can compare platforms side-by-side in separate browser tabs. |
-| **Brain** | Raw agent event log across all platforms. Filter by source and event type. Spot tool-call loops (same tool called 5+ times), view the top tools by frequency, and drill into individual events. |
-| **Flow** | Session run history from OpenClaw and Hermes. See token totals, message counts, and timestamps for every session. Click any run to read the complete conversation including tool call and result pairs. |
-| **Flow Map** | Interactive node-link topology graph showing which agents, tools, channels, memory stores, and runtimes are communicating — and how much traffic is flowing between them. Supports 1 h / 24 h / 7 d / all time windows. |
-| **Model Ops** | Helicone-style model analytics. Track spend, median latency, request volume, and failure rate per model. Includes a cost-vs-latency scatter chart, a daily trend histogram, and a model comparison table. Scope to All traffic, Claude Code sessions, or agent-only calls. |
-| **Radar** | Anthropic API usage analytics. See daily token and cost trends, input/output/cache token mix, cost anomaly cards, per-model cost share, and an hour-of-day heatmap showing when your agents are busiest. |
-| **Security** | Connector security posture at a glance. Each connector shows token health (ok / missing / disabled / auth_error / unreachable), reachability latency, recent auth error count, and an overall risk level badge. Run live diagnostics probes from this page. |
-| **Alerts** | Create and manage alert rules for your agent platforms. Five condition types: error rate, loop detected, session stalled, token spike, and no activity. Set severity (info / warning / critical), thresholds, time windows, and source scope. See all currently fired alerts in one panel. |
-| **Evaluations** | Agent performance evaluation hub. Model scorecard leaderboard, agent-model matrix, session trend chart, benchmark task runner (dispatched to the Hermes API server), memory benchmark panel (recall / multihop / temporal / conflict / applied / negative), and a scoring methodology reference. |
-| **Harness Benchmarks** | Benchmark how a model performs *through* OpenClaw/Hermes (App → harness → model → tools/context/routing → result), not raw model APIs. 9 behaviour lanes, 4 task packs, deterministic scoring with normalized failure types, multi-sample **reliability** scoring, a per-task detail drawer, and a model/provider **Compare** view with a fingerprint (reliability, speed ± stdev, verbosity/tokens, est. cost, fences). Runs real dispatches via the Hermes API server, OpenClaw WS, or any OpenAI-compatible `/v1` endpoint (LM Studio / Ollama / vLLM) for true cross-model comparison. |
-
-### Knowledge & Content
-
-| View | What you can do |
-|------|----------------|
-| **Content** | A real feed of what the agents actually publish — morning briefings, status reports, digests, and replies — with a type badge, channel, word count, and an expandable full body. Filter by type and search. |
-| **Docs** | Documentation browser connected to your agent knowledge base. Includes a **Links** tab — save, tag, pin, and archive bookmarks; add manually or via the Inbox "save as link" action. |
-| **Notes** | Quick-capture scratchpad. Jot down ideas, snippets, or follow-ups without leaving the dashboard. |
+| **Docs** | Documentation browser connected to your agent knowledge base, with a **Notes** tab (quick-capture scratchpad) and a **Links** tab — save, tag, pin, and archive bookmarks; add manually or via the Inbox "save as link" action. |
 | **News** | Real-time curated news dashboard with three tabs: **Feed** (17 RSS/Atom sources across AI, computing, code, and robotics), **GitHub** (trending repos by time range and language), and **Buzz** (top discussions from HN, Reddit, and Lobsters). ADHD-friendly magazine-style hero, cross-source "Top right now" strip, category/platform filters, and 5-minute auto-refresh. |
+| **Memory** | A live operational dashboard over your agent's **real memory system**, read over SSH from the agent machine: an **Activity** timeline of memory events (recall / dream / promotion, each expandable to the actual content), **Daily** logs + workspace files with a full-text index over every day, **Recall** (semantic chunks + similarity scores + concept tags), **Dreaming** (the nightly Light / Deep / REM consolidation and promotions into long-term `MEMORY.md`), **Health** (LanceDB vector store + pipeline freshness/staleness), and **Metrics** (per-day volume, dream phases, top concepts). Configure the SSH connection via `OPENCLAW_SSH_*`. |
 
-### People & Office
+### Build
 
-| View | What you can do |
-|------|----------------|
-| **People** | A real contacts directory derived from who actually messages the agents (Discord/Telegram senders) — name, platform, channels, message count, and last-seen. Grows automatically; filter by platform and search. |
-| **Office** | Virtual office — spaces, resources, and shared links. |
-
-### Infrastructure & Settings
+The hardware → ideas → projects loop in one place.
 
 | View | What you can do |
 |------|----------------|
-| **Inventory** | Hardware catalog with SQLite-backed persistence. Search and filter items, view status (available / in-use / reserved), trigger per-item agent research, and inline-edit any field. |
-| **System** | Server health, uptime, memory file browser, and connector diagnostics. |
-| **Settings** | Configure connectors, API keys, and application preferences. |
-| **Feedback** | A real inbound-message feed — what people actually send the agents — with a transparent keyword **sentiment** tag (labelled heuristic, not an LLM judge), a sentiment proportion bar, positive/neutral/negative filters, and sender/channel/time. |
+| **Projects** | Kanban-style boards for tracking initiatives (drag cards across columns, set owners, attach notes), with a **Pipeline** tab — a multi-stage run monitor (card grid or Gantt timeline) with step-level traces and a cron jobs panel. |
+| **Inventory** | Hardware catalog with SQLite-backed persistence. Search and filter items, view status (available / in-use / reserved), trigger per-item agent research, and inline-edit any field. **Bulk add** lets you paste a free-form list (bullets, `xN` quantities, `(Model: …)`) — it parses each line into an item, shows a live preview, and can queue agent research on the whole batch so specs, value, and form factor get filled in automatically. |
+| **Ideas** | Idea Factory — browse and triage the buildable project ideas the agents generate *from your inventory*. Confidence/coolness score bars, difficulty, cost/time, and parts-on-hand / still-need lists. A **Buildable now** filter surfaces projects you can build with parts you already own; sort by Best / Coolest / Cheapest / Newest, search across ideas, like / snooze / **Built it!** / reject-with-reason, and trigger a new generation run. |
+
+### AI Ops
+
+Five consolidated hubs covering everything your agents do — built on local Claude Code logs plus the OpenClaw (WS) and Hermes (REST) gateways.
+
+| View | What you can do |
+|------|----------------|
+| **Activity** | Live cross-platform agent monitoring in one place: **Live** (real-time tool calls / file reads / commands streamed from OpenClaw + Hermes), **Sessions** (run history with token/message totals and full transcripts), **Brain** (raw event log with tool-loop detection and top tools), **Agents** (who's running and their current state), and **Map** (node-link traffic topology, 1 h / 24 h / 7 d / all). |
+| **Usage** | Cost & model analytics: a Claude Code token/cost view (daily trends, token mix, cost anomalies, per-model share, hour-of-day heatmap) plus a **Models** tab (Helicone-style spend, latency, volume, and failure rate per model with a cost-vs-latency scatter). |
+| **Benchmarks** | Benchmark how a model performs *through* OpenClaw/Hermes (App → harness → model → tools/context/routing → result), not raw model APIs. 9 behaviour lanes, 4 task packs, deterministic scoring with normalized failure types, multi-sample **reliability** scoring, a per-task detail drawer, and a model/provider **Compare** fingerprint (reliability, speed ± stdev, verbosity/tokens, est. cost, fences). Runs real dispatches via the Hermes API server, OpenClaw WS, or any OpenAI-compatible `/v1` endpoint (LM Studio / Ollama / vLLM). |
+| **Evals** | Agent performance evaluation hub. Model scorecard leaderboard, agent-model matrix, session trend chart, benchmark task runner (dispatched to the Hermes API server), memory benchmark panel (recall / multihop / temporal / conflict / applied / negative), and a scoring methodology reference. |
+| **Health** | Platform & connector health: **System** (Claude config / MCP / plugin health, uptime, memory file browser), **Security** (connector token health, reachability, auth-error counts, risk badge, live diagnostics probes), **Alerts** (rule builder — error rate / loop / stalled / token spike / no activity — plus fired alerts), and per-platform deep-dive dashboards for **OpenClaw** and **Hermes**. |
+
+### Settings
+
+Configure connectors, API keys, the **Google** connection (connect / reconnect / disconnect), and application preferences.
 
 ---
 
@@ -116,9 +100,13 @@ Required variables (see `.env.example` for details):
 | `API_PORT` | Express server port (default `3001`) |
 | `GOOGLE_CLIENT_ID` | Google OAuth client ID (Calendar) |
 | `GOOGLE_CLIENT_SECRET` | Google OAuth client secret |
-| `GOOGLE_REFRESH_TOKEN` | Google OAuth refresh token |
 | `ANTHROPIC_API_KEY` | Anthropic API key (Radar analytics) |
 | `GITHUB_TOKEN` | GitHub personal access token — optional; raises the Search API rate limit for the News → GitHub tab |
+| `OPENCLAW_SSH_HOST` | Agent machine host — reads the OpenClaw memory system (daily logs, dreaming, LanceDB recall) over SSH for the Memory view |
+| `OPENCLAW_SSH_USER` | SSH username on the agent machine |
+| `OPENCLAW_SSH_KEY` | SSH private key — absolute path, or a key name resolved under `~/.ssh` |
+
+**Google Calendar:** set the two `GOOGLE_*` values, then connect from **Settings → Google** (or visit `/api/auth/google`). The refresh token is stored in `data/google-tokens.json` and refreshed automatically — no copy-paste. Publish your OAuth consent screen ("In production") in Google Cloud Console; while it is in "Testing" mode Google expires the refresh token after 7 days.
 
 ### Run
 

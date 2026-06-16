@@ -682,13 +682,11 @@ inventoryRouter.post('/research-all', (req, res) => {
     const unresearched = allItems.filter(it => !it.enriched && it.researchStatus !== 'pending')
     if (unresearched.length === 0) return res.json({ queued: 0, openclaw: 0, hermes: 0, skipped: allItems.length })
 
-    // Split between available agents; interleave so both get a mix of item types.
+    // Always research through OpenClaw when it's connected — Hermes is only a
+    // fallback when OpenClaw is down (it's unreliable for research right now).
     let ocItems: StoredItem[] = []
     let hmItems: StoredItem[] = []
-    if (ocLive && hmLive) {
-      ocItems = unresearched.filter((_, i) => i % 2 === 0)
-      hmItems = unresearched.filter((_, i) => i % 2 === 1)
-    } else if (ocLive) {
+    if (ocLive) {
       ocItems = unresearched
     } else {
       hmItems = unresearched

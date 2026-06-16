@@ -9,6 +9,10 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { researchTodo, type TodoResearchResult } from '../lib/research.js'
+import {
+  syncTodoCalendar, removeTodoFromCalendar, defaultSyncFields,
+  type TodoCalendarSyncStatus,
+} from '../lib/todoCalendarSync.js'
 
 export const todosRouter = Router()
 
@@ -51,6 +55,12 @@ export interface Todo {
   details:     TodoDetails
   rawInput:    string
   research:    TodoResearch
+  // Google Calendar sync metadata (added v0.7.59 — backfilled for old rows)
+  calendarSyncEnabled:   boolean
+  googleCalendarEventId: string
+  calendarSyncStatus:    TodoCalendarSyncStatus
+  lastCalendarSyncAt:    string
+  calendarSyncError:     string
 }
 
 const SEVERITIES: TodoSeverity[] = ['low', 'medium', 'high', 'critical']
@@ -76,6 +86,7 @@ function loadTodos(): Todo[] {
     return parsed.map(t => ({
       dueDate:  '',
       rawInput: '',
+      ...defaultSyncFields(),
       ...t,
       details: { ...emptyDetails(), ...(t.details ?? {}), customFields: { ...((t.details as any)?.customFields ?? {}) } },
     }))
@@ -123,6 +134,30 @@ function saveTodos(todos: Todo[]): void {
   if (dirty) saveTodos(todos)
 }
 
+// ─── Calendar sync ──────────────────────────────────────────────────────────
+// Reconcile a todo with Google Calendar and persist the resulting sync metadata.
+// Reloads before writing so it never clobbers a concurrent edit. Never throws —
+// any Google failure is captured into calendarSyncError by the sync helper.
+async function runCalendarSync(todoId: string): Promise<Todo | null> {
+  const pending = loadTodos()
+  const target = pending.find(t => t.id === todoId)
+  if (!target) return null
+  if (target.calendarSyncEnabled) { target.calendarSyncStatus = 'pending'; saveTodos(pending) }
+
+  const fields = await syncTodoCalendar(target)
+
+  const fresh = loadTodos()
+  const t = fresh.find(x => x.id === todoId)
+  if (!t) return null
+  Object.assign(t, fields)
+  t.updatedAt = new Date().toISOString()
+  saveTodos(fresh)
+  return t
+}
+
+// Body keys that, when changed, mean the linked calendar event needs reconciling.
+const CAL_KEYS = ['title', 'notes', 'dueDate', 'details', 'severity', 'calendarSyncEnabled'] as const
+
 // ─── Routes ───────────────────────────────────────────────────────────────────
 
 // GET /api/todos
@@ -131,7 +166,7 @@ todosRouter.get('/', (_req, res) => {
 })
 
 // POST /api/todos
-todosRouter.post('/', (req, res) => {
+todosRouter.post('/', async (req, res) => {
   const body = req.body ?? {}
   if (!String(body.title ?? '').trim()) return res.status(400).json({ error: 'title is required' })
   const todo: Todo = {
@@ -148,20 +183,25 @@ todosRouter.post('/', (req, res) => {
     details:     sanitizeDetails(body.details),
     rawInput:    String(body.rawInput ?? '').slice(0, 2000),
     research:    emptyResearch(),
+    ...defaultSyncFields(),
+    calendarSyncEnabled: Boolean(body.calendarSyncEnabled),
   }
   const todos = loadTodos()
   todos.unshift(todo)
   saveTodos(todos)
-  res.status(201).json({ todo })
+  // Opt-in: only touch Google Calendar when the user enabled sync on create.
+  const result = todo.calendarSyncEnabled ? (await runCalendarSync(todo.id)) ?? todo : todo
+  res.status(201).json({ todo: result })
 })
 
 // PATCH /api/todos/:id
-todosRouter.patch('/:id', (req, res) => {
+todosRouter.patch('/:id', async (req, res) => {
   const todos = loadTodos()
   const todo  = todos.find(t => t.id === req.params.id)
   if (!todo) return res.status(404).json({ error: 'not found' })
 
-  const { title, notes, severity, horizon, dueDate, done, details, rawInput } = req.body ?? {}
+  const body = req.body ?? {}
+  const { title, notes, severity, horizon, dueDate, done, details, rawInput, calendarSyncEnabled } = body
   if (title !== undefined && String(title).trim()) todo.title = String(title).trim()
   if (notes !== undefined)                         todo.notes = String(notes)
   if (SEVERITIES.includes(severity))               todo.severity = severity
@@ -169,29 +209,42 @@ todosRouter.patch('/:id', (req, res) => {
   if (dueDate !== undefined)                       todo.dueDate = parseDueDate(dueDate)
   if (details !== undefined)                       todo.details = sanitizeDetails(details)
   if (rawInput !== undefined)                      todo.rawInput = String(rawInput).slice(0, 2000)
+  if (calendarSyncEnabled !== undefined)           todo.calendarSyncEnabled = Boolean(calendarSyncEnabled)
   if (done !== undefined) {
     todo.done = Boolean(done)
     todo.completedAt = todo.done ? new Date().toISOString() : ''
   }
   todo.updatedAt = new Date().toISOString()
   saveTodos(todos)
-  res.json({ todo })
+
+  // Reconcile the calendar only when a calendar-relevant field changed and the
+  // task is (or was) calendar-linked — a plain "done" toggle skips Google.
+  const calendarTouched = CAL_KEYS.some(k => body[k] !== undefined)
+  const result = (calendarTouched && (todo.calendarSyncEnabled || todo.googleCalendarEventId))
+    ? (await runCalendarSync(todo.id)) ?? todo
+    : todo
+  res.json({ todo: result })
 })
 
-// POST /api/todos/clear-done — remove all completed todos
-todosRouter.post('/clear-done', (_req, res) => {
+// POST /api/todos/clear-done — remove all completed todos (and their events)
+todosRouter.post('/clear-done', async (_req, res) => {
   const todos = loadTodos()
+  const done  = todos.filter(t => t.done)
+  for (const t of done) {
+    if (t.googleCalendarEventId || t.calendarSyncEnabled) await removeTodoFromCalendar(t)
+  }
   const kept = todos.filter(t => !t.done)
   saveTodos(kept)
   res.json({ removed: todos.length - kept.length })
 })
 
-// DELETE /api/todos/:id
-todosRouter.delete('/:id', (req, res) => {
+// DELETE /api/todos/:id — also deletes the linked calendar event
+todosRouter.delete('/:id', async (req, res) => {
   const todos = loadTodos()
-  const filtered = todos.filter(t => t.id !== req.params.id)
-  if (filtered.length === todos.length) return res.status(404).json({ error: 'not found' })
-  saveTodos(filtered)
+  const todo  = todos.find(t => t.id === req.params.id)
+  if (!todo) return res.status(404).json({ error: 'not found' })
+  await removeTodoFromCalendar(todo)
+  saveTodos(todos.filter(t => t.id !== req.params.id))
   res.json({ ok: true })
 })
 

@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react'
 import {
-  CheckSquare, ListTodo, Radio, BookOpen, FolderKanban, Radar,
-  MessageSquare, Calendar, Brain, FileText, ThumbsUp,
-  Activity, Gauge, Target, Workflow, Package,
-  Users, Cog, ChevronLeft, ChevronRight, FlaskConical,
-  BrainCircuit, GitBranch, Bell, Shield, House, ShoppingCart, Newspaper,
+  ListTodo, BookOpen, FolderKanban, Radar,
+  MessageSquare, Calendar, Brain, Wallet,
+  Activity, Target, Package, Lightbulb,
+  Cog, ChevronLeft, ChevronRight, FlaskConical,
+  HeartPulse, House, ShoppingCart, Newspaper,
 } from 'lucide-react'
 import { clsx } from 'clsx'
 import type { View } from '../../types'
@@ -26,8 +26,7 @@ const NAV: NavSection[] = [
       { id: 'home',     label: 'Home',     icon: <House         size={iconSize} /> },
       { id: 'todos',    label: 'To-Do',    icon: <ListTodo      size={iconSize} /> },
       { id: 'tobuy',    label: 'To-Buy',   icon: <ShoppingCart  size={iconSize} /> },
-      { id: 'tasks',    label: 'Tasks',    icon: <CheckSquare   size={iconSize} /> },
-      { id: 'watch',    label: 'Watch',    icon: <Radio         size={iconSize} /> },
+      { id: 'spend',    label: 'Spend',    icon: <Wallet        size={iconSize} /> },
       { id: 'council',  label: 'Chats',    icon: <MessageSquare size={iconSize} /> },
       { id: 'calendar', label: 'Calendar', icon: <Calendar      size={iconSize} /> },
     ],
@@ -35,49 +34,27 @@ const NAV: NavSection[] = [
   {
     label: 'Knowledge',
     items: [
-      { id: 'docs',    label: 'Docs',    icon: <BookOpen  size={iconSize} /> },
-      { id: 'news',    label: 'News',    icon: <Newspaper size={iconSize} /> },
-      { id: 'memory',  label: 'Memory',  icon: <Brain     size={iconSize} /> },
-      { id: 'content', label: 'Content', icon: <FileText size={iconSize} /> },
+      { id: 'docs',   label: 'Docs',   icon: <BookOpen  size={iconSize} /> },
+      { id: 'news',   label: 'News',   icon: <Newspaper size={iconSize} /> },
+      { id: 'memory', label: 'Memory', icon: <Brain     size={iconSize} /> },
     ],
   },
   {
-    label: 'Projects',
+    label: 'Build',
     items: [
       { id: 'projects',  label: 'Projects',  icon: <FolderKanban size={iconSize} /> },
       { id: 'inventory', label: 'Inventory', icon: <Package      size={iconSize} /> },
-      { id: 'feedback',  label: 'Feedback',  icon: <ThumbsUp     size={iconSize} /> },
+      { id: 'factory',   label: 'Ideas',     icon: <Lightbulb    size={iconSize} /> },
     ],
   },
   {
-    label: 'Analytics',
+    label: 'AI Ops',
     items: [
-      { id: 'ops',         label: 'Ops',           icon: <Radar        size={iconSize} /> },
-      { id: 'evaluations', label: 'Evaluations',   icon: <Target       size={iconSize} /> },
-      { id: 'harness',     label: 'Harness Bench', icon: <FlaskConical size={iconSize} /> },
-      { id: 'flowmap',     label: 'Flow Map',      icon: <Workflow     size={iconSize} /> },
-    ],
-  },
-  {
-    label: 'Monitoring',
-    items: [
-      { id: 'brain',    label: 'Brain',    icon: <BrainCircuit size={iconSize} /> },
-      { id: 'flow',     label: 'Flow',     icon: <GitBranch    size={iconSize} /> },
-      { id: 'alerts',   label: 'Alerts',   icon: <Bell         size={iconSize} /> },
-      { id: 'security', label: 'Security', icon: <Shield       size={iconSize} /> },
-    ],
-  },
-  {
-    label: 'Platform',
-    items: [
-      { id: 'openclaw', label: 'OpenClaw', icon: <Activity size={iconSize} /> },
-      { id: 'hermes',   label: 'Hermes',   icon: <Gauge    size={iconSize} /> },
-    ],
-  },
-  {
-    label: 'People',
-    items: [
-      { id: 'workspace', label: 'Workspace', icon: <Users size={iconSize} /> },
+      { id: 'activity',    label: 'Activity',   icon: <Activity     size={iconSize} /> },
+      { id: 'usage',       label: 'Usage',      icon: <Radar        size={iconSize} /> },
+      { id: 'harness',     label: 'Benchmarks', icon: <FlaskConical size={iconSize} /> },
+      { id: 'evaluations', label: 'Evals',      icon: <Target       size={iconSize} /> },
+      { id: 'health',      label: 'Health',     icon: <HeartPulse   size={iconSize} /> },
     ],
   },
 ]
@@ -126,12 +103,12 @@ export function Sidebar({ activeView, onNavigate }: SidebarProps) {
   }, [])
 
   const getBadge = (id: View): number | undefined => {
-    // Roll tasks + approvals + inbox badge into the combined Tasks nav item
-    if (id === 'tasks') {
-      const total = (tasksBadge ?? 0) + (approvalsBadge ?? 0) + (inboxBadge ?? 0)
+    // The To-Do nav item now hosts To-Do + Tasks + Approvals + Inbox, so roll all
+    // their open counts into its single badge.
+    if (id === 'todos') {
+      const total = (todosBadge ?? 0) + (tasksBadge ?? 0) + (approvalsBadge ?? 0) + (inboxBadge ?? 0)
       return total > 0 ? total : undefined
     }
-    if (id === 'todos') return todosBadge
     if (id === 'tobuy') return toBuyBadge
     return undefined
   }
