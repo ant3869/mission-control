@@ -12,12 +12,13 @@ import {
   ListTodo, Bell, FolderKanban, Radar, ArrowRight, ArrowUpRight,
   ShieldAlert, AlertTriangle, CheckCircle2, Circle, Flame,
   Activity, Cpu, Coins, Link2, Zap, CalendarDays, Inbox, ServerCrash, TrendingUp,
+  HeartPulse, MemoryStick,
 } from 'lucide-react'
 import {
   radar, system, projects as projectsApi, approvals as approvalsApi,
-  inbox, links,
+  inbox, links, agentCron,
   type RadarUsageResponse, type SystemResponse, type LiveProject, type LiveApproval,
-  type InboxItem, type LinkItem,
+  type InboxItem, type LinkItem, type AgentCronJob,
 } from '../lib/api'
 import { Histogram, SegmentBar, Donut, fmtNum } from '../components/charts'
 import { isRefreshPaused } from '../lib/refreshBus'
@@ -204,6 +205,21 @@ function buildAttention(
     })
   }
 
+  // V8 heap pressure — a heap-limit breach is what crashed OpenClaw before.
+  const heapPct = sys?.host?.heapUsedPct
+  if (sys?.host?.heapCritical || (heapPct != null && heapPct >= 80)) {
+    items.push({
+      key:    'sys-heap',
+      weight: 1,
+      color:  ACCENT.red,
+      icon:   <MemoryStick size={14} />,
+      title:  `Node heap at ${heapPct}% of capacity`,
+      sub:    `${sys?.host?.heapUsedMb}MB used · out-of-memory risk`,
+      view:   'health',
+      tab:    'system',
+    })
+  }
+
   return items.sort((a, b) => a.weight - b.weight).slice(0, 6)
 }
 
@@ -300,6 +316,70 @@ function EmptyNote({ icon, text }: { icon: React.ReactNode; text: string }) {
   )
 }
 
+// ─── Heartbeat monitor widget ─────────────────────────────────────────────────
+// Compact at-a-glance card: last heartbeat tick, what it did, and a live
+// countdown to the next scheduled tick (from the agent's cron cadence).
+
+function fmtCountdown(ms: number): string {
+  if (ms <= 0) return 'due now'
+  const s = Math.floor(ms / 1000)
+  if (s < 60) return `${s}s`
+  const m = Math.floor(s / 60)
+  if (m < 60) return `${m}m ${s % 60}s`
+  const h = Math.floor(m / 60)
+  if (h < 24) return `${h}h ${m % 60}m`
+  return `${Math.floor(h / 24)}d ${h % 24}h`
+}
+
+function HeartbeatWidget({ job, now, onOpen }: { job: AgentCronJob | null; now: Date; onOpen: () => void }) {
+  const lastMs = job?.lastRunAt ? new Date(job.lastRunAt).getTime() : 0
+  const nextMs = job?.nextRunAt ? new Date(job.nextRunAt).getTime() : 0
+  const sinceLast = lastMs ? now.getTime() - lastMs : Infinity
+  // A healthy tick is recent; if the last beat is well past a full interval, flag it.
+  const beating = isFinite(sinceLast) && sinceLast < 90 * 60_000
+  const countdownMs = nextMs ? nextMs - now.getTime() : 0
+  const accent = !job ? ACCENT.muted : beating ? ACCENT.green : ACCENT.amber
+
+  return (
+    <button
+      onClick={onOpen}
+      className="home-rise group flex flex-col gap-2 px-5 py-4 rounded-xl bg-card border border-border hover:bg-card-hover transition-all duration-200 text-left"
+      style={{ animationDelay: '300ms' }}
+    >
+      <div className="flex items-center gap-2 text-text-muted">
+        <span className="relative flex w-3.5 h-3.5 items-center justify-center" style={{ color: accent }}>
+          {beating && <span className="absolute inline-flex w-2.5 h-2.5 rounded-full opacity-50 animate-ping" style={{ backgroundColor: accent }} />}
+          <HeartPulse size={14} />
+        </span>
+        <span className="text-[10px] font-semibold uppercase tracking-wider">Heartbeat</span>
+        <span className="ml-auto text-[10px] font-medium" style={{ color: accent }}>
+          {!job ? 'no data' : beating ? 'healthy' : 'stale'}
+        </span>
+      </div>
+
+      {!job ? (
+        <p className="text-xs text-text-muted">No heartbeat ticks captured yet.</p>
+      ) : (
+        <>
+          <div className="flex items-baseline gap-2">
+            <span className="text-2xl font-bold tabular-nums leading-none" style={{ color: accent }}>
+              {nextMs ? fmtCountdown(countdownMs) : '—'}
+            </span>
+            <span className="text-[10px] text-text-muted">{nextMs ? 'to next tick' : 'cadence unknown'}</span>
+          </div>
+          <div className="flex flex-col gap-0.5">
+            <span className="text-[11px] text-text-secondary truncate">
+              <span className="text-text-muted">Last:</span> {job.lastRunLabel || agoShort(job.lastRunAt ?? '')}
+              {job.schedule ? ` · ${job.schedule}` : ''}
+            </span>
+            {job.sample && <span className="text-[10px] text-text-muted truncate">{job.sample.replace(/\s+/g, ' ').slice(0, 90)}</span>}
+          </div>
+        </>
+      )}
+    </button>
+  )
+}
+
 // ─── View ─────────────────────────────────────────────────────────────────────
 
 export function Home({ onNavigate }: { onNavigate: (view: View) => void }) {
@@ -312,10 +392,11 @@ export function Home({ onNavigate }: { onNavigate: (view: View) => void }) {
   const [projects,  setProjects]  = useState<LiveProject[]>([])
   const [usage,     setUsage]     = useState<RadarUsageResponse | null>(null)
   const [sys,       setSys]       = useState<SystemResponse | null>(null)
+  const [cronJobs,  setCronJobs]  = useState<AgentCronJob[]>([])
   const [loaded,    setLoaded]    = useState(false)
 
   const load = useCallback(async () => {
-    const [tRes, alRes, apRes, inRes, liRes, prRes, usRes, syRes] = await Promise.allSettled([
+    const [tRes, alRes, apRes, inRes, liRes, prRes, usRes, syRes, hbRes] = await Promise.allSettled([
       fetch('/api/todos').then(r => r.json()),
       fetch('/api/alerts/active').then(r => r.json()),
       approvalsApi.list(),
@@ -324,6 +405,7 @@ export function Home({ onNavigate }: { onNavigate: (view: View) => void }) {
       projectsApi.list(),
       radar.usage(7),
       system.components(),
+      agentCron.openclaw(),
     ])
     if (tRes.status  === 'fulfilled') setTodos(tRes.value.todos ?? [])
     if (alRes.status === 'fulfilled') setAlerts(alRes.value.alerts ?? [])
@@ -336,6 +418,7 @@ export function Home({ onNavigate }: { onNavigate: (view: View) => void }) {
     if (prRes.status === 'fulfilled') setProjects(prRes.value.projects ?? [])
     if (usRes.status === 'fulfilled') setUsage(usRes.value)
     if (syRes.status === 'fulfilled') setSys(syRes.value)
+    if (hbRes.status === 'fulfilled') setCronJobs(hbRes.value.jobs ?? [])
     setLoaded(true)
   }, [])
 
@@ -359,7 +442,14 @@ export function Home({ onNavigate }: { onNavigate: (view: View) => void }) {
   const sysErrors    = components.filter(c => c.status === 'error' || c.status === 'offline')
   const activeProjects = projects.filter(p => p.status === 'active').length
   const attention    = buildAttention(todos, alerts, pending, sys)
-  const criticalAttn = alerts.some(a => a.severity === 'critical') || sysErrors.some(c => c.status === 'error')
+  const heapCritical = !!sys?.host?.heapCritical || (sys?.host?.heapUsedPct ?? 0) >= 80
+  const criticalAttn = alerts.some(a => a.severity === 'critical') || sysErrors.some(c => c.status === 'error') || heapCritical
+
+  // Heartbeat job: prefer an explicitly heartbeat/health-named cron, else the
+  // most frequently-running scheduled job (closest to a recurring tick).
+  const heartbeatJob = cronJobs.find(j => /heartbeat|health|check-?in|pulse/i.test(j.name))
+    ?? [...cronJobs].sort((a, b) => b.runCount - a.runCount)[0]
+    ?? null
 
   const statusColor = criticalAttn ? ACCENT.red : attention.length > 0 ? ACCENT.amber : ACCENT.green
   const statusText  = criticalAttn
@@ -512,7 +602,7 @@ export function Home({ onNavigate }: { onNavigate: (view: View) => void }) {
       <div className="max-w-[1400px] mx-auto p-4 lg:p-6 space-y-4">
 
         {/* ─── Command metrics ─────────────────────────────────────────────── */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3">
           <StatTile icon={<ListTodo size={14} />} label="Open to-dos"
             sub={overdueCount > 0 ? `${overdueCount} overdue — act now` : 'nothing overdue'}
             value={openTodos.length} accent={overdueCount > 0 ? ACCENT.red : ACCENT.blue}
@@ -529,6 +619,7 @@ export function Home({ onNavigate }: { onNavigate: (view: View) => void }) {
             sub={`${projects.length} total tracked`}
             value={activeProjects} accent={ACCENT.teal}
             delay={240} onClick={() => onNavigate('projects')} />
+          <HeartbeatWidget job={heartbeatJob} now={clock} onOpen={() => openHubTab('activity', 'live')} />
         </div>
 
         {/* ─── Priority queue ──────────────────────────────────────────────── */}

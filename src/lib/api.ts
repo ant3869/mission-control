@@ -165,6 +165,15 @@ export interface SystemHostInfo {
   rssMb:       number
   heapUsedMb:  number
   uptimeSec:   number
+  // V8 heap budget (added for the heap/process health monitor)
+  heapTotalMb?:    number
+  heapCapacityMb?: number   // configured ceiling used for the gauge
+  heapLimitMb?:    number   // live V8 heap_size_limit
+  externalMb?:     number
+  arrayBuffersMb?: number
+  heapUsedPct?:    number   // heapUsed / capacity, 0..100
+  heapCritical?:   boolean  // true once usage ≥ 80% of capacity
+  capacitySource?: 'flag' | 'v8' | 'default'
 }
 
 export interface SystemResponse {
@@ -174,8 +183,21 @@ export interface SystemResponse {
   source:     string
 }
 
+export type ConnectivityStatus = 'ok' | 'degraded' | 'down'
+export interface ConnectivityIndicator {
+  id:     string
+  label:  string
+  status: ConnectivityStatus
+  detail: string
+}
+export interface ConnectivityResponse {
+  indicators: ConnectivityIndicator[]
+  fetchedAt:  string
+}
+
 export const system = {
-  components: () => get<SystemResponse>('/system/components'),
+  components:   () => get<SystemResponse>('/system/components'),
+  connectivity: () => get<ConnectivityResponse>('/system/connectivity'),
 }
 
 // ─── Radar ────────────────────────────────────────────────────────────────────
@@ -915,7 +937,29 @@ export const memoryOps = {
     sync:         () => post<{ indexed: number; total: number; error?: string }>('/memory/disk/sync', {}),
     index:        () => get<DailyIndexMeta>('/memory/disk/index'),
     search:       (q: string) => get<{ q: string; results: DailySearchHit[]; index: DailyIndexMeta }>('/memory/disk/search', { q }),
+    ragSearch:    (q: string, limit = 8) => get<RagSearchResponse>('/memory/disk/rag-search', { q, limit }),
   },
+}
+
+// LanceDB RAG search playground — top-N recalled memory chunks for a query.
+export interface RagSearchHit {
+  snippet:        string
+  source:         string
+  startLine:      number | null
+  endLine:        number | null
+  score:          number   // 0..1 lexical match confidence
+  recallCount:    number
+  conceptTags:    string[]
+  lastRecalledAt: string | null
+}
+export interface RagSearchResponse {
+  q:          string
+  results:    RagSearchHit[]
+  method:     'lexical'
+  total:      number
+  updatedAt?: string | null
+  error?:     string
+  fetchedAt:  string
 }
 
 // ─── Docs ─────────────────────────────────────────────────────────────────────

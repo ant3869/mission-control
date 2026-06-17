@@ -24,6 +24,7 @@ import {
   type MemoryOpsOverview, type MemoryHealth, type MemoryFileInfo,
   type DailyLogMeta, type DreamMeta, type DreamEvent, type RecallSummary,
   type DailySearchHit, type DailyIndexMeta, type MemoryDiskSummary,
+  type RagSearchHit,
 } from '../lib/api'
 
 // ─── Shared config ──────────────────────────────────────────────────────────────
@@ -866,6 +867,146 @@ function ConsolidationTab() {
   )
 }
 
+// ══════════════════════════════════════════════════════════════════════════════
+// Tab 7 — RAG Playground (query the LanceDB recall store)
+// ══════════════════════════════════════════════════════════════════════════════
+
+function scoreColor(score: number): string {
+  if (score >= 0.66) return '#34d399'
+  if (score >= 0.33) return '#fbbf24'
+  return '#60a5fa'
+}
+
+function PlaygroundTab() {
+  const [query, setQuery] = useState('')
+  const [limit, setLimit] = useState(8)
+  const [results, setResults] = useState<RagSearchHit[] | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+  const [ranAt, setRanAt] = useState('')
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => { inputRef.current?.focus() }, [])
+
+  const run = useCallback(async (q: string) => {
+    const trimmed = q.trim()
+    if (trimmed.length < 2) { setResults(null); setErr(null); return }
+    setLoading(true); setErr(null)
+    try {
+      const r = await memoryOps.disk.ragSearch(trimmed, limit)
+      setResults(r.results)
+      setRanAt(r.updatedAt ? `store updated ${timeAgo(r.updatedAt)}` : '')
+      if (r.error) setErr(r.error)
+    } catch (e: any) { setErr(e.message); setResults([]) }
+    finally { setLoading(false) }
+  }, [limit])
+
+  const examples = ['When did I adopt my cat?', 'project deadlines', 'hardware inventory', 'agent preferences']
+
+  return (
+    <div className="flex flex-col h-full overflow-hidden">
+      {/* Search bar */}
+      <div className="px-6 pt-4 pb-3 border-b border-border shrink-0">
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-1 px-3 py-2 rounded-lg bg-card border border-border focus-within:border-blue-500/60 transition-colors">
+            <Search size={14} className="text-text-muted shrink-0" />
+            <input
+              ref={inputRef}
+              value={query}
+              onChange={e => setQuery(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') run(query) }}
+              placeholder="Ask what the agent remembers… e.g. “When did I adopt my cat?”"
+              className="flex-1 bg-transparent text-sm text-text-primary placeholder-text-muted outline-none"
+            />
+            {query && <button onClick={() => { setQuery(''); setResults(null); inputRef.current?.focus() }}><CircleSlash size={13} className="text-text-muted hover:text-text-secondary" /></button>}
+          </div>
+          <div className="relative">
+            <select value={limit} onChange={e => setLimit(Number(e.target.value))}
+              className="appearance-none pl-3 pr-7 py-2 rounded-lg border border-border bg-card text-xs text-text-secondary outline-none focus:border-blue-500/60">
+              {[5, 8, 12, 20].map(n => <option key={n} value={n}>Top {n}</option>)}
+            </select>
+            <ChevronRight size={11} className="absolute right-2 top-1/2 -translate-y-1/2 rotate-90 text-text-muted pointer-events-none" />
+          </div>
+          <button onClick={() => run(query)} disabled={loading || query.trim().length < 2}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-xs font-semibold text-white transition-colors">
+            {loading ? <RefreshCw size={13} className="animate-spin" /> : <Search size={13} />}
+            Search
+          </button>
+        </div>
+        <div className="flex items-center gap-2 mt-2 flex-wrap">
+          <span className="text-xxs text-text-muted">Try:</span>
+          {examples.map(ex => (
+            <button key={ex} onClick={() => { setQuery(ex); run(ex) }}
+              className="px-2 py-0.5 rounded border border-border-subtle bg-card text-xxs text-text-secondary hover:bg-card-hover hover:text-text-primary transition-colors">
+              {ex}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Results */}
+      <div className="flex-1 overflow-y-auto px-6 py-4">
+        {err && (
+          <div className="flex items-start gap-2 mb-3 px-3 py-2 rounded border border-amber-900/40 bg-amber-950/20 text-amber-300 max-w-3xl">
+            <AlertCircle size={12} className="shrink-0 mt-0.5" /><p className="text-xxs leading-snug">{err}</p>
+          </div>
+        )}
+        {results === null ? (
+          <div className="flex flex-col items-center justify-center h-full text-center">
+            <Database size={22} className="text-text-muted mb-2" />
+            <p className="text-sm text-text-muted">Search the agent's vector memory</p>
+            <p className="text-xxs text-text-muted mt-1 max-w-md">
+              Queries the LanceDB-backed semantic recall store and returns the top matching memory chunks, each with its source file and a match score. Matches are ranked lexically against the indexed recall chunks.
+            </p>
+          </div>
+        ) : results.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-full text-center">
+            <Search size={20} className="text-text-muted mb-2" />
+            <p className="text-sm text-text-muted">No memory chunks matched “{query.trim()}”</p>
+            <p className="text-xxs text-text-muted mt-1">Try broader terms — the recall store only holds what the agent has consolidated.</p>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-2 max-w-3xl">
+            <div className="flex items-center justify-between mb-1">
+              <p className="text-xxs text-text-muted">{results.length} chunk{results.length === 1 ? '' : 's'} retrieved</p>
+              {ranAt && <p className="text-xxs text-text-muted opacity-60">{ranAt}</p>}
+            </div>
+            {results.map((hit, i) => (
+              <div key={i} className="rounded-lg border border-border bg-card overflow-hidden">
+                <div className="flex items-center gap-2 px-3 py-2 border-b border-border-subtle bg-surface/40">
+                  <FileText size={11} className="text-text-muted shrink-0" />
+                  <span className="text-xxs font-mono text-text-secondary truncate">
+                    {hit.source}{hit.startLine != null ? `:${hit.startLine}` : ''}
+                  </span>
+                  {hit.recallCount > 0 && (
+                    <span className="px-1.5 py-0.5 rounded bg-cyan-950/40 border border-cyan-900/40 text-cyan-300 text-xxs shrink-0">recalled ×{hit.recallCount}</span>
+                  )}
+                  <div className="ml-auto flex items-center gap-1.5 shrink-0">
+                    <div className="w-16 h-1.5 rounded-full bg-base overflow-hidden">
+                      <div className="h-full rounded-full" style={{ width: `${Math.max(hit.score * 100, 3)}%`, backgroundColor: scoreColor(hit.score) }} />
+                    </div>
+                    <span className="text-xxs font-semibold tabular-nums" style={{ color: scoreColor(hit.score) }}>{hit.score.toFixed(2)}</span>
+                  </div>
+                </div>
+                <div className="px-3 py-2.5">
+                  <p className="text-xs text-text-secondary leading-relaxed whitespace-pre-wrap">{hit.snippet || '(empty chunk)'}</p>
+                  {hit.conceptTags.length > 0 && (
+                    <div className="flex flex-wrap gap-1 mt-2">
+                      {hit.conceptTags.map(t => (
+                        <span key={t} className="px-1.5 py-0.5 rounded bg-base border border-border-subtle text-xxs text-text-muted">{t}</span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ─── Small shared bits ───────────────────────────────────────────────────────────
 
 function Centered({ children }: { children: React.ReactNode }) {
@@ -933,6 +1074,7 @@ export function Memory() {
     { id: 'health',   label: 'Health',   icon: <HeartPulse size={13} />,   render: () => <HealthTab source={source} /> },
     { id: 'metrics',  label: 'Metrics',  icon: <BarChart3 size={13} />,    render: () => <MetricsTab /> },
     { id: 'recall',   label: 'Recall',   icon: <Database size={13} />,    render: () => <VectorTab /> },
+    { id: 'playground', label: 'Playground', icon: <Search size={13} />,   render: () => <PlaygroundTab /> },
     { id: 'dreaming', label: 'Dreaming', icon: <Sparkles size={13} />,     render: () => <ConsolidationTab /> },
   ]
 

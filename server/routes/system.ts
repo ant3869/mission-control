@@ -11,10 +11,54 @@ import { Router } from 'express'
 import { readFileSync, existsSync, readdirSync, statSync } from 'fs'
 import { homedir, platform, arch, release, hostname, cpus, totalmem, freemem, loadavg } from 'os'
 import { join } from 'path'
+import v8 from 'node:v8'
 import { deriveHealth, type AgentSource } from '../lib/agentEvents.js'
-import { getConnectors } from '../lib/connectors.js'
+import { getConnectors, getConnector } from '../lib/connectors.js'
+import { isConnected as openclawWsConnected } from '../lib/openclawLive.js'
+import { remoteStatus, readMemorySystemState } from '../lib/remoteMemoryFs.js'
 
 export const systemRouter = Router()
+
+// ─── V8 heap / process budget ──────────────────────────────────────────────────
+//
+// OpenClaw recently crashed on a heap-limit breach, so the dashboard surfaces the
+// Node process's live heap against its configured ceiling. The ceiling is the
+// real V8 `heap_size_limit` (which already reflects `--max-old-space-size`), but
+// if that ever reads suspiciously low we fall back to the explicit flag, then to
+// the PRD's 8 GB assumption.
+
+function parseMaxOldSpaceMb(): number | null {
+  const fromArgv = process.execArgv.find(a => a.startsWith('--max-old-space-size='))
+  const fromEnv  = (process.env.NODE_OPTIONS ?? '').match(/--max-old-space-size=(\d+)/)
+  const raw = fromArgv ? fromArgv.split('=')[1] : fromEnv?.[1]
+  const mb = raw ? Number(raw) : NaN
+  return Number.isFinite(mb) && mb > 0 ? mb : null
+}
+
+function heapInfo() {
+  const mem = process.memoryUsage()
+  const stats = v8.getHeapStatistics()
+  const v8LimitMb = Math.round(stats.heap_size_limit / 1_048_576)
+  const flagMb    = parseMaxOldSpaceMb()
+  // Capacity for the gauge: explicit flag wins (it's the operator's intent),
+  // else the live V8 limit, else the PRD default of 8 GB.
+  const capacityMb = flagMb ?? (v8LimitMb > 256 ? v8LimitMb : 8192)
+  const heapUsedMb = Math.round(mem.heapUsed / 1_048_576)
+  const heapTotalMb = Math.round(mem.heapTotal / 1_048_576)
+  const usedPct = capacityMb > 0 ? Math.round((heapUsedMb / capacityMb) * 100) : 0
+  return {
+    rssMb:        Math.round(mem.rss / 1_048_576),
+    heapUsedMb,
+    heapTotalMb,
+    heapCapacityMb: capacityMb,
+    heapLimitMb:  v8LimitMb,
+    externalMb:   Math.round((mem.external ?? 0) / 1_048_576),
+    arrayBuffersMb: Math.round(((mem as any).arrayBuffers ?? 0) / 1_048_576),
+    heapUsedPct:  usedPct,
+    heapCritical: usedPct >= 80,
+    capacitySource: flagMb ? 'flag' : v8LimitMb > 256 ? 'v8' : 'default',
+  }
+}
 
 const claudeDir = () =>
   process.env.USERPROFILE ? join(process.env.USERPROFILE, '.claude') : join(homedir(), '.claude')
@@ -124,9 +168,9 @@ function discoverPlugins(settings: Record<string, any>): PluginInfo[] {
 // ─── Host / runtime info ─────────────────────────────────────────────────────────
 
 function hostInfo() {
-  const mem = process.memoryUsage()
   const totalMb = totalmem() / 1_048_576
   const freeMb  = freemem() / 1_048_576
+  const heap = heapInfo()
   return {
     hostname:    hostname(),
     platform:    platform(),
@@ -139,9 +183,8 @@ function hostInfo() {
     totalMemMb:  Math.round(totalMb),
     freeMemMb:   Math.round(freeMb),
     usedMemPct:  totalMb > 0 ? Math.round(((totalMb - freeMb) / totalMb) * 100) : 0,
-    rssMb:       Math.round(mem.rss / 1_048_576),
-    heapUsedMb:  Math.round(mem.heapUsed / 1_048_576),
     uptimeSec:   Math.round(process.uptime()),
+    ...heap,
   }
 }
 
@@ -275,4 +318,57 @@ systemRouter.get('/components', async (_req, res) => {
     fetchedAt: now,
     source:    Object.keys(mcpServers).length > 0 ? 'claude-config' : 'defaults',
   })
+})
+
+// ─── Global connectivity strip ─────────────────────────────────────────────────
+//
+// Three at-a-glance indicators for the top navbar:
+//   1. Tailscale node — can we reach the agent host (over SSH)?
+//   2. Gateway WS     — is the persistent OpenClaw WebSocket live?
+//   3. LanceDB        — does the on-disk vector store exist & is it fresh?
+//
+// Each dot is green (ok) / amber (degraded) / red (down). All probes are cached
+// upstream and run concurrently so the strip can poll cheaply.
+
+type DotStatus = 'ok' | 'degraded' | 'down'
+interface Indicator { id: string; label: string; status: DotStatus; detail: string }
+
+systemRouter.get('/connectivity', async (_req, res) => {
+  const force = false
+  const [tailscale, lancedb] = await Promise.allSettled([
+    remoteStatus(force),
+    readMemorySystemState(force),
+  ])
+
+  // 1. Tailscale node (agent host reachability via SSH)
+  const node: Indicator = (() => {
+    if (tailscale.status !== 'fulfilled') return { id: 'tailscale', label: 'Tailscale Node', status: 'down', detail: 'probe failed' }
+    const s = tailscale.value
+    const host = s.host || 'agent host'
+    return s.reachable
+      ? { id: 'tailscale', label: 'Tailscale Node', status: 'ok', detail: `${host} reachable` }
+      : { id: 'tailscale', label: 'Tailscale Node', status: 'down', detail: s.error ? `${host}: ${s.error}` : `${host} unreachable` }
+  })()
+
+  // 2. Gateway WebSocket (OpenClaw live runtime)
+  const gateway: Indicator = (() => {
+    const conn = getConnector('openclaw')
+    const configured = !!(conn?.enabled && conn?.baseUrl)
+    if (openclawWsConnected()) return { id: 'gateway', label: 'Gateway WS', status: 'ok', detail: 'live WebSocket connected' }
+    if (!configured) return { id: 'gateway', label: 'Gateway WS', status: 'down', detail: 'not configured — add a token in Settings' }
+    return { id: 'gateway', label: 'Gateway WS', status: 'degraded', detail: 'configured, socket not connected' }
+  })()
+
+  // 3. LanceDB vector store (on-disk, via SSH)
+  const lance: Indicator = (() => {
+    if (lancedb.status !== 'fulfilled') return { id: 'lancedb', label: 'LanceDB', status: 'down', detail: 'probe failed' }
+    const st = lancedb.value
+    if (!st.lance?.present) return { id: 'lancedb', label: 'LanceDB', status: 'down', detail: 'vector store not found' }
+    const stale = !st.lance.lastWrite || Date.now() - new Date(st.lance.lastWrite).getTime() > 3 * 86_400_000
+    return stale
+      ? { id: 'lancedb', label: 'LanceDB', status: 'degraded', detail: st.lance.lastWrite ? `last write ${new Date(st.lance.lastWrite).toLocaleDateString()}` : 'no recent writes' }
+      : { id: 'lancedb', label: 'LanceDB', status: 'ok', detail: 'vector store fresh' }
+  })()
+
+  res.json({ indicators: [node, gateway, lance], fetchedAt: new Date().toISOString() })
 })
