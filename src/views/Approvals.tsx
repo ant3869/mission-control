@@ -4,6 +4,7 @@ import { clsx } from 'clsx'
 import {
   Check, X, AlertCircle, GitMerge, Send, ShoppingCart, Zap, Upload,
   Clock, RefreshCw, Loader, Plus, ChevronDown, Trash2, MessageSquare,
+  Terminal, FileDiff, Copy, CheckCheck,
 } from 'lucide-react'
 import { approvals as approvalsApi } from '../lib/api'
 import type { LiveApproval, ApprovalStatus, ApprovalType, ApprovalUrgency, ApprovalCreateBody } from '../lib/api'
@@ -225,6 +226,84 @@ function NewRequestModal({ onClose, onSave }: NewRequestModalProps) {
   )
 }
 
+// ─── Command / diff block (syntax-highlighted payload) ──────────────────────────
+// Destructive requests carry the exact shell command or file diff in `payload`.
+// Render it as a real terminal/diff block so it's scannable before approving.
+
+type PayloadKind = 'diff' | 'shell' | 'text'
+
+function detectPayloadKind(payload: string): PayloadKind {
+  const lines = payload.split('\n')
+  const diffSignals = lines.filter(l => /^(diff --git |@@ |\+\+\+ |--- |index [0-9a-f])/.test(l)).length
+  if (diffSignals > 0 || (lines.length > 1 && lines.filter(l => /^[+-]/.test(l)).length >= 2)) return 'diff'
+  // Short, command-shaped payloads: starts with $ or a common executable.
+  const firstReal = lines.map(l => l.trim()).find(Boolean) ?? ''
+  if (/^\$\s/.test(firstReal) || /^(sudo |rm |cp |mv |mkdir |chmod |chown |git |npm |npx |pnpm |yarn |node |python3? |pip |docker |kubectl |curl |wget |ssh |scp |cat |echo |bash |sh |make |cargo |go )/.test(firstReal)) return 'shell'
+  return 'text'
+}
+
+const SHELL_KEYWORDS = /\b(sudo|rm|cp|mv|mkdir|rmdir|chmod|chown|git|npm|npx|pnpm|yarn|node|python3?|pip|docker|kubectl|curl|wget|ssh|scp|cat|echo|bash|sh|make|cargo|go|tar|gzip|find|grep|sed|awk|kill|systemctl|service)\b/g
+
+function highlightShell(line: string, i: number) {
+  const stripped = line.replace(/^\$\s?/, '')
+  // Split on flags and keywords, keeping a simple, dependency-free highlighter.
+  const parts = stripped.split(/(\s+)/).map((tok, j) => {
+    if (/^-{1,2}[\w-]+/.test(tok)) return <span key={j} className="text-amber-300">{tok}</span>
+    if (SHELL_KEYWORDS.test(tok)) { SHELL_KEYWORDS.lastIndex = 0; return <span key={j} className="text-emerald-300 font-semibold">{tok}</span> }
+    return <span key={j}>{tok}</span>
+  })
+  return (
+    <div key={i} className="flex gap-2">
+      <span className="text-text-muted select-none shrink-0">$</span>
+      <span className="break-all">{parts}</span>
+    </div>
+  )
+}
+
+function diffLineClass(line: string): string {
+  if (/^\+\+\+|^---/.test(line)) return 'text-text-muted'
+  if (/^@@/.test(line)) return 'text-cyan-300'
+  if (/^diff --git|^index /.test(line)) return 'text-violet-300'
+  if (/^\+/.test(line)) return 'text-emerald-300 bg-emerald-950/30'
+  if (/^-/.test(line)) return 'text-red-300 bg-red-950/30'
+  return 'text-text-muted'
+}
+
+function CommandBlock({ payload }: { payload: string }) {
+  const [copied, setCopied] = useState(false)
+  const kind = detectPayloadKind(payload)
+  const lines = payload.replace(/\n$/, '').split('\n')
+
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(payload); setCopied(true); setTimeout(() => setCopied(false), 1500) } catch { /* ignore */ }
+  }
+
+  const label = kind === 'diff' ? 'File diff' : kind === 'shell' ? 'Shell command' : 'Payload'
+  const icon  = kind === 'diff' ? <FileDiff size={11} /> : kind === 'shell' ? <Terminal size={11} /> : <MessageSquare size={11} />
+
+  return (
+    <div className="rounded-lg border border-border-subtle bg-base overflow-hidden">
+      <div className="flex items-center gap-1.5 px-3 py-1.5 border-b border-border-subtle bg-surface/60">
+        <span className={clsx('flex items-center gap-1 text-xxs font-medium', kind === 'diff' ? 'text-violet-300' : kind === 'shell' ? 'text-emerald-300' : 'text-text-muted')}>
+          {icon}{label}
+        </span>
+        <button onClick={copy} className="ml-auto flex items-center gap-1 text-xxs text-text-muted hover:text-text-secondary transition-colors">
+          {copied ? <><CheckCheck size={10} className="text-green-400" />copied</> : <><Copy size={10} />copy</>}
+        </button>
+      </div>
+      <div className="px-3 py-2 overflow-x-auto">
+        <pre className="text-xxs font-mono leading-relaxed whitespace-pre-wrap break-all">
+          {kind === 'shell'
+            ? lines.map((l, i) => highlightShell(l, i))
+            : kind === 'diff'
+              ? lines.map((l, i) => <div key={i} className={clsx('px-1 -mx-1 rounded-sm', diffLineClass(l))}>{l || ' '}</div>)
+              : <span className="text-text-muted">{payload}</span>}
+        </pre>
+      </div>
+    </div>
+  )
+}
+
 // ─── Approval Card ────────────────────────────────────────────────────────────
 
 interface CardAction { id: string; action: 'approve' | 'reject' }
@@ -298,12 +377,8 @@ function ApprovalCard({
         )}
       </div>
 
-      {/* Payload */}
-      {item.payload && (
-        <div className="px-3 py-2 rounded bg-base border border-border-subtle overflow-x-auto">
-          <pre className="text-xxs text-text-muted font-mono leading-relaxed whitespace-pre-wrap break-all">{item.payload}</pre>
-        </div>
-      )}
+      {/* Payload — syntax-highlighted shell command / file diff */}
+      {item.payload && <CommandBlock payload={item.payload} />}
 
       {/* Resolution note */}
       {item.note && (

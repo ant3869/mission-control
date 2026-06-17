@@ -360,6 +360,69 @@ memoryOpsRouter.get('/disk/phase-signals', async (req, res) => {
   res.json(await readPhaseSignals(req.query.force === '1'))
 })
 
+// ─── RAG search playground ──────────────────────────────────────────────────────
+// Query the agent's semantic recall store (the LanceDB-backed memory chunks) and
+// return the top-N matches for a free-text query — "what does the agent actually
+// remember about X". Live embeddings aren't reachable from here, so matches are
+// ranked lexically (token overlap, weighted by each chunk's recall strength). The
+// score is normalized to 0..1 and the response is explicit that it's lexical, so
+// the UI never implies a cosine similarity it didn't compute.
+
+const RAG_STOP = new Set(['the', 'and', 'for', 'with', 'that', 'this', 'when', 'did', 'was', 'are', 'you', 'your', 'how', 'what', 'who', 'why', 'a', 'an', 'of', 'to', 'in', 'on', 'is', 'it', 'my', 'i'])
+
+function ragTokens(s: string): string[] {
+  return String(s).toLowerCase().match(/[a-z0-9]{2,}/g)?.filter(t => !RAG_STOP.has(t)) ?? []
+}
+
+memoryOpsRouter.get('/disk/rag-search', async (req, res) => {
+  const q = String(req.query.q ?? '').trim()
+  const limit = Math.min(Math.max(Number(req.query.limit ?? 8), 1), 25)
+  if (q.length < 2) return res.json({ q, results: [], method: 'lexical', total: 0, fetchedAt: new Date().toISOString() })
+
+  let recall: any
+  try { recall = await readRecallSummary(req.query.force === '1') }
+  catch (e: any) { return res.json({ q, results: [], method: 'lexical', total: 0, error: String(e?.message ?? e), fetchedAt: new Date().toISOString() }) }
+
+  const chunks: any[] = Array.isArray(recall?.topChunks) ? recall.topChunks : []
+  const queryTokens = ragTokens(q)
+  const qSet = new Set(queryTokens)
+  if (qSet.size === 0 || chunks.length === 0) {
+    return res.json({ q, results: [], method: 'lexical', total: chunks.length, updatedAt: recall?.updatedAt ?? null, fetchedAt: new Date().toISOString() })
+  }
+
+  const maxRecall = Math.max(...chunks.map(c => Number(c.totalScore) || 0), 1)
+  const scored = chunks.map(c => {
+    const text = `${c.snippet ?? ''} ${(c.conceptTags ?? []).join(' ')}`
+    const tokens = ragTokens(text)
+    if (tokens.length === 0) return { c, score: 0, overlap: 0 }
+    let hits = 0
+    const tokenSet = new Set(tokens)
+    for (const t of qSet) if (tokenSet.has(t)) hits++
+    const overlap = hits / qSet.size                                   // 0..1 query coverage
+    const recallBoost = (Number(c.totalScore) || 0) / maxRecall        // 0..1 intrinsic strength
+    // Lexical match dominates; recall strength breaks ties between similar matches.
+    const score = overlap * 0.85 + recallBoost * 0.15 * (overlap > 0 ? 1 : 0)
+    return { c, score, overlap }
+  })
+
+  const results = scored
+    .filter(s => s.overlap > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limit)
+    .map(({ c, score }) => ({
+      snippet:       String(c.snippet ?? ''),
+      source:        String(c.path ?? '').replace(/^memory\//, ''),
+      startLine:     c.startLine ?? null,
+      endLine:       c.endLine ?? null,
+      score:         Math.round(score * 1000) / 1000,
+      recallCount:   c.recallCount ?? 0,
+      conceptTags:   (c.conceptTags ?? []).slice(0, 6),
+      lastRecalledAt: c.lastRecalledAt ?? null,
+    }))
+
+  res.json({ q, results, method: 'lexical', total: chunks.length, updatedAt: recall?.updatedAt ?? null, fetchedAt: new Date().toISOString() })
+})
+
 memoryOpsRouter.get('/disk/longterm', async (req, res) => {
   const content = await readLongTermMemory(req.query.force === '1')
   if (content == null) return res.status(404).json({ error: 'MEMORY.md not found' })

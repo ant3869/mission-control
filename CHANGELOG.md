@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [Unreleased] — observability & health upgrades
+
+### Added — proactive health, live pipelines & interactive debugging
+
+- **V8 heap & process health monitor** (Health → System). The backend now reports the Node process's live heap (`heapUsed` / `heapTotal`) against its configured ceiling — the real V8 `heap_size_limit` (which reflects `--max-old-space-size`), falling back to an explicit flag, then an 8 GB assumption. The System host panel shows a heap gauge that flashes **critical** past 80% of capacity, and Home surfaces a global warning in the priority queue when the heap is at risk (the failure mode that crashed OpenClaw).
+- **Interactive Pending Approvals terminal** (Inbox → Approvals). The exact shell command or file diff in an approval's payload now renders as a syntax-highlighted block — a real terminal for shell (keyword/flag coloring) and a unified-diff view (red/green hunks) — with a copy button, alongside the existing Approve / Reject actions.
+- **Thought Flow live pipeline** (Activity → Thought Flow). A CI/CD-style animated timeline of an active session's reasoning loop — **User Prompt → Thinking → Tool Call → Tool Result → Final message** — driven by the gateway live event stream. Active nodes pulse; completed nodes turn solid; the reasoning steps stream below.
+- **Heartbeat monitor widget** (Home). A compact card showing the last heartbeat tick, what it did, and a live countdown to the next scheduled tick (derived from the agent's cron cadence).
+- **LanceDB RAG search playground** (Memory → Playground). Query the agent's semantic recall store ("When did I adopt my cat?") and get the top-N matching memory chunks back, each with its source file, match score, and concept tags. New `GET /api/memory/disk/rag-search`.
+- **Global connectivity strip** (top navbar). Three at-a-glance dots — **Tailscale node** (agent host SSH reachability), **Gateway WS** (live OpenClaw socket), and **LanceDB** (on-disk vector store) — with hover detail. New `GET /api/system/connectivity`.
+
+---
+
 ## [0.7.65] — 2026-06-16
 
 ### Added — live OpenClaw memory dashboard

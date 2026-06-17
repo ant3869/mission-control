@@ -85,6 +85,57 @@ function HostPanel({ host }: { host: SystemHostInfo }) {
           </div>
         </div>
       </div>
+      <HeapMonitor host={host} />
+    </div>
+  )
+}
+
+// ─── V8 Heap & process health ────────────────────────────────────────────────────
+// OpenClaw crashed on a heap-limit breach; this gauge shows the Node process heap
+// against its configured ceiling and flashes critical past 80%.
+
+function HeapMonitor({ host }: { host: SystemHostInfo }) {
+  const cap = host.heapCapacityMb
+  if (cap == null || host.heapUsedPct == null) return null
+  const pct = Math.min(100, host.heapUsedPct)
+  const critical = host.heapCritical || pct >= 80
+  const warn = !critical && pct >= 60
+  const barColor = critical ? 'bg-red-500' : warn ? 'bg-amber-400' : 'bg-emerald-500'
+  const capGb = (cap / 1024).toFixed(cap >= 1024 ? 1 : 2)
+  const usedGb = ((host.heapUsedMb ?? 0) / 1024).toFixed(2)
+  const capLabel = host.capacitySource === 'flag' ? '--max-old-space-size'
+    : host.capacitySource === 'v8' ? 'V8 limit' : 'assumed 8 GB'
+
+  return (
+    <div className={clsx('mt-4 pt-4 border-t border-border-subtle', critical && 'heap-critical rounded-lg -mx-2 px-2')}>
+      <style>{`
+        @keyframes heap-flash { 0%,100% { background-color: rgba(127,29,29,0.18) } 50% { background-color: rgba(127,29,29,0.42) } }
+        .heap-critical { animation: heap-flash 1.4s ease-in-out infinite }
+      `}</style>
+      <div className="flex items-center gap-2 mb-1.5">
+        <Cpu size={13} className={critical ? 'text-red-400' : warn ? 'text-amber-400' : 'text-emerald-400'} />
+        <span className="text-xs font-semibold text-text-primary">V8 Heap</span>
+        {critical && (
+          <span className="flex items-center gap-1 px-1.5 py-0.5 rounded border border-red-900/50 bg-red-950/50 text-red-400 text-xxs font-semibold animate-pulse">
+            <AlertCircle size={9} /> Critical
+          </span>
+        )}
+        <span className="ml-auto text-xs font-semibold tabular-nums" style={{ color: critical ? '#f87171' : warn ? '#fbbf24' : '#34d399' }}>
+          {pct}%
+        </span>
+      </div>
+      <div className="h-2 rounded-full bg-base overflow-hidden">
+        <div className={clsx('h-full rounded-full transition-all duration-500', barColor)} style={{ width: `${Math.max(pct, 1)}%` }} />
+      </div>
+      <div className="flex items-center justify-between mt-1 text-xxs text-text-muted tabular-nums">
+        <span>{usedGb} GB used · {host.heapTotalMb}MB allocated</span>
+        <span>capacity {capGb} GB <span className="opacity-60">({capLabel})</span></span>
+      </div>
+      {critical && (
+        <p className="mt-1.5 text-xxs text-red-300 leading-relaxed">
+          Heap usage above 80% of the configured ceiling — at risk of an out-of-memory crash. Restart the process or raise <code className="font-mono">--max-old-space-size</code>.
+        </p>
+      )}
     </div>
   )
 }

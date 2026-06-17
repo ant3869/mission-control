@@ -5,18 +5,19 @@
 //          only search whose results didn't navigate anywhere.)
 
 import { useState, useEffect, useRef, useMemo } from 'react'
+import { clsx } from 'clsx'
 import {
   Search, Loader2, X, FileText, BookOpen, CheckSquare, CornerDownLeft,
   ArrowRight, Pause, Play, Inbox as InboxIcon, Link2, ListTodo, NotebookPen,
   ShieldCheck,
 } from 'lucide-react'
 import type { View } from '../../types'
-import { approvals, inbox, links, tasks as tasksApi, todosApi } from '../../lib/api'
+import { approvals, inbox, links, tasks as tasksApi, todosApi, system, type ConnectivityIndicator } from '../../lib/api'
 import {
   createQuickNotePage, focusApprovalRequest, focusTaskCard, looksLikeUrl,
   openDocFile, openDocsTab, openInboxItem, openNotePage, openTasksTab,
 } from '../../lib/quickActions'
-import { usePaused, toggleRefreshPaused } from '../../lib/refreshBus'
+import { usePaused, toggleRefreshPaused, isRefreshPaused } from '../../lib/refreshBus'
 
 interface NavView { id: View; label: string }
 interface TopBarProps {
@@ -378,6 +379,79 @@ function clsxRow(active: boolean): string {
   ].join(' ')
 }
 
+// ─── Global connectivity strip ──────────────────────────────────────────────────
+// Three compact dots — Tailscale node, Gateway WS, LanceDB — polled from
+// /api/system/connectivity. Hover any dot for its live detail.
+
+const DOT_COLOR: Record<ConnectivityIndicator['status'], string> = {
+  ok:       'bg-green-500',
+  degraded: 'bg-amber-400',
+  down:     'bg-red-500',
+}
+const DOT_LABEL: Record<ConnectivityIndicator['status'], string> = {
+  ok: 'online', degraded: 'degraded', down: 'offline',
+}
+
+function ConnectivityStrip() {
+  const [indicators, setIndicators] = useState<ConnectivityIndicator[] | null>(null)
+  const [open, setOpen] = useState(false)
+
+  useEffect(() => {
+    let on = true
+    const load = () => {
+      if (isRefreshPaused()) return
+      system.connectivity().then(r => { if (on) setIndicators(r.indicators) }).catch(() => { if (on) setIndicators(null) })
+    }
+    load()
+    const t = setInterval(load, 20_000)
+    return () => { on = false; clearInterval(t) }
+  }, [])
+
+  const dots = indicators ?? [
+    { id: 'tailscale', label: 'Tailscale Node', status: 'down' as const, detail: 'checking…' },
+    { id: 'gateway',   label: 'Gateway WS',     status: 'down' as const, detail: 'checking…' },
+    { id: 'lancedb',   label: 'LanceDB',        status: 'down' as const, detail: 'checking…' },
+  ]
+  const worst: ConnectivityIndicator['status'] =
+    dots.some(d => d.status === 'down') ? 'down' : dots.some(d => d.status === 'degraded') ? 'degraded' : 'ok'
+
+  return (
+    <div className="relative" onMouseEnter={() => setOpen(true)} onMouseLeave={() => setOpen(false)}>
+      <button
+        className={clsx('flex items-center gap-1.5 px-2 py-1.5 rounded border transition-colors',
+          worst === 'down' ? 'border-red-900/40 bg-red-950/20' : worst === 'degraded' ? 'border-amber-900/40 bg-amber-950/20' : 'border-border bg-card hover:bg-card-hover')}
+        aria-label="Connectivity status"
+      >
+        {dots.map(d => (
+          <span key={d.id} className={clsx('w-2 h-2 rounded-full', DOT_COLOR[d.status],
+            (d.status === 'down' || d.status === 'degraded') && !indicators && 'animate-pulse',
+            d.status === 'ok' && 'opacity-90')} />
+        ))}
+      </button>
+      {open && (
+        <div className="absolute right-0 top-full mt-1.5 z-50 w-64 rounded-lg border border-border bg-card shadow-2xl p-2">
+          <p className="text-[10px] uppercase tracking-wider text-text-muted font-semibold px-1.5 pb-1.5">Connectivity</p>
+          {dots.map(d => (
+            <div key={d.id} className="flex items-start gap-2 px-1.5 py-1.5 rounded hover:bg-card-hover">
+              <span className={clsx('w-2 h-2 rounded-full shrink-0 mt-1', DOT_COLOR[d.status])} />
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs font-medium text-text-primary">{d.label}</span>
+                  <span className={clsx('text-[10px] font-semibold ml-auto',
+                    d.status === 'ok' ? 'text-green-400' : d.status === 'degraded' ? 'text-amber-400' : 'text-red-400')}>
+                    {DOT_LABEL[d.status]}
+                  </span>
+                </div>
+                <p className="text-[10px] text-text-muted leading-snug mt-0.5">{d.detail}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── TopBar ───────────────────────────────────────────────────────────────────
 
 export function TopBar({ title, onNavigate, views }: TopBarProps) {
@@ -400,6 +474,8 @@ export function TopBar({ title, onNavigate, views }: TopBarProps) {
         </div>
 
         <div className="flex items-center gap-2">
+          <ConnectivityStrip />
+
           <button onClick={() => setSearchOpen(true)}
             className="flex items-center gap-2 px-3 py-1.5 rounded border border-border bg-card hover:bg-card-hover text-text-secondary hover:text-text-primary transition-colors text-xs">
             <Search size={12} />
