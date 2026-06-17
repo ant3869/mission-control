@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
-## [Unreleased] — observability & health upgrades
+## [0.7.66] — 2026-06-17
 
 ### Added — proactive health, live pipelines & interactive debugging
 
