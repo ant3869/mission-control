@@ -18,6 +18,7 @@ import { Router, Request, Response } from 'express'
 import { existsSync, readFileSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { createHash } from 'crypto'
+import { discordNotifier } from '../lib/discordNotifier.js'
 
 export const approvalsRouter = Router()
 
@@ -134,6 +135,19 @@ approvalsRouter.post('/', (req: Request, res: Response) => {
   const items = readStore()
   items.unshift(item)
   writeStore(items)
+
+  // Notify the Discord bot so it can post an approval message with buttons.
+  discordNotifier.notify({
+    kind:        'approval',
+    id:          item.id,
+    title:       item.title,
+    description: item.description,
+    type:        item.type,
+    urgency:     item.urgency,
+    agentName:   item.agentName,
+    payload:     item.payload ?? '',
+    project:     item.project,
+  })
 
   res.status(201).json({ approval: item })
 })

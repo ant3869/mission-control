@@ -2034,3 +2034,27 @@ export const harnessBench = {
   exportUrl:  (id: string) => `/api/harness-bench/runs/${encodeURIComponent(id)}/export`,
   comparison: (mode: HbCompareMode = 'latest', groupBy: HbCompareGroupBy = 'model') => get<{ rows: HbComparisonRow[]; mode: HbCompareMode; groupBy: HbCompareGroupBy; lanes: HbLaneMeta[]; fetchedAt: string }>('/harness-bench/comparison', { mode, groupBy }),
 }
+
+
+// ─── Finance / expense ledger ─────────────────────────────────────────────────
+
+export interface FinanceEntry {
+  id:          string
+  amount:      number
+  description: string
+  category:    string
+  source:      string   // 'discord' | 'manual'
+  createdAt:   string
+}
+
+export interface FinanceResponse {
+  entries:   FinanceEntry[]
+  total:     number   // all-time sum
+  fetchedAt: string
+}
+
+export const finance = {
+  list:   ()                                          => get<FinanceResponse>('/finance'),
+  create: (body: Omit<FinanceEntry, 'id' | 'createdAt'>) => post<{ entry: FinanceEntry }>('/finance', body),
+  remove: (id: string)                               => del<{ ok: boolean }>(`/finance/${id}`),
+}

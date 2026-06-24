@@ -4,16 +4,17 @@
 //   shown as token-equivalent VALUE, not billed per-token) separate from the
 //   OpenClaw/Hermes agents (real per-token API spend), and tracks "things":
 //   To-Buy outstanding + the value of hardware already owned (Inventory).
-//   Pure aggregation over existing endpoints — no new backend route.
+//   Also shows the manual expense ledger populated via the Discord !spend command.
 
 import { useState, useEffect, useCallback } from 'react'
 import { clsx } from 'clsx'
 import {
-  RefreshCw, Sparkles, Bot, ShoppingCart, Package, TrendingUp, TrendingDown, Coins,
+  RefreshCw, Sparkles, Bot, ShoppingCart, Package, TrendingUp, TrendingDown, Coins, Receipt,
 } from 'lucide-react'
 import {
-  radar, modelOps, inventory,
+  radar, modelOps, inventory, finance,
   type RadarUsageResponse, type RadarInsightsResponse, type ModelOpsResponse, type InventoryStats,
+  type FinanceEntry,
 } from '../lib/api'
 import { SegmentBar, Histogram, fmtNum } from '../components/charts'
 
@@ -69,23 +70,26 @@ function Lane({
 }
 
 export function Spend() {
-  const [usage, setUsage]       = useState<RadarUsageResponse | null>(null)
-  const [insights, setInsights] = useState<RadarInsightsResponse | null>(null)
-  const [ops, setOps]           = useState<ModelOpsResponse | null>(null)
-  const [invStats, setInvStats] = useState<InventoryStats | null>(null)
-  const [buyOpen, setBuyOpen]   = useState<{ total: number; count: number } | null>(null)
-  const [loading, setLoading]   = useState(true)
-  const [error, setError]       = useState<string | null>(null)
+  const [usage, setUsage]           = useState<RadarUsageResponse | null>(null)
+  const [insights, setInsights]     = useState<RadarInsightsResponse | null>(null)
+  const [ops, setOps]               = useState<ModelOpsResponse | null>(null)
+  const [invStats, setInvStats]     = useState<InventoryStats | null>(null)
+  const [buyOpen, setBuyOpen]       = useState<{ total: number; count: number } | null>(null)
+  const [finEntries, setFinEntries] = useState<FinanceEntry[]>([])
+  const [finTotal, setFinTotal]     = useState(0)
+  const [loading, setLoading]       = useState(true)
+  const [error, setError]           = useState<string | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true); setError(null)
     try {
-      const [u, ins, mo, inv, tb] = await Promise.allSettled([
+      const [u, ins, mo, inv, tb, fin] = await Promise.allSettled([
         radar.usage(DAYS),
         radar.insights(DAYS),
         modelOps.summary(DAYS, 'all'),
         inventory.list(),
         fetch('/api/tobuy').then(r => r.json()),
+        finance.list(),
       ])
       if (u.status   === 'fulfilled') setUsage(u.value)
       if (ins.status === 'fulfilled') setInsights(ins.value)
@@ -94,6 +98,10 @@ export function Spend() {
       if (tb.status  === 'fulfilled') {
         const open: BuyItem[] = (tb.value?.items ?? []).filter((i: BuyItem) => !i.purchased)
         setBuyOpen({ total: open.reduce((s, i) => s + (i.estimatedPrice || 0) * (i.quantity || 1), 0), count: open.length })
+      }
+      if (fin.status === 'fulfilled') {
+        setFinEntries(fin.value.entries ?? [])
+        setFinTotal(fin.value.total ?? 0)
       }
       if ([u, mo, inv].every(r => r.status === 'rejected')) setError('Could not load spend data')
     } catch (e: any) {
@@ -120,6 +128,25 @@ export function Spend() {
   const buyCount     = buyOpen?.count ?? 0
 
   const dailyBars = (usage?.dailyUsage ?? []).map(d => ({ value: d.cost, color: ACCENT.blue, label: `${d.date}: ${money(d.cost)}` }))
+
+  // Finance ledger — current-month breakdown
+  const now = new Date()
+  const finThisMonth = finEntries.filter(e => {
+    const d = new Date(e.createdAt)
+    return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth()
+  })
+  const finMonthTotal = finThisMonth.reduce((s, e) => s + e.amount, 0)
+  const finByCategory = finThisMonth.reduce<Record<string, number>>((acc, e) => {
+    acc[e.category] = (acc[e.category] ?? 0) + e.amount
+    return acc
+  }, {})
+  const finCatSegments = Object.entries(finByCategory)
+    .sort((a, b) => b[1] - a[1])
+    .map(([label, value], i) => ({
+      value,
+      label,
+      color: [ACCENT.amber, ACCENT.teal, ACCENT.purple, ACCENT.blue, ACCENT.green][i % 5],
+    }))
 
   return (
     <div className="flex flex-col h-full">
@@ -208,6 +235,42 @@ export function Spend() {
               <span className="ml-auto text-sm font-semibold tabular-nums text-text-secondary">{money(invValue)}</span>
               <span className="text-xxs text-text-muted">· {invItems} items</span>
             </div>
+          </Lane>
+
+          {/* Lane 4 — Expense Ledger (Discord !spend + manual entries) */}
+          <Lane
+            accent={ACCENT.amber}
+            icon={<Receipt size={16} />}
+            title="Expense Ledger"
+            tag={finEntries.length > 0 ? `${finEntries.length} entries` : 'empty'}
+            primary={money(finMonthTotal)}
+            primarySub={finMonthTotal > 0
+              ? `this month · all-time total ${money(finTotal)}`
+              : finEntries.length > 0 ? `no entries this month · all-time ${money(finTotal)}` : 'log expenses with !spend in Discord'}
+          >
+            {finCatSegments.length > 0 && (
+              <>
+                <SegmentBar segments={finCatSegments} showLegend />
+                <div className="mt-3 space-y-1">
+                  {finEntries.slice(0, 6).map(e => (
+                    <div key={e.id} className="flex items-center gap-2 text-xs text-text-secondary">
+                      <span className="text-text-muted tabular-nums shrink-0">
+                        {new Date(e.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                      </span>
+                      <span className="truncate flex-1">{e.description}</span>
+                      <span className="shrink-0 rounded px-1 py-0.5 text-xxs"
+                        style={{ background: `${ACCENT.amber}1a`, color: ACCENT.amber }}>
+                        {e.category}
+                      </span>
+                      <span className="tabular-nums font-semibold shrink-0">{money(e.amount)}</span>
+                    </div>
+                  ))}
+                  {finEntries.length > 6 && (
+                    <p className="text-xxs text-text-muted pt-1">+{finEntries.length - 6} more entries</p>
+                  )}
+                </div>
+              </>
+            )}
           </Lane>
 
           {loading && !usage && (

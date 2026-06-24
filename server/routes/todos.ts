@@ -9,6 +9,7 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { researchTodo, type TodoResearchResult } from '../lib/research.js'
+import { discordNotifier } from '../lib/discordNotifier.js'
 import {
   syncTodoCalendar, removeTodoFromCalendar, defaultSyncFields,
   type TodoCalendarSyncStatus,
@@ -269,6 +270,7 @@ todosRouter.post('/:id/research', (req, res) => {
     t.research = { ...t.research, ...r, status: 'done', completedAt: new Date().toISOString(), error: '' }
     t.updatedAt = new Date().toISOString()
     saveTodos(cur)
+    discordNotifier.notify({ kind: 'research_done', itemType: 'todo', id: todo.id, title: todo.title, success: true, summary: r.summary })
   }).catch(err => {
     const cur = loadTodos()
     const t = cur.find(x => x.id === todo.id)
@@ -276,6 +278,7 @@ todosRouter.post('/:id/research', (req, res) => {
     t.research = { ...t.research, status: 'failed', error: String(err?.message ?? err).slice(0, 200) }
     t.updatedAt = new Date().toISOString()
     saveTodos(cur)
+    discordNotifier.notify({ kind: 'research_done', itemType: 'todo', id: todo.id, title: todo.title, success: false, error: String(err?.message ?? err).slice(0, 200) })
   })
 
   res.status(202).json({ todo })
