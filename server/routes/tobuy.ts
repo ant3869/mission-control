@@ -10,6 +10,7 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { researchBuyItem, type BuyResearchResult } from '../lib/research.js'
+import { discordNotifier } from '../lib/discordNotifier.js'
 
 export const toBuyRouter = Router()
 
@@ -175,6 +176,7 @@ toBuyRouter.post('/:id/research', (req, res) => {
     }
     t.updatedAt = new Date().toISOString()
     saveItems(cur)
+    discordNotifier.notify({ kind: 'research_done', itemType: 'tobuy', id: item.id, title: item.title, success: true, summary: r.summary })
   }).catch(err => {
     const cur = loadItems()
     const t = cur.find(x => x.id === item.id)
@@ -182,6 +184,7 @@ toBuyRouter.post('/:id/research', (req, res) => {
     t.research = { ...t.research, status: 'failed', error: String(err?.message ?? err).slice(0, 200) }
     t.updatedAt = new Date().toISOString()
     saveItems(cur)
+    discordNotifier.notify({ kind: 'research_done', itemType: 'tobuy', id: item.id, title: item.title, success: false, error: String(err?.message ?? err).slice(0, 200) })
   })
 
   res.status(202).json({ item })

@@ -12,6 +12,7 @@ import { randomUUID } from 'crypto'
 import { DatabaseSync } from 'node:sqlite'
 import { isLive } from '../lib/connectors.js'
 import { researchItem } from '../lib/research.js'
+import { discordNotifier } from '../lib/discordNotifier.js'
 import { suggestProjects, dedupeIdeas, type ProjectBacklogContext } from '../lib/projectSuggestions.js'
 
 export const inventoryRouter = Router()
@@ -746,10 +747,12 @@ inventoryRouter.post('/:id/research', (req, res) => {
         datasheetUrl: r.datasheetUrl, sources: r.sources, enriched: true, addedBy: source,
       }, cur)
       dbSave({ ...merged, id: cur.id, createdAt: cur.createdAt, updatedAt: new Date().toISOString(), researchStatus: 'done', researchError: '' })
+      discordNotifier.notify({ kind: 'research_done', itemType: 'inventory', id: snap.id, title: snap.name, success: true, summary: r.summary })
     }).catch(err => {
       const cur = loadItem(snap.id)
       if (!cur) return
       dbSave({ ...cur, researchStatus: 'failed', researchError: String(err?.message ?? err).slice(0, 200), updatedAt: new Date().toISOString() })
+      discordNotifier.notify({ kind: 'research_done', itemType: 'inventory', id: snap.id, title: snap.name, success: false, error: String(err?.message ?? err).slice(0, 200) })
     })
 
     res.json({ ok: true, status: 'pending', source })

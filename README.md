@@ -23,7 +23,7 @@ The sidebar is grouped into four sections — **Work**, **Knowledge**, **Build**
 | **Home** | Landing overview — mission-control hero, an "at a glance" priority queue (alerts, overdue to-dos, pending approvals, system errors), and quick-view cards for usage, to-dos, projects, alerts, and system health. Every card deep-links to the right hub and tab. |
 | **To-Do** | Personal quick-capture list plus a built-in view switcher — **To-Do** (default), **Tasks** (kanban board), **Approvals**, and **Inbox** — so personal items and agent work live on one page. To-Do: natural-language quick add (`!crit @long tomorrow`), severity levels (low → critical), short/long horizon, due dates with overdue badges, inline editing, a one-click OpenClaw/Hermes research button (summary, action steps, links, key facts), an optional **Additional Details** sub-panel (date, time, location, phone, cost, URL, contact, category, custom fields) with smart auto-detection, and opt-in **Google Calendar sync** for dated items. **Tasks** is a status-column kanban (Active / Queue / Blocked / Completed); **Approvals** reviews agent output (approve / reject / request changes); **Inbox** is a unified priority-sorted feed of approvals, tasks, and to-dos with snooze. |
 | **To-Buy** | Personal shopping list with the same click-to-open drawer as To-Do. Quick add with priority/quantity/price tokens (`power drill !high x1 $89`), a running estimated total, and one-click OpenClaw/Hermes research that returns general info, a fair price + range, online buy links, local store options, and key specs — auto-filling the item's price estimate. |
-| **Spend** | Personal money command center. Separates **Claude Code** (a subscription — shown as token-equivalent *value*, not billed per-token) from **OpenClaw/Hermes agents** (real per-token API spend), plus a "things" lane (open To-Buy total + the value of hardware you already own). Pure aggregation over existing endpoints; 30-day trend and projected monthly. |
+| **Spend** | Personal money command center. Separates **Claude Code** (a subscription — shown as token-equivalent *value*, not billed per-token) from **OpenClaw/Hermes agents** (real per-token API spend), plus a "things" lane (open To-Buy total + the value of hardware you already own), and an **Expense Ledger** lane fed by manual entries (log via `!spend` in Discord or the API). 30-day trend, projected monthly, and this-month category breakdown. |
 | **Chats** | Browse Claude / OpenClaw / Hermes conversation sessions. See token counts, cost per session, and open the full message history for any conversation. |
 | **Calendar** | Day / Week / Month / Agenda views of your scheduled tasks and Google Calendar events, with prev / today / next navigation and an in-app event composer (create / edit / delete). |
 
@@ -60,6 +60,79 @@ Five consolidated hubs covering everything your agents do — built on local Cla
 ### Settings
 
 Configure connectors, API keys, the **Google** connection (connect / reconnect / disconnect), and application preferences.
+
+---
+
+## Discord Integration
+
+Mission Control has a bidirectional Discord bot. Set `DISCORD_BOT_TOKEN` in `.env` and the bot starts automatically with the server.
+
+### Setup
+
+1. Go to [discord.com/developers/applications](https://discord.com/developers/applications) → **New Application** → **Bot** → **Reset Token** — copy the token into `DISCORD_BOT_TOKEN`.
+2. Under **Bot → Privileged Gateway Intents**, enable **MESSAGE CONTENT INTENT**.
+3. Invite the bot to your server with OAuth2 scope `bot` and permissions: **Read Messages, Send Messages, Read Message History**.
+4. Optionally set `DISCORD_CHANNEL_IDS` (comma-separated) to limit which channels accept commands.
+5. Optionally set `DISCORD_NOTIFY_CHANNEL_ID` to a single channel where the bot will post proactive notifications.
+
+> You can reuse an existing bot token (e.g. the OpenClaw or Hermes bot) as long as it's in the same server and has the Message Content Intent enabled.
+
+---
+
+### Commands
+
+All commands start with `!`. The bot replies in the same channel with a confirmation.
+
+#### Create
+
+| Command | What it does |
+|---------|-------------|
+| `!todo <title> [high\|medium\|low\|critical] [due:YYYY-MM-DD]` | Add a to-do item |
+| `!buy <item> [$price] [high\|medium\|low]` | Add to shopping list |
+| `!spend $<amount> <description>  [category]` | Log an expense *(double space before optional category)* |
+| `!task <title> [due:YYYY-MM-DD]` | Add a task to the kanban board |
+| `!note <content>` | Save a quick note to the **Discord / Quick Capture** notebook |
+| `!inventory <name> [--research]` | Add to hardware inventory; `--research` triggers OpenClaw enrichment |
+
+#### Query
+
+| Command | What it does |
+|---------|-------------|
+| `!list todos [open\|done\|high\|critical\|all]` | List to-dos (default: open) |
+| `!list tasks [active\|queued\|done\|all]` | List tasks (default: active/queued) |
+| `!list tobuy [open\|purchased\|all]` | List shopping items |
+| `!list spend [month\|all]` | List expense entries |
+| `!list approvals [pending\|all]` | List approval requests |
+| `!agenda` | Today's calendar events + items due today or overdue |
+| `!balance` | Spending summary: this-month expenses, shopping total, inventory value |
+| `!find <term>` | Search across todos, inventory, and notes |
+| `!help` | Show all commands |
+
+#### Examples
+
+```
+!todo Renew server certificate critical due:2026-07-15
+!buy Raspberry Pi 5 $80 high
+!spend $12.50 Lunch  Food
+!inventory Arduino Mega --research
+!agenda
+!balance
+!find raspberry
+!list todos high
+```
+
+---
+
+### Proactive Notifications (`DISCORD_NOTIFY_CHANNEL_ID`)
+
+When `DISCORD_NOTIFY_CHANNEL_ID` is set, the bot pushes messages to that channel automatically:
+
+| Event | When it fires |
+|-------|--------------|
+| **Approval request** | An agent (OpenClaw/Hermes) creates a new approval — posted with **Approve ✅** / **Reject ❌** buttons; clicking resolves it without opening the UI |
+| **Research complete** | Agent research on a todo, shopping item, or inventory item finishes (success or failure) |
+| **Due-date reminders** | Todos and tasks due today or overdue — checked every 5 minutes, once per item per day |
+| **Agent alerts** | Fired alert rules (token spike, loop detected, stalled session, etc.) — checked every 2 minutes |
 
 ---
 
