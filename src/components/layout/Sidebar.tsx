@@ -26,7 +26,7 @@ const NAV: NavSection[] = [
       { id: 'home',     label: 'Home',     icon: <House         size={iconSize} /> },
       { id: 'todos',    label: 'To-Do',    icon: <ListTodo      size={iconSize} /> },
       { id: 'tobuy',    label: 'To-Buy',   icon: <ShoppingCart  size={iconSize} /> },
-      { id: 'spend',    label: 'Spend',    icon: <Wallet        size={iconSize} /> },
+      { id: 'spend',    label: 'Financials', icon: <Wallet        size={iconSize} /> },
       { id: 'council',  label: 'Chats',    icon: <MessageSquare size={iconSize} /> },
       { id: 'calendar', label: 'Calendar', icon: <Calendar      size={iconSize} /> },
     ],

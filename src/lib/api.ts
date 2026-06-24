@@ -676,6 +676,78 @@ export const inventory = {
   researchAll: () => post<{ queued: number; openclaw: number; hermes: number; skipped: number }>('/inventory/research-all', {}),
 }
 
+// ─── Financials (manual money figures) ─────────────────────────────────────────
+
+export type FinanceKind = 'asset' | 'liability'
+
+export interface FinanceEntry {
+  id:        string
+  label:     string
+  kind:      FinanceKind
+  category:  string
+  amount:    number
+  notes:     string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface FinanceSummary {
+  assets:      number
+  liabilities: number
+  netWorth:    number
+  byCategory:  Record<string, number>
+  count:       number
+}
+
+export interface FinancialsResponse {
+  entries:    FinanceEntry[]
+  summary:    FinanceSummary
+  categories: { asset: string[]; liability: string[] }
+  fetchedAt:  string
+}
+
+export type FinanceEntryBody = {
+  label:     string
+  kind?:     FinanceKind
+  category?: string
+  amount?:   number
+  notes?:    string
+}
+
+export const financials = {
+  list:   ()                                  => get<FinancialsResponse>('/financials'),
+  create: (body: FinanceEntryBody)            => post<{ entry: FinanceEntry }>('/financials', body),
+  update: (id: string, body: Partial<FinanceEntryBody>) => patch<{ entry: FinanceEntry }>(`/financials/${id}`, body),
+  remove: (id: string)                        => del<{ ok: boolean }>(`/financials/${id}`),
+}
+
+// ─── Recurring bills (derived from Google Calendar) ─────────────────────────────
+
+export type BillCategory = 'ai' | 'telecom' | 'insurance' | 'housing' | 'entertainment' | 'health' | 'utilities' | 'other'
+
+export interface Bill {
+  id:         string
+  name:       string
+  amount:     number
+  category:   BillCategory
+  isAi:       boolean
+  dueIso:     string | null
+  dueDisplay: string
+}
+
+export interface BillsResponse {
+  bills:   Bill[]
+  ai:      Bill[]
+  monthly: { total: number; aiTotal: number; byCategory: Record<string, number> }
+  count:   number
+  source:  string
+  fetchedAt: string
+}
+
+export const bills = {
+  list: () => get<BillsResponse>('/bills'),
+}
+
 // ─── Inventory Project Ideas ───────────────────────────────────────────────────
 
 export type ProjectIdeaStatus = 'new' | 'liked' | 'rejected' | 'snoozed' | 'completed'

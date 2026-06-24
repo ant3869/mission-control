@@ -468,9 +468,13 @@ export function ModelOps() {
         {/* Summary cards */}
         <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
           <MiniStat
-            label="Total spend"
+            label={scope === 'agents' ? 'API spend' : 'Token value'}
             value={loading || !s ? '—' : money(s.totalSpend)}
-            sub={s ? `${period} · ${s.spendTrendPct > 0 ? '↑' : s.spendTrendPct < 0 ? '↓' : '→'} ${Math.abs(s.spendTrendPct)}% vs prior` : ''}
+            sub={s
+              ? (scope === 'agents'
+                  ? `${period} · real API $ · ${s.spendTrendPct > 0 ? '↑' : s.spendTrendPct < 0 ? '↓' : '→'} ${Math.abs(s.spendTrendPct)}%`
+                  : `${period} · notional · Claude on subscription`)
+              : ''}
             accent="text-emerald-400"
             icon={<DollarSign size={12} />}
           />

@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.8.1] — 2026-06-24
+
+### Added — Financials hub (net worth, holdings, recurring bills)
+
+- **Financials page** (replaces the old Spend view). Six clickable stat cards at the top — **On hand**, **Net worth**, **Bills / mo**, **AI spend**, **Hardware**, **To-buy** — each opens a slide-in panel with a donut chart and full breakdown. The page replaces the old three-lane layout with a richer net-worth-focused design.
+- **Manual holdings CRUD**. Add, edit, and delete assets (cash, bank, investments, crypto, property, vehicle, etc.) and liabilities (loans, credit, mortgage, tax) directly in the UI. Stored in `data/financials.json` via the new `GET / POST / PATCH / DELETE /api/financials` endpoints.
+- **Recurring bills from Google Calendar** (`GET /api/bills`). Reads events whose description is a money amount (e.g. `$25`), dedupes by series, classifies each (AI / telecom / housing / etc.), and returns a monthly picture. The **AI spend** card distinguishes flat subscriptions (real money) from Claude Code token-equivalent value (not billed).
+- **Analytics terminology clarified** across Home, Radar, and ModelOps. Claude Code usage is now labelled "token value" or "notional" wherever it appeared as "cost" or "spend" to avoid confusion with real API billing.
+
+---
+
 ## [0.7.66] — 2026-06-17
 
 ### Added — proactive health, live pipelines & interactive debugging

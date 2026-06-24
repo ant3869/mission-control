@@ -502,7 +502,7 @@ export function Home({ onNavigate }: { onNavigate: (view: View) => void }) {
   // Telemetry ticker — duplicated once in the DOM for a seamless loop.
   const tickerItems: Array<{ label: string; value: string; color: string }> = [
     { label: 'Tokens 7d',  value: usage ? fmtNum(usage.totalTokens) : '—',          color: ACCENT.purple },
-    { label: 'Spend 7d',   value: usage ? `$${usage.totalCost.toFixed(2)}` : '—',   color: ACCENT.green },
+    { label: 'AI value 7d', value: usage ? `$${usage.totalCost.toFixed(2)}` : '—',  color: ACCENT.green },
     { label: 'Runs 7d',    value: usage ? fmtNum(usage.totalRuns) : '—',            color: ACCENT.blue },
     { label: 'Open to-dos', value: String(openTodos.length),                        color: overdueCount > 0 ? ACCENT.red : ACCENT.blue },
     { label: 'Inbox',      value: `${activeInbox} active`,                           color: activeInbox > 0 ? ACCENT.amber : ACCENT.green },
@@ -566,7 +566,7 @@ export function Home({ onNavigate }: { onNavigate: (view: View) => void }) {
                 </div>
                 <button onClick={() => onNavigate('spend')} className="group text-left">
                   <p className="text-[10px] font-semibold uppercase tracking-wider text-text-muted flex items-center gap-1.5">
-                    <TrendingUp size={10} /> Est. spend · 7 days
+                    <TrendingUp size={10} /> Token value · 7 days
                     <ArrowUpRight size={10} className="opacity-0 group-hover:opacity-100 transition-opacity" />
                   </p>
                   <p className="text-3xl font-bold tabular-nums leading-none mt-1 text-accent-green">
@@ -799,7 +799,7 @@ export function Home({ onNavigate }: { onNavigate: (view: View) => void }) {
                 <div className="grid grid-cols-3 gap-3">
                   {[
                     { label: 'Tokens', value: fmtNum(usage.totalTokens),        icon: <Cpu size={11} />,   color: ACCENT.purple },
-                    { label: 'Cost',   value: `$${usage.totalCost.toFixed(2)}`, icon: <Coins size={11} />, color: ACCENT.green },
+                    { label: 'Value',  value: `$${usage.totalCost.toFixed(2)}`, icon: <Coins size={11} />, color: ACCENT.green },
                     { label: 'Runs',   value: fmtNum(usage.totalRuns),          icon: <Zap size={11} />,   color: ACCENT.blue },
                   ].map(s => (
                     <div key={s.label} className="px-3 py-2.5 rounded-lg bg-base border border-border-subtle">

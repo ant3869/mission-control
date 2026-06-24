@@ -17,6 +17,8 @@ import { officeRouter }   from './routes/office.js'
 import { tasksRouter }    from './routes/tasks.js'
 import { todosRouter }    from './routes/todos.js'
 import { toBuyRouter }    from './routes/tobuy.js'
+import { financialsRouter } from './routes/financials.js'
+import { billsRouter }      from './routes/bills.js'
 import { projectsRouter }  from './routes/projects.js'
 import { approvalsRouter } from './routes/approvals.js'
 import { notesRouter }     from './routes/notes.js'
@@ -59,6 +61,8 @@ app.use('/api/office',   officeRouter)
 app.use('/api/tasks',    tasksRouter)
 app.use('/api/todos',    todosRouter)
 app.use('/api/tobuy',    toBuyRouter)
+app.use('/api/financials', financialsRouter)
+app.use('/api/bills',      billsRouter)
 app.use('/api/projects',  projectsRouter)
 app.use('/api/approvals', approvalsRouter)
 app.use('/api/notes',    notesRouter)

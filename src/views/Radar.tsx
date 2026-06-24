@@ -303,8 +303,8 @@ function RunRate({ data }: { data: RadarInsightsResponse['runRate'] }) {
     <div className="bg-card border border-border rounded-lg overflow-hidden">
       <div className="flex items-center gap-2 px-4 py-3 border-b border-border">
         <TrendingUp size={12} className="text-green-400" />
-        <span className="text-xxs font-semibold uppercase tracking-wider text-text-muted">Cost Run-Rate</span>
-        <span className="ml-auto text-xxs text-text-muted">based on {daysWithData} day{daysWithData !== 1 ? 's' : ''} of data</span>
+        <span className="text-xxs font-semibold uppercase tracking-wider text-text-muted">Token-value run-rate</span>
+        <span className="ml-auto text-xxs text-text-muted">notional · {daysWithData} day{daysWithData !== 1 ? 's' : ''} of data</span>
       </div>
       <div className="px-4 py-4">
         {/* Summary stats */}
@@ -468,7 +468,7 @@ export function Radar() {
               ? <span className="animate-pulse">Loading usage data…</span>
               : data
               ? <><span className="text-text-secondary">
-                    {period} · {fmt(data.totalTokens)} tokens · {money(data.totalCost)}
+                    {period} · {fmt(data.totalTokens)} tokens · ~{money(data.totalCost)} value
                   </span>
                   {today && <>&nbsp;·&nbsp;<span className="opacity-50">today: {fmt(today.tokens)} tok</span></>}
                 </>
@@ -501,9 +501,9 @@ export function Radar() {
         {(data || loading) && (
           <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
             <StatCard
-              label="Total Cost"
+              label="Token value"
               value={loading ? '—' : money(data!.totalCost)}
-              sub={`${period} · est. from token usage`}
+              sub={`${period} · est. at API rates · not billed (subscription)`}
               icon={<DollarSign size={12} />}
               color="text-green-400"
             />
@@ -522,7 +522,7 @@ export function Radar() {
               color="text-blue-400"
             />
             <StatCard
-              label="Today"
+              label="Today (value)"
               value={loading || !today ? '—' : money(today.cost)}
               sub={loading || !today ? '' : `${today.runs} runs · ${fmt(today.tokens)} tok`}
               icon={<TrendingUp size={12} />}

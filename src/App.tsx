@@ -33,7 +33,7 @@ const VIEW_TITLES: Record<View, string> = {
   home:        'Home',
   todos:       'To-Do',
   tobuy:       'To-Buy',
-  spend:       'Spend',
+  spend:       'Financials',
   council:     'Chats',
   calendar:    'Scheduled Tasks',
   docs:        'Docs & Notes',
