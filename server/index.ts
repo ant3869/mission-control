@@ -35,6 +35,8 @@ import { harnessBenchRouter } from './routes/harnessBench.js'
 import { linksRouter }    from './routes/links.js'
 import { inboxRouter }    from './routes/inbox.js'
 import { newsRouter }     from './routes/news.js'
+import { financeRouter }  from './routes/finance.js'
+import { startDiscordBot } from './lib/discordBot.js'
 
 const app = express()
 const PORT = process.env.API_PORT ?? 3001
@@ -75,12 +77,12 @@ app.use('/api/harness-bench', harnessBenchRouter)
 app.use('/api/links',    linksRouter)
 app.use('/api/inbox',    inboxRouter)
 app.use('/api/news',     newsRouter)
+app.use('/api/finance',  financeRouter)
 
 app.get('/api/health', (_req, res) => res.json({ ok: true, ts: new Date().toISOString() }))
 
 app.listen(PORT, () => {
   console.log(`Mission Control API → http://localhost:${PORT}`)
-  // Begin capturing memory operations from the OpenClaw live stream immediately,
-  // so "the agent just remembered X" is recorded even before the UI is opened.
   startMemoryCollector()
+  startDiscordBot(PORT)
 })
