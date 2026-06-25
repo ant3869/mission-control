@@ -11,6 +11,7 @@ import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { researchBuyItem, type BuyResearchResult } from '../lib/research.js'
 import { discordNotifier } from '../lib/discordNotifier.js'
+import { emitDataChanged } from '../lib/dataEvents.js'
 
 export const toBuyRouter = Router()
 
@@ -110,6 +111,7 @@ toBuyRouter.post('/', (req, res) => {
   const items = loadItems()
   items.unshift(item)
   saveItems(items)
+  emitDataChanged('tobuy')
   res.status(201).json({ item })
 })
 

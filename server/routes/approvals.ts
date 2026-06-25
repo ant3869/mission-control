@@ -19,6 +19,7 @@ import { existsSync, readFileSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { createHash } from 'crypto'
 import { discordNotifier } from '../lib/discordNotifier.js'
+import { emitDataChanged } from '../lib/dataEvents.js'
 
 export const approvalsRouter = Router()
 
@@ -135,6 +136,7 @@ approvalsRouter.post('/', (req: Request, res: Response) => {
   const items = readStore()
   items.unshift(item)
   writeStore(items)
+  emitDataChanged('approvals')
 
   // Notify the Discord bot so it can post an approval message with buttons.
   discordNotifier.notify({

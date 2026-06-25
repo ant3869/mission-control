@@ -140,6 +140,54 @@ async function handleNote(args: string): Promise<string> {
   return `📝  **Note saved** — "${title}"`
 }
 
+async function handleAccount(args: string): Promise<string> {
+  const trimmed = args.trim()
+
+  // !account list — show holdings + net worth
+  if (!trimmed || trimmed.toLowerCase() === 'list') {
+    const { entries, summary } = await api('GET', '/api/financials')
+    const all = entries as any[]
+    if (!all.length) return '🏦  No account entries yet. Use `!account <label> $<amount> [asset|liability] [category]` to add one.'
+    const assets  = all.filter((e: any) => e.kind === 'asset')
+    const liabs   = all.filter((e: any) => e.kind === 'liability')
+    const lines: string[] = ['**🏦 Account Holdings**\n']
+    if (assets.length) {
+      lines.push('**Assets**')
+      for (const e of assets) lines.push(`• **${e.label}** — ${fmtMoney(e.amount)} *(${e.category})*`)
+    }
+    if (liabs.length) {
+      lines.push('\n**Liabilities**')
+      for (const e of liabs) lines.push(`• **${e.label}** — ${fmtMoney(e.amount)} *(${e.category})*`)
+    }
+    lines.push(`\n**Net Worth: ${fmtMoney(summary.netWorth)}**  _(assets ${fmtMoney(summary.assets)} − liabilities ${fmtMoney(summary.liabilities)})_`)
+    return fmtList(lines, '')
+  }
+
+  // Parse: <label> $<amount> [asset|liability] [category]
+  // Prefer a $-prefixed amount; fall back to bare number only if no $ found.
+  const priceMatch = trimmed.match(/\$([\d,]+(?:\.\d{1,2})?)/) ?? trimmed.match(/(?<!\w)([\d,]+(?:\.\d{1,2})?)(?!\w)/)
+  if (!priceMatch) return '❌  Include an amount — e.g. `!account "Checking" $2500 asset bank`'
+  const amount   = parseFloat(priceMatch[1].replace(/,/g, ''))
+  if (!Number.isFinite(amount) || amount < 0) return '❌  Amount must be a positive number.'
+  const matchIdx  = trimmed.indexOf(priceMatch[0])
+  const beforeAmt = trimmed.slice(0, matchIdx).trim().replace(/^["']|["']$/g, '')
+  const label = beforeAmt || 'Account'
+  const afterAmt  = trimmed.slice(matchIdx + priceMatch[0].length).trim().toLowerCase()
+  const kind: 'asset' | 'liability' = afterAmt.includes('liability') || afterAmt.includes('debt') ? 'liability' : 'asset'
+  const catWords = afterAmt.replace(/liability|asset|debt/g, '').trim().split(/\s+/).filter(Boolean)
+  const category = catWords[0] ?? (kind === 'liability' ? 'other' : 'cash')
+
+  // Upsert: update if a same-label entry exists, otherwise create
+  const { entries } = await api('GET', '/api/financials')
+  const existing = (entries as any[]).find((e: any) => e.label.toLowerCase() === label.toLowerCase())
+  if (existing) {
+    await api('PATCH', `/api/financials/${existing.id}`, { amount, kind, category })
+    return `🏦  **${label}** updated → ${fmtMoney(amount)} *(${kind} · ${category})*`
+  }
+  await api('POST', '/api/financials', { label, kind, category, amount })
+  return `🏦  **${label}** added — ${fmtMoney(amount)} *(${kind} · ${category})*`
+}
+
 async function handleInventory(args: string): Promise<string> {
   if (!args) return '❌  `!inventory <item name> [--research]`'
   const doResearch = /--research\b/i.test(args)
@@ -342,10 +390,11 @@ async function handleAgenda(): Promise<string> {
 }
 
 async function handleBalance(): Promise<string> {
-  const [finResult, buyResult, invResult] = await Promise.allSettled([
+  const [finResult, buyResult, invResult, financialsResult] = await Promise.allSettled([
     api('GET', '/api/finance'),
     api('GET', '/api/tobuy'),
     api('GET', '/api/inventory'),
+    api('GET', '/api/financials'),
   ])
 
   const now = new Date()
@@ -384,6 +433,13 @@ async function handleBalance(): Promise<string> {
     const stats = invResult.value?.stats
     if (stats) {
       parts.push(`\n📦 **Inventory** — **${stats.totalItems} items** · ~${fmtMoney(stats.totalValue)}`)
+    }
+  }
+
+  if (financialsResult.status === 'fulfilled') {
+    const { summary } = financialsResult.value
+    if (summary?.count > 0) {
+      parts.push(`\n🏦 **Net Worth** — **${fmtMoney(summary.netWorth)}**  _(assets ${fmtMoney(summary.assets)} − liabilities ${fmtMoney(summary.liabilities)})_`)
     }
   }
 
@@ -649,8 +705,10 @@ function helpText(): string {
     '`!list tobuy [open|purchased|all]`',
     '`!list spend [month|all]`',
     '`!list approvals [pending|all]`',
+    '`!account <label> $<amount> [asset|liability] [category]`  — upsert a holding',
+    '`!account list`  — net worth breakdown',
     '`!agenda`  — today\'s calendar + due items',
-    '`!balance`  — spending summary',
+    '`!balance`  — spending + net worth summary',
     '`!find <term>`  — search todos, inventory, notes',
     '',
     '`!help`  — show this message',
@@ -675,7 +733,7 @@ export function startDiscordBot(port: number | string): void {
       GatewayIntentBits.MessageContent,
       GatewayIntentBits.DirectMessages,
     ],
-    partials: [Partials.Channel],
+    partials: [Partials.Channel, Partials.Message],
   })
 
   client.once(Events.ClientReady, async (c) => {
@@ -719,7 +777,7 @@ export function startDiscordBot(port: number | string): void {
 
   // ── Text commands ─────────────────────────────────────────────────────────
   client.on(Events.MessageCreate, async (message: Message) => {
-    if (message.author.bot) return
+    if (message.author.id === client.user?.id) return
     if (!message.content.startsWith(PREFIX)) return
     if (!isAllowed(message.channelId)) return
 
@@ -740,6 +798,7 @@ export function startDiscordBot(port: number | string): void {
         case 'list':      reply = await handleList(args);          break
         case 'agenda':    reply = await handleAgenda();            break
         case 'balance':   reply = await handleBalance();           break
+        case 'account':   reply = await handleAccount(args);       break
         case 'find':      reply = await handleFind(args);          break
         case 'help':      reply = helpText();                      break
         default:          return  // ignore unknown commands silently

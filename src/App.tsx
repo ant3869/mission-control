@@ -7,6 +7,7 @@ import { ErrorBoundary } from './components/ErrorBoundary'
 import { Home } from './views/Home'                       // eager — default landing view
 import type { View } from './types'
 import { NAVIGATE_EVENT } from './lib/quickActions'
+import { startDataRefresh } from './lib/dataRefresh'
 
 // Lazy views: each becomes its own chunk, fetched on first navigation, so the
 // initial bundle is just the shell + landing page instead of all ~25 views.
@@ -84,6 +85,9 @@ export default function App() {
     setActiveView(view)
     try { localStorage.setItem(VIEW_STORAGE_KEY, view) } catch { /* ignore */ }
   }
+
+  // Start the SSE data-refresh connection once for the lifetime of the app.
+  useEffect(() => startDataRefresh(), [])
 
   // Reflect the active view in the browser tab title (history + tab identification).
   useEffect(() => { document.title = `${VIEW_TITLES[activeView]} · Mission Control` }, [activeView])

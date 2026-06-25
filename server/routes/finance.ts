@@ -7,6 +7,7 @@ import { Router } from 'express'
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
+import { emitDataChanged } from '../lib/dataEvents.js'
 
 export const financeRouter = Router()
 
@@ -63,6 +64,7 @@ financeRouter.post('/', (req, res) => {
   const entries = loadEntries()
   entries.unshift(entry)
   saveEntries(entries)
+  emitDataChanged('finance')
   res.status(201).json({ entry })
 })
 

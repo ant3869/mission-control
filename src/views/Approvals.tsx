@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { DATA_REFRESH_EVENT, type DataRefreshDetail } from '../lib/dataRefresh'
 import { useEscapeKey } from '../hooks/useEscapeKey'
 import { clsx } from 'clsx'
 import {
@@ -472,6 +473,14 @@ export function Approvals() {
   }, [])
 
   useEffect(() => { load() }, [load])
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const { domain } = (e as CustomEvent<DataRefreshDetail>).detail
+      if (domain === 'approvals') load(true)
+    }
+    window.addEventListener(DATA_REFRESH_EVENT, handler)
+    return () => window.removeEventListener(DATA_REFRESH_EVENT, handler)
+  }, [load])
 
   useEffect(() => {
     const handler = (event: Event) => {

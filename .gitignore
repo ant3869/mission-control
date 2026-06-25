@@ -49,6 +49,8 @@ data/todos.json
 data/tobuy.json
 data/links.json
 data/inbox.json
+data/financials.json
+data/finance.json
 
 # ─── CodeGraph index ─────────────────────────────────────────────────────────
 .codegraph/

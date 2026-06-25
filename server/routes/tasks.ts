@@ -2,6 +2,7 @@ import { Router } from 'express'
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs'
 import { join } from 'path'
 import { randomUUID } from 'crypto'
+import { emitDataChanged } from '../lib/dataEvents.js'
 
 export const tasksRouter = Router()
 
@@ -156,6 +157,7 @@ tasksRouter.post('/', (req, res) => {
     const tasks = loadTasks()
     tasks.unshift(task)
     saveTasks(tasks)
+    emitDataChanged('tasks')
     res.status(201).json({ task: toResponse(task) })
   } catch (err: any) {
     res.status(500).json({ error: err.message })

@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { DATA_REFRESH_EVENT, type DataRefreshDetail } from '../lib/dataRefresh'
 import { useEscapeKey } from '../hooks/useEscapeKey'
 import { clsx } from 'clsx'
 import { Plus, Clock, AlertCircle, ChevronRight, Tag, Loader2, Trash2, X, Check } from 'lucide-react'
@@ -340,6 +341,14 @@ export function Tasks() {
   }, [])
 
   useEffect(() => { load() }, [load])
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const { domain } = (e as CustomEvent<DataRefreshDetail>).detail
+      if (domain === 'tasks') load()
+    }
+    window.addEventListener(DATA_REFRESH_EVENT, handler)
+    return () => window.removeEventListener(DATA_REFRESH_EVENT, handler)
+  }, [load])
 
   useEffect(() => {
     const handler = (event: Event) => {

@@ -8,6 +8,7 @@ import { Router } from 'express'
 import { addListener as ocAddListener, recent as ocRecent, rawEvents as ocRawEvents } from '../lib/openclawLive.js'
 import { addListener as hAddListener,  recent as hRecent  } from '../lib/hermesLive.js'
 import { addListener as cAddListener,  recent as cRecent  } from '../lib/claudeLive.js'
+import { dataBus } from '../lib/dataEvents.js'
 import type { LiveEvent } from '../lib/openclawLive.js'
 
 export type WatchSource = 'openclaw' | 'hermes' | 'claude'
@@ -42,9 +43,11 @@ watchRouter.get('/stream', (req, res) => {
   const removeOC = ocAddListener(e => send({ ...e, source: 'openclaw' }))
   const removeH  = hAddListener(e  => send({ ...e, source: 'hermes'   }))
   const removeC  = cAddListener(e  => send({ ...e, source: 'claude'   }))
+  const onData   = (e: any) => { try { res.write(`data: ${JSON.stringify(e)}\n\n`) } catch { /* client gone */ } }
+  dataBus.on('changed', onData)
   const ping     = setInterval(() => { try { res.write(': ping\n\n') } catch { /* ignore */ } }, 25_000)
 
-  req.on('close', () => { clearInterval(ping); removeOC(); removeH(); removeC(); res.end() })
+  req.on('close', () => { clearInterval(ping); removeOC(); removeH(); removeC(); dataBus.off('changed', onData); res.end() })
 })
 
 watchRouter.get('/debug', (_req, res) => {

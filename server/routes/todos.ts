@@ -10,6 +10,7 @@ import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { researchTodo, type TodoResearchResult } from '../lib/research.js'
 import { discordNotifier } from '../lib/discordNotifier.js'
+import { emitDataChanged } from '../lib/dataEvents.js'
 import {
   syncTodoCalendar, removeTodoFromCalendar, defaultSyncFields,
   type TodoCalendarSyncStatus,
@@ -192,6 +193,7 @@ todosRouter.post('/', async (req, res) => {
   saveTodos(todos)
   // Opt-in: only touch Google Calendar when the user enabled sync on create.
   const result = todo.calendarSyncEnabled ? (await runCalendarSync(todo.id)) ?? todo : todo
+  emitDataChanged('todos')
   res.status(201).json({ todo: result })
 })
 

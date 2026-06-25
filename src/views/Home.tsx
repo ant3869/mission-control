@@ -7,6 +7,7 @@
 //          rounded-xl panels, muted uppercase labels, accent/10 tinted pills.
 
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { DATA_REFRESH_EVENT } from '../lib/dataRefresh'
 import { clsx } from 'clsx'
 import {
   ListTodo, Bell, FolderKanban, Radar, ArrowRight, ArrowUpRight,
@@ -425,7 +426,9 @@ export function Home({ onNavigate }: { onNavigate: (view: View) => void }) {
   useEffect(() => {
     load()
     const timer = setInterval(() => { if (!isRefreshPaused() && !document.hidden) load() }, 45_000)
-    return () => clearInterval(timer)
+    const onData = () => load()
+    window.addEventListener(DATA_REFRESH_EVENT, onData)
+    return () => { clearInterval(timer); window.removeEventListener(DATA_REFRESH_EVENT, onData) }
   }, [load])
 
   const clock = useClock()

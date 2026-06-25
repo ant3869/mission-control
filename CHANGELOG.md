@@ -6,6 +6,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.9.0] — 2026-06-25
+
+### Added — live push refresh + Discord account balances
+
+- **Auto-reload on agent push.** When any agent (claw, Hermes, or a Discord bot command) writes a new entry — todo, task, to-buy item, expense, approval, or account holding — the relevant view in Mission Control refreshes silently within milliseconds. Implemented via a `dataBus` EventEmitter in the backend that pipes `data:changed` events through the existing SSE stream at `/api/watch/stream`, and a single `EventSource` connection (`src/lib/dataRefresh.ts`) that fans events to the mounted views via a `mc:data` DOM CustomEvent.
+- **`!account` Discord command.** Agents can now update named account/holding balances directly from Discord: `!account Checking $2500 asset bank`. Upserts by label (case-insensitive) — creates on first use, updates amount/category on repeat. `!account list` returns all holdings and the current net-worth summary.
+- **`!balance` net-worth line.** The existing `!balance` command now appends a live net-worth figure (assets − liabilities) from `data/financials.json` when holdings exist.
+
+### Fixed
+
+- Discord bot was ignoring messages from other bots (blocked claw's `!todo`, `!task`, etc). Changed `if (author.bot) return` to `if (author.id === self.id) return` — the bot now ignores only its own echo.
+- Added `Partials.Message` to the discord.js client so DM messages fire `MessageCreate` events correctly.
+- Removed debug `console.log` that was logging every incoming Discord message to the API console.
+
+### Changed
+
+- `data/financials.json` and `data/finance.json` added to `.gitignore` — personal financial data should not be committed.
+- `emitDataChanged` now fires on all write operations (POST, PATCH, DELETE) for the financials route, not just POST.
+
+---
+
 ## [0.8.1] — 2026-06-24
 
 ### Added — Financials hub (net worth, holdings, recurring bills)

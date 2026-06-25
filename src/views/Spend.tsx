@@ -7,6 +7,7 @@
 //   stored in data/financials.json. Hardware/AI/To-buy stay SEPARATE auto figures.
 
 import { useState, useEffect, useCallback } from 'react'
+import { DATA_REFRESH_EVENT, type DataRefreshDetail } from '../lib/dataRefresh'
 import { clsx } from 'clsx'
 import { useEscapeKey } from '../hooks/useEscapeKey'
 import {
@@ -516,6 +517,14 @@ export function Spend() {
   }, [])
 
   useEffect(() => { load() }, [load])
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const { domain } = (e as CustomEvent<DataRefreshDetail>).detail
+      if (domain === 'finance' || domain === 'financials') load()
+    }
+    window.addEventListener(DATA_REFRESH_EVENT, handler)
+    return () => window.removeEventListener(DATA_REFRESH_EVENT, handler)
+  }, [load])
 
   const addEntry    = async (body: { label: string; kind: FinanceKind; category: string; amount: number }) => { await financials.create(body); await loadFinancials() }
   const saveEntry   = async (id: string, body: Partial<FinanceEntry>) => { await financials.update(id, body as any); await loadFinancials() }

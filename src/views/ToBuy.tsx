@@ -6,6 +6,7 @@
 //          a fair price, local options, and online buy links via OpenClaw/Hermes.
 
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { DATA_REFRESH_EVENT, type DataRefreshDetail } from '../lib/dataRefresh'
 import { clsx } from 'clsx'
 import {
   ShoppingCart, RefreshCw, AlertCircle, Plus, Trash2, Sparkles, Loader2,
@@ -606,6 +607,14 @@ export default function ToBuy() {
     pollRef.current = setInterval(() => { if (!isRefreshPaused()) load(true) }, anyPending ? 5_000 : 30_000)
     return () => { if (pollRef.current) clearInterval(pollRef.current) }
   }, [load, anyPending])
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const { domain } = (e as CustomEvent<DataRefreshDetail>).detail
+      if (domain === 'tobuy') load(true)
+    }
+    window.addEventListener(DATA_REFRESH_EVENT, handler)
+    return () => window.removeEventListener(DATA_REFRESH_EVENT, handler)
+  }, [load])
 
   async function handleAdd() {
     const parsed = parseQuickAdd(title, { priority })

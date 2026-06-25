@@ -9,6 +9,7 @@ import { Router } from 'express'
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
+import { emitDataChanged } from '../lib/dataEvents.js'
 
 export const financialsRouter = Router()
 
@@ -100,6 +101,7 @@ financialsRouter.post('/', (req, res) => {
   const entries = loadEntries()
   entries.unshift(entry)
   saveEntries(entries)
+  emitDataChanged('financials')
   res.status(201).json({ entry })
 })
 
@@ -117,6 +119,7 @@ financialsRouter.patch('/:id', (req, res) => {
   if (notes !== undefined)                         entry.notes = String(notes)
   entry.updatedAt = new Date().toISOString()
   saveEntries(entries)
+  emitDataChanged('financials')
   res.json({ entry })
 })
 
@@ -126,5 +129,6 @@ financialsRouter.delete('/:id', (req, res) => {
   const filtered = entries.filter(e => e.id !== req.params.id)
   if (filtered.length === entries.length) return res.status(404).json({ error: 'not found' })
   saveEntries(filtered)
+  emitDataChanged('financials')
   res.json({ ok: true })
 })
