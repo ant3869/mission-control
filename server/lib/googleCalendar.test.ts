@@ -83,11 +83,12 @@ test('resolveTodoDateTime: date + time → 60-min timed event (local)', () => {
 })
 
 test('resolveTodoDateTime: falls back to dueDate as all-day', () => {
-  const due = new Date(2026, 7, 3, 23, 59).toISOString()
+  // Use a fixed UTC noon time so the calendar date is unambiguous in any timezone.
+  const due = '2026-08-03T12:00:00.000Z'
   const r = resolveTodoDateTime(todo({ dueDate: due }))
   assert.ok(r)
   assert.equal(r!.allDay, true)
-  assert.equal(r!.start.getMonth(), 7)
+  assert.equal(r!.start.getMonth(), 7)   // August (0-indexed)
   assert.equal(r!.start.getDate(), 3)
 })
 
