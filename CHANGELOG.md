@@ -6,6 +6,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.12.0] — 2026-06-26
+
+### Added
+
+- **Capacitor Android & iOS support.** Mission Control can now be compiled as a native Android or iOS app. Run `npm run cap:sync` to build the web bundle and sync to native projects, then `npm run cap:android` / `npm run cap:ios` to open in Android Studio or Xcode. Requires `VITE_API_BASE_URL` to point to your server for native builds.
+- **`VITE_API_BASE_URL` env var.** Overrides the API base URL used by all frontend fetch calls — needed for native (Capacitor) builds where `localhost` resolves differently inside the device webview.
+
+### Fixed
+
+- **Hermes data on Agents / Memory / Chats views.** Live-pull mappers in `agentSources.ts` used guessed field names that didn't match the Hermes REST schema. Session mapping now reads Hermes' real `last_active` and `source` fields correctly.
+- **Agents view shows real Hermes activity.** Hermes has no agents endpoint, so it previously showed a single generic "gateway" card. Agents are now synthesized per channel from the live session list with aggregated tokens, session count, and last-active time.
+- **Memory view reflects live Hermes/OpenClaw conversations.** Memory was synthesized only from pushed webhook events; it now also derives lightweight entries from the live gateway session list (deduped against pushed entries).
+- **Agents view no longer goes blank without local Claude sessions.** The route returned early before merging platform agents when `~/.claude/projects` wasn't found; the platform merge now always runs.
+- **Saving a connector token in Settings no longer stores the masked hint.** The UI echoes a `••••`-prefixed mask back on edit; saving that mask no longer overwrites the real stored token, preventing every subsequent gateway request from 401ing.
+- **Connector test endpoint: reachable-but-401 now correctly reports `status: error`.** A valid base URL with a bad token previously showed "connected"; it now surfaces as an error.
+
+### Changed
+
+- **CORS expanded for native app origins.** `capacitor://localhost` and `ionic://localhost` are now allowed origins, required for Capacitor WebView requests to reach the Express API.
+
+---
+
 ## [0.11.0] — 2026-06-26
 
 ### Added
