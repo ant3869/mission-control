@@ -130,11 +130,12 @@ function mapHistoryMessages(messages: any[]) {
 function mapGatewaySession(source: AgentSource, s: any) {
   const id = String(pick(s, ['key', 'id', 'session_id', 'sessionId'], ''))
   const startedAt = toIso(pick(s, ['created_at', 'started_at', 'startedAt', 'start', 'first_message_at'], ''))
-  const lastActiveAt = toIso(pick(s, ['updated_at', 'last_active_at', 'lastActiveAt', 'last_message_at', 'updatedAt'], startedAt))
+  // Hermes REST uses `last_active`; OpenClaw WS uses `updatedAt`. Include both.
+  const lastActiveAt = toIso(pick(s, ['updated_at', 'last_active', 'last_active_at', 'lastActiveAt', 'last_message_at', 'updatedAt'], startedAt))
   const inputTokens = Number(pick(s, ['input_tokens', 'inputTokens'], 0)) || 0
   const outputTokens = Number(pick(s, ['output_tokens', 'outputTokens'], 0)) || 0
-  // Heartbeat/cron detection across OpenClaw's real fields (key, kind, origin.*).
-  const hbHint = [s?.key, s?.kind, s?.origin?.provider, s?.origin?.label, s?.channel].filter(Boolean).join(' ')
+  // Heartbeat/cron detection across OpenClaw (key/kind/origin.*) and Hermes (source) fields.
+  const hbHint = [s?.key, s?.kind, s?.origin?.provider, s?.origin?.label, s?.channel, s?.source].filter(Boolean).join(' ')
   return {
     id: id || `${source}-${startedAt}`,
     projectSlug: source,
@@ -144,7 +145,8 @@ function mapGatewaySession(source: AgentSource, s: any) {
     messageCount: Number(pick(s, ['message_count', 'messageCount', 'messages', 'count'], 0)) || 0,
     startedAt: startedAt || lastActiveAt,
     lastActiveAt: lastActiveAt || startedAt,
-    cwd: String(pick(s, ['workdir', 'cwd', 'channel', 'platform'], `${source}/gateway`)),
+    // Hermes carries the channel in `source`; OpenClaw in `channel`/`workdir`.
+    cwd: String(pick(s, ['workdir', 'cwd', 'channel', 'platform', 'source'], `${source}/gateway`)),
     inputTokens,
     outputTokens,
     isHeartbeat: /cron|heartbeat|schedule/i.test(hbHint),
@@ -229,7 +231,66 @@ async function liveAgents(source: AgentSource) {
     const snap = await ocSnapshot()
     return snap.reachable ? snap.agentsRaw.map(a => mapWsAgent(source, a)) : []
   }
-  return [] // Hermes has no agents endpoint; synthesized from status below
+  // Hermes exposes no agents endpoint, but it does expose sessions. Synthesize
+  // one agent per channel from the live session list so the Agents view shows
+  // real Hermes activity (tokens, sessions, last task) instead of one summary card.
+  const live = await fetchSessions(source)
+  return live.ok && live.data?.length ? sessionsToChannelAgents(source, live.data) : []
+}
+
+// Group Hermes' flat session list into per-channel "agents" with aggregated
+// usage. Field names mirror the (authoritative) Hermes REST schema in metrics.ts.
+function sessionsToChannelAgents(source: AgentSource, sessions: any[]) {
+  const groups = new Map<string, any[]>()
+  for (const s of sessions) {
+    const channel = String(s?.source ?? s?.channel ?? source)
+    const arr = groups.get(channel) ?? []
+    arr.push(s)
+    groups.set(channel, arr)
+  }
+
+  const label = source.charAt(0).toUpperCase() + source.slice(1)
+  const tsOf = (s: any) => new Date(s?.last_active ?? s?.started_at ?? 0).getTime()
+
+  const agents = [...groups.entries()].map(([channel, items]) => {
+    items.sort((a, b) => tsOf(b) - tsOf(a))
+    const latest = items[0]
+    const lastActiveAt = toIso(latest?.last_active ?? latest?.started_at) || new Date().toISOString()
+    const startedAt = toIso(items[items.length - 1]?.started_at ?? lastActiveAt) || lastActiveAt
+    const inputTokens = items.reduce((n, s) => n + (Number(s?.input_tokens) || 0), 0)
+    const outputTokens = items.reduce((n, s) => n + (Number(s?.output_tokens) || 0), 0)
+    const cost = items.reduce((n, s) => n + (Number(s?.estimated_cost_usd ?? s?.actual_cost_usd) || 0), 0)
+    const anyActive = items.some(s => s?.is_active)
+    const ageMin = (Date.now() - new Date(lastActiveAt).getTime()) / 60_000
+    const state = anyActive ? 'thinking' : ageMin > 60 ? 'idle' : ageMin > 15 ? 'sleeping' : 'reading'
+    const channelLabel = channel.charAt(0).toUpperCase() + channel.slice(1)
+    // Avoid a redundant "Hermes · Hermes" when sessions carry no channel field.
+    const name = channel === source ? label : `${label} · ${channelLabel}`
+
+    return {
+      id: `${source}-channel-${channel}`,
+      name,
+      cwd: `${source}/${channel}`,
+      state,
+      currentTask: String(latest?.title ?? latest?.preview ?? '').slice(0, 120),
+      lastTool: `channel: ${channel}`,
+      lastToolInput: '',
+      model: String(latest?.model ?? `${source}-runtime`),
+      systemPrompt: '',
+      sessionCount: items.length,
+      inputTokens,
+      outputTokens,
+      totalTokens: inputTokens + outputTokens,
+      cost,
+      lastActiveAt,
+      lastActiveAgo: fmtAgo(lastActiveAt),
+      startedAt,
+      source,
+    }
+  })
+
+  agents.sort((a, b) => new Date(b.lastActiveAt).getTime() - new Date(a.lastActiveAt).getTime())
+  return agents
 }
 
 export interface StatusProbe {
@@ -240,7 +301,7 @@ export interface StatusProbe {
   activeSessions: number | null
   latencyMs: number
   error: string | null
-  // null = not determined (only the public /api/status was probed);
+  // null = couldn't determine (e.g. only the public /api/status was probed);
   // false = gateway reachable but the token was rejected (HTTP 401/403).
   authOk: boolean | null
 }
@@ -363,8 +424,43 @@ export async function getAgents(source: AgentSource) {
   }]
 }
 
-export function getMemory(source: AgentSource) {
-  return deriveMemoryEntries(source)
+export async function getMemory(source: AgentSource) {
+  const derived = deriveMemoryEntries(source)
+  if (!isLive(source)) return derived
+
+  // Pushed webhook events give full conversation content; the live gateway pull
+  // only exposes a session list (title + preview). Synthesize lightweight memory
+  // entries from live sessions so the Memory view reflects current activity even
+  // when no events were pushed — deduped against the richer pushed entries.
+  const sessions = await getSessions(source)
+  const memSig = (name: string, content: string) => `${name}|${content.slice(0, 80)}`.toLowerCase()
+  const seen = new Set(derived.map(d => memSig(d.name, d.content)))
+
+  const live: typeof derived = []
+  for (const s of sessions.slice(0, 50)) {
+    const content = (s.firstMessage || '').trim()
+    if (!content || content === `${source} activity`) continue
+    const sig = memSig(s.title, content)
+    if (seen.has(sig)) continue
+    seen.add(sig)
+
+    const ts = new Date(s.lastActiveAt || s.startedAt).getTime()
+    const updatedAt = Number.isFinite(ts) ? ts : Date.now()
+    live.push({
+      id:          `${source}-live-${s.id}`,
+      filename:    `${source}-${s.id}.md`,
+      name:        s.isHeartbeat ? `Status: ${content.slice(0, 60)}` : (s.title || content.slice(0, 60)),
+      description: content.slice(0, 140),
+      type:        s.isHeartbeat ? 'reference' as const : 'user' as const,
+      content,
+      wordCount:   content.split(/\s+/).filter(Boolean).length,
+      updatedAt,
+      updatedAgo:  fmtAgo(new Date(updatedAt).toISOString()),
+      source,
+    })
+  }
+
+  return [...derived, ...live].sort((a, b) => b.updatedAt - a.updatedAt)
 }
 
 export async function getCron(source: AgentSource): Promise<AgentCronJob[]> {

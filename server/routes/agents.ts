@@ -262,10 +262,28 @@ export interface LiveAgent {
   startedAt:     string
 }
 
+// OpenClaw + Hermes agents (captured push events and/or live gateway pull).
+// Always merged into the Agents view, even when no local Claude projects exist.
+async function platformAgents(): Promise<LiveAgent[]> {
+  try {
+    const [oc, hm] = await Promise.all([getAgents('openclaw'), getAgents('hermes')])
+    return [...oc, ...hm] as LiveAgent[]
+  } catch (err) {
+    console.error('Failed to load agent-platform agents:', err)
+    return []
+  }
+}
+
 agentsRouter.get('/projects', async (_req, res) => {
   const projectsDir = findClaudeProjectsDir()
   if (!projectsDir) {
-    return res.json({ agents: [], fetchedAt: new Date().toISOString(), error: 'Could not locate ~/.claude/projects' })
+    const platform = await platformAgents()
+    platform.sort((a, b) => new Date(b.lastActiveAt).getTime() - new Date(a.lastActiveAt).getTime())
+    return res.json({
+      agents: platform,
+      fetchedAt: new Date().toISOString(),
+      ...(platform.length === 0 ? { error: 'Could not locate ~/.claude/projects' } : {}),
+    })
   }
 
   // Collect all JSONL files grouped by project slug
@@ -289,7 +307,13 @@ agentsRouter.get('/projects', async (_req, res) => {
       } catch { /* skip */ }
     }
   } catch {
-    return res.json({ agents: [], fetchedAt: new Date().toISOString(), error: 'Failed to read projects directory' })
+    const platform = await platformAgents()
+    platform.sort((a, b) => new Date(b.lastActiveAt).getTime() - new Date(a.lastActiveAt).getTime())
+    return res.json({
+      agents: platform,
+      fetchedAt: new Date().toISOString(),
+      ...(platform.length === 0 ? { error: 'Failed to read projects directory' } : {}),
+    })
   }
 
   const agents: LiveAgent[] = []
@@ -368,13 +392,8 @@ agentsRouter.get('/projects', async (_req, res) => {
   agents.sort((a, b) => new Date(b.lastActiveAt).getTime() - new Date(a.lastActiveAt).getTime())
 
   // Merge OpenClaw + Hermes agents (captured events and/or live gateway pull)
-  try {
-    const [oc, hm] = await Promise.all([getAgents('openclaw'), getAgents('hermes')])
-    for (const ca of [...oc, ...hm]) agents.push(ca as any)
-    agents.sort((a, b) => new Date(b.lastActiveAt).getTime() - new Date(a.lastActiveAt).getTime())
-  } catch (err) {
-    console.error('Failed to load agent-platform agents:', err)
-  }
+  agents.push(...await platformAgents())
+  agents.sort((a, b) => new Date(b.lastActiveAt).getTime() - new Date(a.lastActiveAt).getTime())
 
   res.json({ agents, fetchedAt: new Date().toISOString(), projectsDir })
 })
