@@ -41,6 +41,13 @@ function isAllowed(channelId: string): boolean {
   return ALLOWED_CHANNELS.length === 0 || ALLOWED_CHANNELS.includes(channelId)
 }
 
+const ALLOWED_USER_IDS = (process.env.DISCORD_ALLOWED_USER_IDS ?? '')
+  .split(',').map(s => s.trim()).filter(Boolean)
+
+function isAllowedUser(userId: string): boolean {
+  return ALLOWED_USER_IDS.length === 0 || ALLOWED_USER_IDS.includes(userId)
+}
+
 // ─── Shared state (set once the bot is ready) ─────────────────────────────────
 
 let apiBase      = ''
@@ -897,6 +904,10 @@ export function startDiscordBot(port: number | string): void {
     if (!interaction.isButton()) return
     const btn = interaction as ButtonInteraction
     if (btn.customId.startsWith('approve:') || btn.customId.startsWith('reject:')) {
+      if (!isAllowedUser(btn.user.id)) {
+        await btn.reply({ content: '❌ You are not authorized to use Mission Control buttons.', ephemeral: true })
+        return
+      }
       await handleApprovalButton(btn)
     }
   })
@@ -906,6 +917,7 @@ export function startDiscordBot(port: number | string): void {
     if (message.author.id === client.user?.id) return
     if (!message.content.startsWith(PREFIX)) return
     if (!isAllowed(message.channelId)) return
+    if (!isAllowedUser(message.author.id)) return
 
     const raw      = message.content.slice(PREFIX.length).trim()
     const spaceIdx = raw.indexOf(' ')
