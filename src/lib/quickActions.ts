@@ -6,13 +6,11 @@ export type TasksTabId = 'tasks' | 'approvals' | 'inbox'
 
 export const NAVIGATE_EVENT = 'mc:navigate'
 export const HUB_TAB_EVENT = 'mc:hub-tab'
-export const DOCS_TAB_EVENT = 'mc:docs-tab'
 export const NOTES_PAGE_EVENT = 'mc:notes-page'
 export const DOCS_FILE_EVENT = 'mc:docs-file'
 export const TASK_FOCUS_EVENT = 'mc:task-focus'
 export const APPROVAL_FOCUS_EVENT = 'mc:approval-focus'
 export const INBOX_ITEM_EVENT = 'mc:inbox-item'
-export const DOCS_TAB_STORAGE_KEY = 'mc:docs:tab'
 export const NOTES_PAGE_STORAGE_KEY = 'mc:notes:page'
 export const DOCS_FILE_STORAGE_KEY = 'mc:docs:file'
 export const TASK_FOCUS_STORAGE_KEY = 'mc:tasks:focus'
@@ -66,8 +64,7 @@ export function openHubTab(view: View, tab: string): void {
 }
 
 export function openDocsTab(tab: DocsTabId): void {
-  try { localStorage.setItem(DOCS_TAB_STORAGE_KEY, JSON.stringify(tab)) } catch { /* ignore */ }
-  window.dispatchEvent(new CustomEvent(DOCS_TAB_EVENT, { detail: { tab } }))
+  openHubTab('docs', tab)
 }
 
 // To-Do, Tasks, Approvals and Inbox are now tabs of one combined page (view

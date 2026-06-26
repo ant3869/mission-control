@@ -71,15 +71,45 @@ function relFuture(iso: string): string {
 
 // Extract readable text from a chat.history message's `content` (string or
 // array of {type:text|tool_use|tool_result|thinking} blocks).
-function extractMsgText(content: any): string {
-  if (typeof content === 'string') return content
+function extractMsgText(content: any, depth = 0): string {
+  if (typeof content === 'string') {
+    // OpenClaw sometimes serialises tool call/result objects as JSON strings
+    if (depth === 0) {
+      const t = content.trim()
+      if ((t.startsWith('{') || t.startsWith('[')) && t.length > 2) {
+        try { return extractMsgText(JSON.parse(t), 1) } catch {}
+      }
+    }
+    return content
+  }
+
+  // Top-level {tool, result} wrapper from OpenClaw exec events
+  if (content && typeof content === 'object' && !Array.isArray(content)) {
+    if (content.tool) {
+      const name = String(content.tool?.name ?? content.tool?.label ?? content.tool?.id ?? 'tool')
+      const input = content.tool?.input ?? {}
+      const cmd   = String(input.command ?? input.cmd ?? input.code ?? '').trim().slice(0, 120)
+      const out   = content.result ? extractMsgText(content.result?.content ?? content.result, 1) : ''
+      return [`⚙ ${name}${cmd ? `: ${cmd}` : ''}`, out ? out.slice(0, 500) : ''].filter(Boolean).join('\n')
+    }
+    if (content.text) return String(content.text)
+    if (content.content) return extractMsgText(content.content, depth + 1)
+  }
+
   if (Array.isArray(content)) {
     return content.map((b: any) => {
       if (!b || typeof b !== 'object') return typeof b === 'string' ? b : ''
       if (b.type === 'text') return String(b.text ?? '')
       if (b.type === 'thinking' || b.type === 'reasoning') return String(b.thinking ?? b.text ?? '')
-      if (b.type === 'tool_use' || b.type === 'toolUse') return `↳ tool: ${b.name ?? 'call'}`
-      if (b.type === 'tool_result' || b.type === 'toolResult') return `↳ tool result`
+      if (b.type === 'tool_use' || b.type === 'toolUse') {
+        const input = b.input ?? {}
+        const cmd   = String(input.command ?? input.cmd ?? input.code ?? '').trim().slice(0, 120)
+        return `⚙ ${b.name ?? 'tool'}${cmd ? `: ${cmd}` : ''}`
+      }
+      if (b.type === 'tool_result' || b.type === 'toolResult') {
+        const txt = extractMsgText(b.content, depth + 1)
+        return txt ? txt.slice(0, 400) : ''
+      }
       if (b.type === 'image') return '[image]'
       return String(b.text ?? '')
     }).filter(Boolean).join('\n')

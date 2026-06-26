@@ -244,8 +244,8 @@ function EventRow({ e }: { e: BrainEvent }) {
 export default function Brain() {
   const [source, setSource]         = usePersistedState<Source>('mc:brain:source', 'all')
   const [typeFilter, setTypeFilter] = usePersistedState('mc:brain:typeFilter', 'all')
-  const [limit, setLimit]           = useState(200)
-  const [tab, setTab]               = useState<'events' | 'stats' | 'loops'>('events')
+  const [limit, setLimit]           = usePersistedState<number>('mc:brain:limit', 200)
+  const [tab, setTab]               = usePersistedState<'events' | 'stats' | 'loops'>('mc:brain:tab', 'events')
   const [data, setData]             = useState<BrainResponse | null>(null)
   const [stats, setStats]           = useState<StatsResponse | null>(null)
   const [loading, setLoading]       = useState(false)

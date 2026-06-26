@@ -13,13 +13,13 @@ import {
   ListTodo, Bell, FolderKanban, Radar, ArrowRight, ArrowUpRight,
   ShieldAlert, AlertTriangle, CheckCircle2, Circle, Flame,
   Activity, Cpu, Coins, Link2, Zap, CalendarDays, Inbox, ServerCrash, TrendingUp,
-  HeartPulse, MemoryStick,
+  HeartPulse, MemoryStick, Video,
 } from 'lucide-react'
 import {
   radar, system, projects as projectsApi, approvals as approvalsApi,
-  inbox, links, agentCron,
+  inbox, links, agentCron, calendar,
   type RadarUsageResponse, type SystemResponse, type LiveProject, type LiveApproval,
-  type InboxItem, type LinkItem, type AgentCronJob,
+  type InboxItem, type LinkItem, type AgentCronJob, type CalendarEvent,
 } from '../lib/api'
 import { Histogram, SegmentBar, Donut, fmtNum } from '../components/charts'
 import { isRefreshPaused } from '../lib/refreshBus'
@@ -394,10 +394,16 @@ export function Home({ onNavigate }: { onNavigate: (view: View) => void }) {
   const [usage,     setUsage]     = useState<RadarUsageResponse | null>(null)
   const [sys,       setSys]       = useState<SystemResponse | null>(null)
   const [cronJobs,  setCronJobs]  = useState<AgentCronJob[]>([])
+  const [todayEvents, setTodayEvents] = useState<CalendarEvent[]>([])
   const [loaded,    setLoaded]    = useState(false)
 
   const load = useCallback(async () => {
-    const [tRes, alRes, apRes, inRes, liRes, prRes, usRes, syRes, hbRes] = await Promise.allSettled([
+    // Use LOCAL date parts — toISOString() returns UTC which can be a different date in your timezone
+    const _now = new Date()
+    const pad2 = (n: number) => String(n).padStart(2, '0')
+    const todayKey = `${_now.getFullYear()}-${pad2(_now.getMonth() + 1)}-${pad2(_now.getDate())}`
+    const localDateKey = (iso: string) => { const d = new Date(iso); return `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}` }
+    const [tRes, alRes, apRes, inRes, liRes, prRes, usRes, syRes, hbRes, calRes] = await Promise.allSettled([
       fetch('/api/todos').then(r => r.json()),
       fetch('/api/alerts/active').then(r => r.json()),
       approvalsApi.list(),
@@ -407,6 +413,10 @@ export function Home({ onNavigate }: { onNavigate: (view: View) => void }) {
       radar.usage(7),
       system.components(),
       agentCron.openclaw(),
+      calendar.eventsBetween(
+        new Date(_now.getFullYear(), _now.getMonth(), _now.getDate()).toISOString(),
+        new Date(_now.getFullYear(), _now.getMonth(), _now.getDate() + 1).toISOString(),
+      ),
     ])
     if (tRes.status  === 'fulfilled') setTodos(tRes.value.todos ?? [])
     if (alRes.status === 'fulfilled') setAlerts(alRes.value.alerts ?? [])
@@ -420,6 +430,16 @@ export function Home({ onNavigate }: { onNavigate: (view: View) => void }) {
     if (usRes.status === 'fulfilled') setUsage(usRes.value)
     if (syRes.status === 'fulfilled') setSys(syRes.value)
     if (hbRes.status === 'fulfilled') setCronJobs(hbRes.value.jobs ?? [])
+    if (calRes.status === 'fulfilled') {
+      const all: CalendarEvent[] = calRes.value.events ?? []
+      setTodayEvents(all.filter(e => {
+        if (!e.startIso) return false
+        // allDay events carry a bare YYYY-MM-DD string — compare directly
+        // timed events: convert to local date (not UTC) to avoid midnight boundary errors
+        const key = e.allDay ? e.startIso.slice(0, 10) : localDateKey(e.startIso)
+        return key === todayKey
+      }))
+    }
     setLoaded(true)
   }, [])
 
@@ -569,7 +589,7 @@ export function Home({ onNavigate }: { onNavigate: (view: View) => void }) {
                 </div>
                 <button onClick={() => onNavigate('spend')} className="group text-left">
                   <p className="text-[10px] font-semibold uppercase tracking-wider text-text-muted flex items-center gap-1.5">
-                    <TrendingUp size={10} /> Token value · 7 days
+                    <TrendingUp size={10} /> Claude Code value · 7d
                     <ArrowUpRight size={10} className="opacity-0 group-hover:opacity-100 transition-opacity" />
                   </p>
                   <p className="text-3xl font-bold tabular-nums leading-none mt-1 text-accent-green">
@@ -666,6 +686,66 @@ export function Home({ onNavigate }: { onNavigate: (view: View) => void }) {
                   </button>
                 </li>
               ))}
+            </ul>
+          )}
+        </section>
+
+        {/* ─── Today's schedule ───────────────────────────────────────────── */}
+        <section className="home-rise bg-card border border-border rounded-xl overflow-hidden" style={{ animationDelay: '180ms' }}>
+          <button
+            onClick={() => onNavigate('calendar')}
+            className="group flex items-center gap-2 px-4 py-3 border-b border-border-subtle w-full text-left hover:bg-card-hover transition-colors"
+          >
+            <CalendarDays size={13} className="text-accent-teal" />
+            <h2 className="text-xs font-semibold uppercase tracking-wider text-text-muted group-hover:text-text-secondary transition-colors">Today's schedule</h2>
+            <span className="ml-auto flex items-center gap-1 text-[10px] text-text-muted group-hover:text-text-secondary transition-colors">
+              open <ArrowRight size={11} className="group-hover:translate-x-0.5 transition-transform" />
+            </span>
+          </button>
+          {todayEvents.length === 0 ? (
+            <div className="flex items-center gap-2 px-4 py-4">
+              <CheckCircle2 size={14} className="text-accent-green shrink-0" />
+              <span className="text-xs text-text-muted">{loaded ? 'No events today — clear calendar.' : 'Loading calendar…'}</span>
+            </div>
+          ) : (
+            <ul className="divide-y divide-border-subtle">
+              {todayEvents.slice(0, 5).map(ev => {
+                const past = ev.startIso && !ev.allDay && new Date(ev.startIso) < new Date()
+                return (
+                  <li key={ev.id} className={clsx('flex items-center gap-3 px-4 py-2.5', past && 'opacity-50')}>
+                    <div className="shrink-0 flex flex-col items-center w-10 text-center">
+                      {ev.allDay
+                        ? <span className="text-[10px] font-semibold text-accent-teal uppercase">All day</span>
+                        : <>
+                            <span className="text-xs font-semibold text-text-primary tabular-nums leading-tight">
+                              {ev.startIso ? new Date(ev.startIso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }) : '—'}
+                            </span>
+                          </>
+                      }
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-text-primary truncate">{ev.name}</p>
+                      {(ev.location || ev.attendees.length > 1) && (
+                        <p className="text-[10px] text-text-muted truncate">
+                          {ev.location || `${ev.attendees.length} attendees`}
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      {ev.meetLink && (
+                        <a href={ev.meetLink} target="_blank" rel="noreferrer"
+                          className="flex items-center gap-1 px-2 py-0.5 rounded border border-border bg-base text-[10px] text-accent-blue hover:bg-card-hover transition-colors"
+                          onClick={e => e.stopPropagation()}>
+                          <Video size={9} /> Join
+                        </a>
+                      )}
+                    </div>
+                  </li>
+                )
+              })}
+              {todayEvents.length > 5 && (
+                <li className="px-4 py-2 text-[11px] text-text-muted">+{todayEvents.length - 5} more today</li>
+              )}
             </ul>
           )}
         </section>

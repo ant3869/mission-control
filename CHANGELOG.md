@@ -6,6 +6,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.10.0] — 2026-06-25
+
+### Added — rich tool rendering, Today's schedule, Integrations panel, Discord expansions
+
+- **Rich tool-call cards in Chats.** OpenClaw's JSON-encoded tool execution blobs now render as structured `ToolCard` components — tool name, command preview, exit code/status badge, and collapsible output — instead of raw JSON. Web-search and web-fetch results have their own layouts. Inline code, headings, and lists also render correctly now.
+- **Today's schedule on Home.** A new section shows today's calendar events in chronological order with start times, location/attendee count, and a "Join" button for Meet links. Past events are dimmed. Uses local date matching so midnight-boundary events don't drift.
+- **Integrations panel in Settings.** Displays every detected MCP server, plugin, and connected service from the office API — name, category chip, version, connection status, and error detail — so you can see the full integration map in one place.
+- **Three new Discord bot commands:** `!done <title>` marks a matching open todo complete; `!status` returns live connector health and active alert count; `!project [name]` lists all projects by status or drills into one by name.
+- **`!find` expanded.** Now searches tasks, to-buy items, and projects in addition to todos, inventory, and notes.
+- **DESIGN.md design system spec.** Authoritatively encodes Mission Control's full visual identity — all color tokens, typography scales, radius/spacing system, and component recipes — so agents and tools can reproduce the design accurately.
+- **Sidebar health badge.** The Health nav item now shows a live count of critical + warning alerts.
+- **Memory plugin-disabled banner.** If the OpenClaw memory plugin is off, a persistent amber notice appears in the Memory view explaining what's inactive.
+- **Inventory-aware empty state in Idea Factory.** When no inventory items exist the empty state surfaces a "Go to Inventory" CTA. The header subtitle now shows the live item count alongside idea count.
+
+### Changed
+
+- `ThoughtFlow` empty state is now context-aware: distinct messages for paused feed, disconnected source, and connected-but-no-session.
+- `Brain` view tab and row-limit selections are now persisted to localStorage.
+- `DocsNotes` and `ProjectsPipeline` migrated to the shared `TabHub` component; removed duplicate inline tab implementations and the now-redundant `DOCS_TAB_EVENT` / `DOCS_TAB_STORAGE_KEY` constants.
+- Discord due-date poller throttled from every 5 minutes to every 4 hours; alert poller from every 2 minutes to every 15 minutes — reduces noise for low-traffic periods.
+- `!agenda` Discord command now uses the correct calendar event field names (`startIso`, `name`, `allDay`, `meetLink`) and appends a 🎥 indicator for events with a Meet link.
+- `FinanceEntry` / `FinanceResponse` renamed to `LedgerEntry` / `LedgerResponse` in `api.ts` to distinguish the transaction ledger from the financials module.
+- Home view "Token value" label renamed to "Claude Code value" for clarity.
+
+---
+
 ## [0.9.0] — 2026-06-25
 
 ### Added — live push refresh + Discord account balances

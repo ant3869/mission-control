@@ -2110,7 +2110,7 @@ export const harnessBench = {
 
 // ─── Finance / expense ledger ─────────────────────────────────────────────────
 
-export interface FinanceEntry {
+export interface LedgerEntry {
   id:          string
   amount:      number
   description: string
@@ -2119,14 +2119,14 @@ export interface FinanceEntry {
   createdAt:   string
 }
 
-export interface FinanceResponse {
-  entries:   FinanceEntry[]
+export interface LedgerResponse {
+  entries:   LedgerEntry[]
   total:     number   // all-time sum
   fetchedAt: string
 }
 
 export const finance = {
-  list:   ()                                          => get<FinanceResponse>('/finance'),
-  create: (body: Omit<FinanceEntry, 'id' | 'createdAt'>) => post<{ entry: FinanceEntry }>('/finance', body),
-  remove: (id: string)                               => del<{ ok: boolean }>(`/finance/${id}`),
+  list:   ()                                            => get<LedgerResponse>('/finance'),
+  create: (body: Omit<LedgerEntry, 'id' | 'createdAt'>) => post<{ entry: LedgerEntry }>('/finance', body),
+  remove: (id: string)                                 => del<{ ok: boolean }>(`/finance/${id}`),
 }

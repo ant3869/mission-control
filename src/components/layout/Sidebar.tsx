@@ -66,16 +66,18 @@ export function Sidebar({ activeView, onNavigate }: SidebarProps) {
   const [inboxBadge,     setInboxBadge]     = useState<number | undefined>(undefined)
   const [todosBadge,     setTodosBadge]     = useState<number | undefined>(undefined)
   const [toBuyBadge,     setToBuyBadge]     = useState<number | undefined>(undefined)
+  const [healthBadge,    setHealthBadge]    = useState<number | undefined>(undefined)
 
   useEffect(() => {
     const fetchCounts = async () => {
       try {
-        const [tRes, aRes, dRes, iRes, bRes] = await Promise.all([
+        const [tRes, aRes, dRes, iRes, bRes, hRes] = await Promise.all([
           fetch('/api/tasks').then(r => r.json()),
           fetch('/api/approvals').then(r => r.json()),
           fetch('/api/todos').then(r => r.json()),
           fetch('/api/inbox').then(r => r.json()),
           fetch('/api/tobuy').then(r => r.json()),
+          fetch('/api/alerts/active').then(r => r.json()),
         ])
         const activeTasks = (tRes.tasks ?? []).filter(
           (t: { status: string }) => t.status !== 'completed',
@@ -90,11 +92,15 @@ export function Sidebar({ activeView, onNavigate }: SidebarProps) {
         const openToBuy = (bRes.items ?? []).filter(
           (i: { purchased: boolean }) => !i.purchased,
         ).length
+        const criticalAlerts = (hRes.alerts ?? []).filter(
+          (a: { severity: string }) => a.severity === 'critical' || a.severity === 'warning',
+        ).length
         setTasksBadge(activeTasks > 0 ? activeTasks : undefined)
         setApprovalsBadge(pendingApprovals > 0 ? pendingApprovals : undefined)
         setInboxBadge(activeInbox > 0 ? activeInbox : undefined)
         setTodosBadge(openTodos > 0 ? openTodos : undefined)
         setToBuyBadge(openToBuy > 0 ? openToBuy : undefined)
+        setHealthBadge(criticalAlerts > 0 ? criticalAlerts : undefined)
       } catch { /* ignore — badges just won't show */ }
     }
     fetchCounts()
@@ -110,6 +116,7 @@ export function Sidebar({ activeView, onNavigate }: SidebarProps) {
       return total > 0 ? total : undefined
     }
     if (id === 'tobuy') return toBuyBadge
+    if (id === 'health') return healthBadge
     return undefined
   }
 

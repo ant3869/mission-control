@@ -10,10 +10,11 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { clsx } from 'clsx'
 import {
   Sparkles, RefreshCw, ThumbsUp, ThumbsDown, Clock, CheckCircle2, Package,
-  AlertTriangle, RotateCcw, Loader2, X, Search, Hammer, Lightbulb, ArrowUpDown,
+  AlertTriangle, RotateCcw, Loader2, X, Search, Hammer, Lightbulb, ArrowUpDown, ArrowRight,
 } from 'lucide-react'
-import { projectIdeas, type ProjectIdea, type ProjectIdeaStatus } from '../lib/api'
+import { projectIdeas, inventory, type ProjectIdea, type ProjectIdeaStatus } from '../lib/api'
 import { ProjectIdeaPanel } from '../components/inventory/ProjectIdeaPanel'
+import { requestNavigate } from '../lib/quickActions'
 
 const STATUSES: ProjectIdeaStatus[] = ['new', 'liked', 'snoozed', 'completed', 'rejected']
 const STATUS_LABEL: Record<ProjectIdeaStatus, string> = {
@@ -236,11 +237,16 @@ export function Factory() {
   const [generating, setGenerating] = useState(false)
   const [selected, setSelected] = useState<ProjectIdea | null>(null)
   const [rejectFor, setRejectFor] = useState<ProjectIdea | null>(null)
+  const [invCount, setInvCount] = useState<number | null>(null)
   const pollRef = useRef<number | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true); setError(null)
-    try { const r = await projectIdeas.list(); setIdeas(r.ideas) }
+    try {
+      const r = await projectIdeas.list()
+      setIdeas(r.ideas)
+      inventory.list().then(inv => setInvCount(inv.items.length)).catch(() => {})
+    }
     catch (e: any) { setError(e.message) } finally { setLoading(false) }
   }, [])
 
@@ -317,7 +323,9 @@ export function Factory() {
             <h1 className="text-base font-semibold text-text-primary">Idea Factory</h1>
             <p className="text-xs text-text-muted mt-0.5">
               {loading ? 'Loading…' : error ? <span className="text-red-400">{error}</span>
-                : <>{ideas.length} buildable project ideas from your inventory</>}
+                : invCount === 0 ? <span className="text-amber-400/80">Add items to Inventory to unlock idea generation</span>
+                : invCount != null ? <>{ideas.length} ideas from {invCount} inventory items</>
+                : <>{ideas.length} buildable project ideas</>}
             </p>
           </div>
         </div>
@@ -383,11 +391,25 @@ export function Factory() {
           </div>
         ) : sorted.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-48 gap-2 text-center">
-            <Lightbulb size={22} className="text-text-muted" />
-            <p className="text-sm text-text-secondary">
-              {ideas.length === 0 ? 'No ideas generated yet' : buildableOnly ? 'No buildable-now ideas in this filter' : 'No ideas match'}
-            </p>
-            <p className="text-xs text-text-muted max-w-sm">Agents turn your inventory into buildable projects. Hit <span className="text-accent-purple">Generate ideas</span> for more.</p>
+            {invCount === 0 ? (
+              <>
+                <Package size={22} className="text-text-muted" />
+                <p className="text-sm text-text-secondary">No inventory items yet</p>
+                <p className="text-xs text-text-muted max-w-xs">Agents build project ideas from your parts list. Add your hardware in Inventory first.</p>
+                <button onClick={() => requestNavigate('inventory')}
+                  className="flex items-center gap-1.5 mt-1 px-3 py-1.5 rounded-lg text-xs font-medium bg-card border border-border text-text-secondary hover:text-text-primary hover:border-white/20 transition-colors">
+                  Go to Inventory <ArrowRight size={11} />
+                </button>
+              </>
+            ) : (
+              <>
+                <Lightbulb size={22} className="text-text-muted" />
+                <p className="text-sm text-text-secondary">
+                  {ideas.length === 0 ? 'No ideas generated yet' : buildableOnly ? 'No buildable-now ideas in this filter' : 'No ideas match'}
+                </p>
+                <p className="text-xs text-text-muted max-w-sm">Agents turn your inventory into buildable projects. Hit <span className="text-accent-purple">Generate ideas</span> for more.</p>
+              </>
+            )}
           </div>
         ) : (
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">

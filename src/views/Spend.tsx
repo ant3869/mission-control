@@ -16,9 +16,10 @@ import {
   Receipt, CreditCard, Calendar,
 } from 'lucide-react'
 import {
-  radar, modelOps, inventory, financials, bills as billsApi,
+  radar, modelOps, inventory, financials, bills as billsApi, finance as ledgerApi,
   type RadarUsageResponse, type RadarInsightsResponse, type ModelOpsResponse, type InventoryStats,
   type FinanceEntry, type FinanceKind, type FinancialsResponse, type BillsResponse,
+  type LedgerEntry, type LedgerResponse,
 } from '../lib/api'
 import { Donut, SegmentBar, Histogram, fmtNum } from '../components/charts'
 
@@ -477,10 +478,16 @@ export function Spend() {
   const [buyOpen, setBuyOpen]   = useState<{ total: number; count: number } | null>(null)
   const [fin, setFin]           = useState<FinancialsResponse | null>(null)
   const [billsData, setBills]   = useState<BillsResponse | null>(null)
+  const [ledger, setLedger]     = useState<LedgerResponse | null>(null)
   const [loading, setLoading]   = useState(true)
   const [error, setError]       = useState<string | null>(null)
   const [addOpen, setAddOpen]   = useState(false)
   const [card, setCard]         = useState<CardId | null>(null)
+  const [logOpen, setLogOpen]   = useState(false)
+  const [logDesc, setLogDesc]   = useState('')
+  const [logAmount, setLogAmount] = useState('')
+  const [logCat, setLogCat]     = useState('Misc')
+  const [logBusy, setLogBusy]   = useState(false)
 
   const loadFinancials = useCallback(async () => {
     try { setFin(await financials.list()) } catch { /* keep previous */ }
@@ -489,7 +496,7 @@ export function Spend() {
   const load = useCallback(async () => {
     setLoading(true); setError(null)
     try {
-      const [u, ins, mo, inv, tb, fn, bl] = await Promise.allSettled([
+      const [u, ins, mo, inv, tb, fn, bl, lg] = await Promise.allSettled([
         radar.usage(DAYS),
         radar.insights(DAYS),
         modelOps.summary(DAYS, 'all'),
@@ -497,6 +504,7 @@ export function Spend() {
         fetch('/api/tobuy').then(r => r.json()),
         financials.list(),
         billsApi.list(),
+        ledgerApi.list(),
       ])
       if (u.status   === 'fulfilled') setUsage(u.value)
       if (ins.status === 'fulfilled') setInsights(ins.value)
@@ -504,6 +512,7 @@ export function Spend() {
       if (inv.status === 'fulfilled') setInvStats(inv.value.stats)
       if (fn.status  === 'fulfilled') setFin(fn.value)
       if (bl.status  === 'fulfilled') setBills(bl.value)
+      if (lg.status  === 'fulfilled') setLedger(lg.value)
       if (tb.status  === 'fulfilled') {
         const open: BuyItem[] = (tb.value?.items ?? []).filter((i: BuyItem) => !i.purchased)
         setBuyOpen({ total: open.reduce((s, i) => s + (i.estimatedPrice || 0) * (i.quantity || 1), 0), count: open.length })
@@ -526,9 +535,29 @@ export function Spend() {
     return () => window.removeEventListener(DATA_REFRESH_EVENT, handler)
   }, [load])
 
-  const addEntry    = async (body: { label: string; kind: FinanceKind; category: string; amount: number }) => { await financials.create(body); await loadFinancials() }
-  const saveEntry   = async (id: string, body: Partial<FinanceEntry>) => { await financials.update(id, body as any); await loadFinancials() }
-  const deleteEntry = async (id: string) => { await financials.remove(id); await loadFinancials() }
+  const addEntry        = async (body: { label: string; kind: FinanceKind; category: string; amount: number }) => { await financials.create(body); await loadFinancials() }
+  const saveEntry       = async (id: string, body: Partial<FinanceEntry>) => { await financials.update(id, body as any); await loadFinancials() }
+  const deleteEntry     = async (id: string) => { await financials.remove(id); await loadFinancials() }
+  const deleteLedgerEntry = async (id: string) => {
+    await ledgerApi.remove(id)
+    setLedger(prev => {
+      if (!prev) return null
+      const entries = prev.entries.filter(e => e.id !== id)
+      return { ...prev, entries, total: entries.reduce((s, e) => s + e.amount, 0) }
+    })
+  }
+
+  const submitLedgerEntry = async () => {
+    const amount = parseFloat(logAmount)
+    if (!logDesc.trim() || !isFinite(amount) || amount <= 0) return
+    setLogBusy(true)
+    try {
+      await ledgerApi.create({ amount, description: logDesc.trim(), category: logCat || 'Misc', source: 'manual' })
+      setLogDesc(''); setLogAmount(''); setLogCat('Misc'); setLogOpen(false)
+      const fresh = await ledgerApi.list()
+      setLedger(fresh)
+    } finally { setLogBusy(false) }
+  }
 
   // ── Derive ──────────────────────────────────────────────────────────────────
   const bySource    = ops?.bySource ?? []
@@ -566,6 +595,12 @@ export function Spend() {
     .map(([cat, val]) => ({ value: val, color: catHex(cat), label: finMeta(cat).label }))
     .filter(s => s.value > 0)
 
+  const now = new Date()
+  const ledgerEntries = ledger?.entries ?? []
+  const monthTotal = ledgerEntries
+    .filter(e => { const d = new Date(e.createdAt); return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() })
+    .reduce((s, e) => s + e.amount, 0)
+
   return (
     <div className="flex h-full overflow-hidden relative">
       <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
@@ -602,6 +637,92 @@ export function Spend() {
             <Stat label="Hardware"   value={money(invValue)}      icon={<Package size={12} />}      tone="text-teal-400"  sub={`${invItems} items`} onClick={() => setCard('hardware')} active={card === 'hardware'} />
             <Stat label="To-buy"     value={money(buyTotal)}      icon={<ShoppingCart size={12} />} tone={buyCount > 0 ? 'text-amber-400' : undefined} sub={buyCount > 0 ? `${buyCount} open` : 'clear'} onClick={() => setCard('tobuy')} active={card === 'tobuy'} />
           </div>
+
+          {/* ── Expense ledger (Discord !spend + manual) ── */}
+          <section className="rounded-2xl border border-border bg-card overflow-hidden">
+            <div className="px-5 pt-4 pb-3 flex items-center justify-between border-b border-border-subtle">
+              <div className="flex items-baseline gap-2">
+                <span className="text-xs font-semibold uppercase tracking-[0.15em] text-text-muted">Transactions</span>
+                {ledgerEntries.length > 0 && (
+                  <>
+                    <span className="text-xxs text-text-muted tabular-nums">{money(monthTotal)} this month</span>
+                    <span className="text-xxs text-text-muted opacity-40">·</span>
+                    <span className="text-xxs text-text-muted tabular-nums opacity-60">{money(ledger?.total ?? 0)} all-time</span>
+                  </>
+                )}
+              </div>
+              <button
+                onClick={() => setLogOpen(o => !o)}
+                className="flex items-center gap-1 px-2.5 py-1 rounded border border-dashed border-border text-xxs text-text-muted hover:text-text-secondary hover:border-text-muted transition-colors"
+              >
+                <Plus size={11} /> Log expense
+              </button>
+            </div>
+
+            {logOpen && (
+              <div className="px-4 py-3 border-b border-border bg-card-hover flex flex-wrap items-center gap-2">
+                <input
+                  autoFocus
+                  value={logDesc}
+                  onChange={e => setLogDesc(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && submitLedgerEntry()}
+                  placeholder="Description"
+                  className="flex-1 min-w-[120px] bg-base border border-border rounded px-2.5 py-1.5 text-xs text-text-primary placeholder:text-text-muted outline-none focus:border-accent-blue/50"
+                />
+                <input
+                  value={logCat}
+                  onChange={e => setLogCat(e.target.value)}
+                  placeholder="Category"
+                  className="w-24 bg-base border border-border rounded px-2 py-1.5 text-xs text-text-primary placeholder:text-text-muted outline-none focus:border-accent-blue/50"
+                />
+                <div className="flex items-center">
+                  <span className="text-xs text-text-muted">$</span>
+                  <input
+                    value={logAmount}
+                    onChange={e => setLogAmount(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && submitLedgerEntry()}
+                    placeholder="0.00"
+                    inputMode="decimal"
+                    className="w-20 bg-base border border-border rounded px-2 py-1.5 text-xs text-right tabular-nums text-text-primary placeholder:text-text-muted outline-none focus:border-accent-blue/50"
+                  />
+                </div>
+                <button
+                  onClick={submitLedgerEntry}
+                  disabled={logBusy || !logDesc.trim() || !logAmount}
+                  className="flex items-center gap-1 px-3 py-1.5 rounded border border-accent-blue/40 bg-accent-blue/15 text-accent-blue hover:bg-accent-blue/25 disabled:opacity-40 text-xs font-medium"
+                >
+                  <Check size={12} /> Add
+                </button>
+                <button onClick={() => setLogOpen(false)} className="p-1.5 text-text-muted hover:text-text-secondary">
+                  <X size={13} />
+                </button>
+              </div>
+            )}
+
+            {!ledger || ledger.entries.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-8 gap-1 text-center">
+                <Receipt size={18} className="text-text-muted" />
+                <p className="text-sm text-text-muted mt-1">No expenses logged yet</p>
+                <p className="text-xxs text-text-muted">Use <span className="font-mono text-text-secondary">!spend $5 Coffee</span> in Discord or click "Log expense" above</p>
+              </div>
+            ) : (
+              <div className="flex flex-col divide-y divide-border max-h-64 overflow-y-auto">
+                {ledger.entries.slice().reverse().map((e: LedgerEntry) => (
+                  <div key={e.id} className="group flex items-center gap-3 px-4 py-2 hover:bg-card-hover transition-colors">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm text-text-primary truncate">{e.description}</p>
+                      <p className="text-xxs text-text-muted">{e.category}{e.source === 'discord' ? ' · discord' : e.source === 'manual' ? ' · manual' : ''} · {new Date(e.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</p>
+                    </div>
+                    <span className="text-sm font-semibold tabular-nums text-amber-400 shrink-0">{money(e.amount)}</span>
+                    <button onClick={() => deleteLedgerEntry(e.id)}
+                      className="p-1 text-text-muted hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" title="Delete">
+                      <Trash2 size={12} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
 
           {/* ── HERO · manual holdings ── */}
           <section className="rounded-2xl border border-border bg-card overflow-hidden">

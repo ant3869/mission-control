@@ -151,12 +151,221 @@ function SessionItem({ session, isActive, onClick }: {
   )
 }
 
+// ─── Tool-call card (OpenClaw stores exec results as raw JSON strings) ────────
+
+interface ToolContent { name: string; cmd: string; output: string; exitCode?: number; status?: string }
+
+function extractResultText(rc: any): string {
+  if (!rc) return ''
+  if (typeof rc === 'string') return rc.trim()
+  if (Array.isArray(rc)) return rc.filter((b: any) => b?.type === 'text').map((b: any) => String(b.text ?? '')).join('\n').trim()
+  return ''
+}
+
+// Strip EXTERNAL_UNTRUSTED_CONTENT wrapper tags from web-fetch results
+function stripExternalWrapper(s: string): string {
+  return s.replace(/\n?<<<EXTERNAL_UNTRUSTED_CONTENT[^>]*>>>/g, '').replace(/\n?<<<END_EXTERNAL_UNTRUSTED_CONTENT[^>]*>>>/g, '').trim()
+}
+
+function parseToolContent(raw: string): ToolContent | null {
+  const t = raw.trim()
+  if (!t.startsWith('{') && !t.startsWith('[')) return null
+  try {
+    const obj = JSON.parse(t)
+    if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return null
+
+    // Pattern A: {tool, result} wrapper — OpenClaw exec
+    if (obj.tool) {
+      const name  = String(obj.tool.name ?? obj.tool.label ?? obj.tool.id ?? 'tool')
+      const input = obj.tool.input ?? {}
+      const cmd   = String(input.command ?? input.cmd ?? input.code ?? '').trim()
+      return { name, cmd, output: extractResultText(obj.result?.content), exitCode: obj.result?.details?.exitCode, status: obj.result?.details?.status }
+    }
+
+    // Pattern B: web search result — {query, provider, results}
+    if (obj.query && (obj.results != null || obj.count != null)) {
+      const results: any[] = Array.isArray(obj.results) ? obj.results : []
+      const snippets = results.slice(0, 5).map((r: any) => {
+        const title   = stripExternalWrapper(String(r.title ?? r.url ?? '')).split('\n')[0].trim()
+        const snippet = String(r.snippet ?? r.description ?? r.body ?? '').slice(0, 120).trim()
+        const url     = String(r.url ?? '').trim()
+        return [title || url, snippet].filter(Boolean).join(' — ')
+      }).filter(Boolean)
+      return {
+        name: 'web_search',
+        cmd: String(obj.query),
+        output: snippets.join('\n') || `${obj.count ?? results.length} results via ${obj.provider ?? 'search'}`,
+        status: 'completed',
+      }
+    }
+
+    // Pattern C: web fetch result — {url, status, contentType, title}
+    if (obj.url && obj.status != null) {
+      const rawTitle = String(obj.title ?? obj.finalUrl ?? obj.url ?? '')
+      const title = stripExternalWrapper(rawTitle).split('\n').find(l => l.trim()) ?? ''
+      return {
+        name: 'web_fetch',
+        cmd: String(obj.finalUrl ?? obj.url),
+        output: title,
+        exitCode: obj.status === 200 ? 0 : 1,
+        status: String(obj.status),
+      }
+    }
+
+    return null
+  } catch { return null }
+}
+
+// Strip bare JSON structural lines from mixed-content messages (background process results, etc.)
+// Removes lines that are clearly JSON noise: ], }, },  "key": value,  "str",  bare number
+function isJsonNoiseLine(line: string): boolean {
+  const t = line.trim()
+  if (t === '' ) return false  // keep blank lines (handled by renderer as <br>)
+  if (/^[\[\]{},]+$/.test(t)) return true
+  if (/^"[^"]*"\s*:/.test(t)) return true   // "key": ...
+  if (/^"[^"]*",?$/.test(t)) return true    // "value" or "value",
+  if (/^\d+,?$/.test(t)) return true        // bare number
+  return false
+}
+
+function cleanJsonNoise(content: string): string {
+  const lines = content.split('\n')
+  const readable = lines.filter(l => !isJsonNoiseLine(l))
+  // Only apply if we actually removed something AND at least 1 readable line remains
+  if (readable.length === lines.length || readable.length === 0) return content
+  return readable.join('\n').trim()
+}
+
+function ToolCard({ tc }: { tc: ToolContent }) {
+  const [expanded, setExpanded] = useState(false)
+  const LIMIT    = 500
+  const truncated = tc.output.length > LIMIT && !expanded
+  const display   = truncated ? tc.output.slice(0, LIMIT) : tc.output
+  const ok  = tc.exitCode === 0 || tc.status === 'completed' || tc.status === 'ok'
+  const err = tc.exitCode != null && tc.exitCode !== 0
+
+  return (
+    <div className="rounded-lg border border-teal-900/40 bg-teal-950/15 overflow-hidden text-[11px]">
+      <div className="flex items-center gap-2 px-3 py-2 bg-teal-950/30 border-b border-teal-900/30">
+        <span className="text-teal-400 font-bold">⚙</span>
+        <span className="text-teal-300 font-semibold">{tc.name}</span>
+        {(tc.status || tc.exitCode != null) && (
+          <span className={clsx(
+            'ml-auto px-1.5 py-0.5 rounded text-[9px] font-semibold',
+            ok  ? 'bg-green-950/60 text-green-300' :
+            err ? 'bg-red-950/60 text-red-300' :
+                  'bg-amber-950/60 text-amber-300',
+          )}>
+            {tc.exitCode != null ? `exit ${tc.exitCode}` : tc.status}
+          </span>
+        )}
+      </div>
+      {tc.cmd && (
+        <div className="px-3 py-1.5 bg-base/60 border-b border-teal-900/20">
+          <code className="font-mono text-[10px] text-text-secondary break-all">{tc.cmd.slice(0, 200)}{tc.cmd.length > 200 ? '…' : ''}</code>
+        </div>
+      )}
+      {tc.output && (
+        <div className="px-3 py-2">
+          <pre className="font-mono text-[10px] text-text-muted whitespace-pre-wrap leading-relaxed break-all">{display}{truncated ? '…' : ''}</pre>
+          {tc.output.length > LIMIT && (
+            <button onClick={() => setExpanded(e => !e)}
+              className="mt-1 text-[9px] text-teal-400 hover:text-teal-300 transition-colors">
+              {expanded ? 'Show less' : `Show ${tc.output.length - LIMIT} more chars`}
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function renderInline(text: string, baseKey: string): React.ReactElement {
+  const parts = text.split(/(`[^`\n]+`)/g)
+  if (parts.length === 1) return <>{text}</>
+  return <>
+    {parts.map((p, i) =>
+      p.startsWith('`') && p.endsWith('`')
+        ? <code key={`${baseKey}-ic${i}`} className="px-1 py-0.5 rounded bg-base border border-border text-[10px] font-mono text-accent-teal">{p.slice(1, -1)}</code>
+        : <span key={`${baseKey}-t${i}`}>{p}</span>
+    )}
+  </>
+}
+
+function renderLine(line: string, key: string): React.ReactElement {
+  if (line === '') return <br key={key} />
+  // Tool call line: ⚙ tool_name: command
+  if (line.startsWith('⚙ ')) {
+    const rest = line.slice(2)
+    const colon = rest.indexOf(': ')
+    const name = colon >= 0 ? rest.slice(0, colon) : rest
+    const cmd  = colon >= 0 ? rest.slice(colon + 2) : ''
+    return (
+      <div key={key} className="flex items-start gap-1.5 my-1 px-2 py-1.5 rounded bg-teal-950/30 border border-teal-900/30 text-[10px]">
+        <span className="text-teal-400 font-semibold shrink-0 mt-px">⚙</span>
+        <span className="text-teal-300 font-semibold shrink-0">{name}</span>
+        {cmd && <code className="text-text-muted font-mono truncate">{cmd}</code>}
+      </div>
+    )
+  }
+  if (line.startsWith('### ')) return <p key={key} className="font-semibold text-text-primary mt-1">{renderInline(line.slice(4), key)}</p>
+  if (line.startsWith('## '))  return <p key={key} className="font-semibold text-text-primary mt-1">{renderInline(line.slice(3), key)}</p>
+  if (line.startsWith('# '))   return <p key={key} className="font-bold text-text-primary mt-1">{renderInline(line.slice(2), key)}</p>
+  if (line.startsWith('**') && line.endsWith('**'))
+    return <p key={key} className="font-semibold text-text-primary">{renderInline(line.slice(2, -2), key)}</p>
+  if (line.startsWith('- ') || line.startsWith('* '))
+    return <div key={key} className="flex gap-1.5"><span className="opacity-50 mt-0.5">·</span><span>{renderInline(line.slice(2), key)}</span></div>
+  if (/^\d+\. /.test(line))
+    return <div key={key} className="flex gap-1.5"><span className="opacity-50 tabular-nums">{line.match(/^\d+/)?.[0]}.</span><span>{renderInline(line.replace(/^\d+\. /, ''), key)}</span></div>
+  return <p key={key}>{renderInline(line, key)}</p>
+}
+
+function renderMessageContent(content: string): React.ReactElement[] {
+  // Raw JSON tool call / search / fetch blob — render as a structured card
+  const tc = parseToolContent(content)
+  if (tc) return [<ToolCard key="tc" tc={tc} />]
+
+  // Mixed content with embedded JSON noise (background process exits, etc.)
+  const cleaned = cleanJsonNoise(content)
+
+  const segments = cleaned.split(/(```(?:[^\n]*)\n[\s\S]*?```)/g)
+  return segments.flatMap((seg, si) => {
+    if (seg.startsWith('```')) {
+      const firstNl = seg.indexOf('\n')
+      const lang    = firstNl > 3 ? seg.slice(3, firstNl).trim() : ''
+      const code    = seg.slice(firstNl + 1, -3)
+      return [(
+        <div key={`cb-${si}`} className="my-1.5 rounded-lg border border-border bg-base overflow-x-auto">
+          {lang && <div className="px-3 pt-2 text-[10px] font-mono text-text-muted uppercase tracking-wide">{lang}</div>}
+          <pre className={clsx('px-3 text-[11px] font-mono text-text-primary whitespace-pre leading-relaxed', lang ? 'py-1.5 pb-2.5' : 'py-2.5')}>{code.trimEnd()}</pre>
+        </div>
+      )]
+    }
+    return seg.split('\n').map((line, li) => renderLine(line, `${si}-${li}`))
+  })
+}
+
 function MessageBubble({ msg, assistantBadge }: {
   msg: LiveChatMessage
   assistantBadge: string
 }) {
   const isUser = msg.role === 'user'
-  const lines = msg.content.split('\n')
+  const isTool = !!parseToolContent(msg.content)
+
+  // Tool cards render as full-width rows (no chat bubble wrapper — they're not conversational text)
+  if (isTool) {
+    const tc = parseToolContent(msg.content)!
+    return (
+      <div className="mb-3">
+        <ToolCard tc={tc} />
+        {msg.timestamp && (
+          <div className="flex items-center gap-1 mt-1 px-1">
+            <span className="text-[9px] text-text-muted">{relativeTime(msg.timestamp)}</span>
+          </div>
+        )}
+      </div>
+    )
+  }
 
   return (
     <div className={clsx('flex gap-2.5 mb-4', isUser ? 'flex-row-reverse' : 'flex-row')}>
@@ -174,20 +383,7 @@ function MessageBubble({ msg, assistantBadge }: {
             ? 'bg-violet-950/60 border border-violet-900/50 text-violet-100 rounded-tr-sm'
             : 'bg-card border border-border text-text-secondary rounded-tl-sm',
         )}>
-          {lines.map((line, i) => {
-            if (line === '') return <br key={i} />
-            if (line.startsWith('**') && line.endsWith('**'))
-              return <p key={i} className="font-semibold text-text-primary">{line.slice(2, -2)}</p>
-            if (line.startsWith('# '))
-              return <p key={i} className="font-bold text-text-primary mt-1">{line.slice(2)}</p>
-            if (line.startsWith('## '))
-              return <p key={i} className="font-semibold text-text-primary mt-1">{line.slice(3)}</p>
-            if (line.startsWith('- ') || line.startsWith('* '))
-              return <div key={i} className="flex gap-1.5"><span className="opacity-50 mt-0.5">·</span><span>{line.slice(2)}</span></div>
-            if (/^\d+\. /.test(line))
-              return <div key={i} className="flex gap-1.5"><span className="opacity-50 tabular-nums">{line.match(/^\d+/)?.[0]}.</span><span>{line.replace(/^\d+\. /, '')}</span></div>
-            return <p key={i}>{line}</p>
-          })}
+          {renderMessageContent(msg.content)}
         </div>
 
         <div className="flex items-center gap-1.5 px-1">

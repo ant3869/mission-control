@@ -2,11 +2,11 @@ import { useState, useEffect, useCallback } from 'react'
 import { clsx } from 'clsx'
 import {
   Settings as SettingsIcon, RefreshCw, AlertCircle, CheckCircle2, XCircle,
-  Loader, Plug, KeyRound, Save, Zap, CalendarDays, Unplug,
+  Loader, Plug, KeyRound, Save, Zap, CalendarDays, Unplug, Network,
 } from 'lucide-react'
 import {
-  settings as settingsApi, auth as authApi,
-  type ConnectorInfo, type ConnectorId, type AuthStatus,
+  settings as settingsApi, auth as authApi, office as officeApi,
+  type ConnectorInfo, type ConnectorId, type AuthStatus, type LiveIntegration,
 } from '../lib/api'
 
 // ─── Status pill ────────────────────────────────────────────────────────────
@@ -389,14 +389,58 @@ function GoogleConnectionCard({ status, onChanged }: { status: AuthStatus['googl
   )
 }
 
+// ─── Integration card (read-only status row) ─────────────────────────────────
+
+const INT_STATUS_CFG: Record<string, { label: string; cls: string; dot: string }> = {
+  connected:    { label: 'Connected',    cls: 'text-green-400', dot: 'bg-green-500' },
+  error:        { label: 'Error',        cls: 'text-red-400',   dot: 'bg-red-500' },
+  disconnected: { label: 'Disconnected', cls: 'text-text-muted', dot: 'bg-border' },
+  pending:      { label: 'Pending',      cls: 'text-amber-300', dot: 'bg-amber-400' },
+}
+
+const CAT_LABEL: Record<string, string> = {
+  auth: 'Auth', ai: 'AI', plugin: 'Plugin', productivity: 'Productivity',
+  communication: 'Communication', development: 'Dev', analytics: 'Analytics', storage: 'Storage',
+}
+
+function IntegrationCard({ item }: { item: LiveIntegration }) {
+  const st = INT_STATUS_CFG[item.status] ?? INT_STATUS_CFG.pending
+  return (
+    <div className="flex items-start gap-3 px-4 py-3 rounded-xl border border-border bg-card hover:bg-card-hover transition-colors">
+      <span className="text-xl leading-none w-7 text-center shrink-0 mt-0.5">{item.icon}</span>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-sm font-medium text-text-primary">{item.name}</span>
+          <span className="text-[9px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded bg-card-hover text-text-muted border border-border-subtle">
+            {CAT_LABEL[item.category] ?? item.category}
+          </span>
+          {item.version && (
+            <span className="text-xxs text-text-muted font-mono">v{item.version}</span>
+          )}
+        </div>
+        <p className="text-xxs text-text-muted mt-0.5 truncate">
+          {item.connectedAs ?? item.detail ?? item.description}
+        </p>
+        {item.error && <p className="text-xxs text-red-400 mt-0.5 truncate">{item.error}</p>}
+      </div>
+      <div className="flex items-center gap-1.5 shrink-0 self-center">
+        <span className={clsx('w-1.5 h-1.5 rounded-full', st.dot)} />
+        <span className={clsx('text-xxs font-medium', st.cls)}>{st.label}</span>
+      </div>
+    </div>
+  )
+}
+
 // ─── Main view ───────────────────────────────────────────────────────────────
 
 export function Settings() {
-  const [connectors, setConnectors] = useState<ConnectorInfo[]>([])
-  const [authStatus, setAuthStatus] = useState<AuthStatus | null>(null)
-  const [loading, setLoading]       = useState(true)
-  const [error, setError]           = useState<string | null>(null)
-  const [fetchedAt, setFetchedAt]   = useState('')
+  const [connectors,    setConnectors]    = useState<ConnectorInfo[]>([])
+  const [authStatus,    setAuthStatus]    = useState<AuthStatus | null>(null)
+  const [integrations,  setIntegrations]  = useState<LiveIntegration[]>([])
+  const [loading, setLoading]             = useState(true)
+  const [intLoading, setIntLoading]       = useState(true)
+  const [error, setError]                 = useState<string | null>(null)
+  const [fetchedAt, setFetchedAt]         = useState('')
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -415,7 +459,17 @@ export function Settings() {
     }
   }, [])
 
-  useEffect(() => { load() }, [load])
+  const loadIntegrations = useCallback(async () => {
+    setIntLoading(true)
+    try {
+      const r = await officeApi.integrations()
+      setIntegrations(r.integrations)
+    } catch { /* non-critical */ } finally {
+      setIntLoading(false)
+    }
+  }, [])
+
+  useEffect(() => { load(); loadIntegrations() }, [load, loadIntegrations])
 
   const fetchedLabel = fetchedAt
     ? new Date(fetchedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
@@ -435,7 +489,7 @@ export function Settings() {
         </div>
         <div className="flex items-center gap-3">
           {fetchedLabel && <span className="text-xxs text-text-muted">as of {fetchedLabel}</span>}
-          <button onClick={load} disabled={loading}
+          <button onClick={() => { load(); loadIntegrations() }} disabled={loading}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded border border-border bg-card hover:bg-card-hover text-text-secondary hover:text-text-primary transition-colors text-xs">
             <RefreshCw size={11} className={loading ? 'animate-spin' : ''} /> Refresh
           </button>
@@ -482,6 +536,25 @@ export function Settings() {
             detail="ANTHROPIC_API_KEY · Radar token & cost analytics"
           />
         </div>
+
+        {/* Integrations (office route: MCP servers, plugins, auth connections) */}
+        <div className="flex items-center gap-2 mt-8 mb-3">
+          <p className="text-xxs font-semibold uppercase tracking-wider text-text-muted flex items-center gap-1.5">
+            <Network size={11} /> Integrations
+            <span className="font-normal normal-case tracking-normal opacity-60">· MCP servers, plugins & connected services</span>
+          </p>
+          {intLoading && <Loader size={10} className="animate-spin text-text-muted" />}
+          {!intLoading && integrations.length > 0 && (
+            <span className="ml-auto text-xxs text-text-muted tabular-nums">{integrations.length} detected</span>
+          )}
+        </div>
+        {!intLoading && integrations.length === 0 ? (
+          <p className="text-xs text-text-muted px-1">No integrations detected. Connect platforms above or add MCP servers to ~/.claude/settings.json.</p>
+        ) : (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
+            {integrations.map(item => <IntegrationCard key={item.id} item={item} />)}
+          </div>
+        )}
       </div>
     </div>
   )

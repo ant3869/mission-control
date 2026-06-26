@@ -211,6 +211,50 @@ async function handleTask(args: string): Promise<string> {
   return `📋  **Task added** — "${task?.title ?? title}"${dueStr}`
 }
 
+async function handleDone(args: string): Promise<string> {
+  if (!args) return '❌  `!done <todo title or partial match>`'
+  const { todos } = await api('GET', '/api/todos')
+  const open = (todos as any[]).filter((t: any) => !t.done)
+  const query = args.trim().toLowerCase()
+  const match = open.find((t: any) => t.title.toLowerCase().includes(query))
+  if (!match) return `❌  No open todo matching "${args}"`
+  await api('PATCH', `/api/todos/${match.id}`, { done: true })
+  return `✅  **Done** — "${match.title}"`
+}
+
+async function handleStatus(): Promise<string> {
+  const [sysRes, alertRes] = await Promise.allSettled([
+    api('GET', '/api/system/connectivity'),
+    api('GET', '/api/alerts/active'),
+  ])
+  const lines: string[] = ['**Mission Control · Status**', '']
+
+  if (sysRes.status === 'fulfilled') {
+    const indicators: any[] = (sysRes.value as any).indicators ?? []
+    for (const ind of indicators) {
+      const icon = ind.status === 'ok' ? '🟢' : ind.status === 'degraded' ? '🟠' : '🔴'
+      lines.push(`${icon} **${ind.label}** — ${ind.detail}`)
+    }
+  } else {
+    lines.push('⚠️  Could not reach system API')
+  }
+
+  if (alertRes.status === 'fulfilled') {
+    const active: any[] = (alertRes.value as any).alerts ?? []
+    if (active.length === 0) {
+      lines.push('\n✅  No active alerts')
+    } else {
+      lines.push('')
+      for (const a of active) {
+        const e = a.severity === 'critical' ? '🔴' : a.severity === 'warning' ? '🟠' : 'ℹ️'
+        lines.push(`${e} **${a.ruleName}** — ${a.message}`)
+      }
+    }
+  }
+
+  return lines.join('\n').slice(0, 2000)
+}
+
 // ─── Query command handlers ───────────────────────────────────────────────────
 
 const SEV_EMOJI: Record<string, string> = { critical: '🔴', high: '🟠', medium: '🟡', low: '⚪' }
@@ -343,10 +387,13 @@ async function handleAgenda(): Promise<string> {
     if (events.length) {
       sections.push('📅 **Calendar**')
       for (const e of events.slice(0, 10)) {
-        const start = e.start?.dateTime
-          ? new Date(e.start.dateTime).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
-          : 'All day'
-        sections.push(`• ${start} — ${e.summary ?? e.title ?? '(no title)'}`)
+        const start = e.allDay
+          ? 'All day'
+          : e.startIso
+            ? new Date(e.startIso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+            : 'All day'
+        const meet = e.meetLink ? ' 🎥' : ''
+        sections.push(`• ${start} — ${e.name ?? '(no title)'}${meet}`)
       }
     } else {
       sections.push('📅 **Calendar** — clear today')
@@ -450,9 +497,12 @@ async function handleFind(query: string): Promise<string> {
   if (!query) return '❌  `!find <search term>`'
   const q = query.toLowerCase()
 
-  const [todoResult, invResult, noteResult] = await Promise.allSettled([
+  const [todoResult, taskResult, invResult, buyResult, projResult, noteResult] = await Promise.allSettled([
     api('GET', '/api/todos'),
+    api('GET', '/api/tasks'),
     api('GET', '/api/inventory'),
+    api('GET', '/api/tobuy'),
+    api('GET', '/api/projects'),
     api('GET', `/api/notes/pages?search=${encodeURIComponent(query)}`),
   ])
 
@@ -465,9 +515,48 @@ async function handleFind(query: string): Promise<string> {
     if (hits.length) {
       totalHits += hits.length
       sections.push(`📋 **Todos** (${hits.length})`)
-      for (const t of hits.slice(0, 5)) {
+      for (const t of hits.slice(0, 4)) {
         const e = SEV_EMOJI[t.severity] ?? '⚪'
         sections.push(`${e} ${t.title}${t.done ? ' ✓' : ''}`)
+      }
+    }
+  }
+
+  if (taskResult.status === 'fulfilled') {
+    const hits: any[] = (taskResult.value?.tasks ?? []).filter((t: any) =>
+      t.title.toLowerCase().includes(q) || t.description?.toLowerCase().includes(q))
+    if (hits.length) {
+      totalHits += hits.length
+      sections.push(`\n⚙️ **Tasks** (${hits.length})`)
+      for (const t of hits.slice(0, 4)) {
+        const e = PRI_EMOJI[t.priority] ?? '⚪'
+        sections.push(`${e} ${t.title} · \`${t.status}\``)
+      }
+    }
+  }
+
+  if (buyResult.status === 'fulfilled') {
+    const hits: any[] = (buyResult.value?.items ?? []).filter((i: any) =>
+      i.title.toLowerCase().includes(q))
+    if (hits.length) {
+      totalHits += hits.length
+      sections.push(`\n🛒 **To-Buy** (${hits.length})`)
+      for (const i of hits.slice(0, 4)) {
+        const p = i.estimatedPrice > 0 ? ` · ~${fmtMoney(i.estimatedPrice)}` : ''
+        sections.push(`• **${i.title}**${p}${i.purchased ? ' ✓' : ''}`)
+      }
+    }
+  }
+
+  if (projResult.status === 'fulfilled') {
+    const hits: any[] = (projResult.value?.projects ?? []).filter((p: any) =>
+      p.name.toLowerCase().includes(q) || p.description?.toLowerCase().includes(q))
+    if (hits.length) {
+      totalHits += hits.length
+      sections.push(`\n🗂️ **Projects** (${hits.length})`)
+      for (const p of hits.slice(0, 4)) {
+        const s = p.status === 'active' ? '🟢' : p.status === 'planning' ? '🔵' : p.status === 'paused' ? '🟠' : '✅'
+        sections.push(`${s} **${p.name}** · ${p.status}`)
       }
     }
   }
@@ -478,7 +567,7 @@ async function handleFind(query: string): Promise<string> {
     if (hits.length) {
       totalHits += hits.length
       sections.push(`\n📦 **Inventory** (${hits.length})`)
-      for (const i of hits.slice(0, 5)) {
+      for (const i of hits.slice(0, 4)) {
         sections.push(`• **${i.name}** · ${i.category} · ${i.condition}`)
       }
     }
@@ -489,7 +578,7 @@ async function handleFind(query: string): Promise<string> {
     if (hits.length) {
       totalHits += hits.length
       sections.push(`\n📝 **Notes** (${hits.length})`)
-      for (const p of hits.slice(0, 5)) {
+      for (const p of hits.slice(0, 4)) {
         sections.push(`• ${p.title}`)
       }
     }
@@ -497,6 +586,40 @@ async function handleFind(query: string): Promise<string> {
 
   if (totalHits === 0) return `🔍  No results for "${query}".`
   return sections.join('\n')
+}
+
+async function handleProject(args: string): Promise<string> {
+  const { projects } = await api('GET', '/api/projects')
+  const all: any[] = projects ?? []
+  if (!all.length) return '🗂️  No projects found.'
+
+  if (!args.trim()) {
+    const active  = all.filter(p => p.status === 'active')
+    const plan    = all.filter(p => p.status === 'planning')
+    const paused  = all.filter(p => p.status === 'paused')
+    const done    = all.filter(p => p.status === 'completed')
+    const lines: string[] = ['**🗂️ Projects**\n']
+    if (active.length)  lines.push(...active.map(p  => `🟢 **${p.name}** · ${p.progress ?? 0}% · *${p.priority}*`))
+    if (plan.length)    lines.push(...plan.map(p    => `🔵 **${p.name}** · planning`))
+    if (paused.length)  lines.push(...paused.map(p  => `🟠 **${p.name}** · paused`))
+    if (done.length > 0) lines.push(`✅ ${done.length} completed`)
+    return fmtList(lines, '')
+  }
+
+  const q = args.trim().toLowerCase()
+  const match = all.find(p => p.name.toLowerCase().includes(q))
+  if (!match) return `❌  No project matching "${args}"`
+
+  const s = match.status === 'active' ? '🟢' : match.status === 'planning' ? '🔵' : match.status === 'paused' ? '🟠' : '✅'
+  const lines = [
+    `${s} **${match.name}**`,
+    match.description ? `> ${String(match.description).slice(0, 200)}` : '',
+    `**Status:** ${match.status}  ·  **Priority:** ${match.priority}`,
+    match.progress != null ? `**Progress:** ${match.progress}%` : '',
+    match.assignee ? `**Assignee:** ${match.assignee}` : '',
+    match.updatedAt ? `**Updated:** ${new Date(match.updatedAt).toLocaleDateString()}` : '',
+  ].filter(Boolean)
+  return lines.join('\n')
 }
 
 // ─── Approval button builder ──────────────────────────────────────────────────
@@ -660,8 +783,8 @@ function startDueDatePoller(): void {
     }
   }
 
-  checkDueDates()                               // run immediately on startup
-  setInterval(checkDueDates, 5 * 60 * 1_000)   // then every 5 minutes
+  checkDueDates()                                   // run immediately on startup
+  setInterval(checkDueDates, 4 * 60 * 60 * 1_000)  // then every 4 hours
 }
 
 // ─── Alert poller ─────────────────────────────────────────────────────────────
@@ -682,7 +805,7 @@ function startAlertPoller(): void {
   }
 
   checkAlerts()
-  setInterval(checkAlerts, 2 * 60 * 1_000)   // every 2 minutes
+  setInterval(checkAlerts, 15 * 60 * 1_000)  // every 15 minutes
 }
 
 // ─── Help text ────────────────────────────────────────────────────────────────
@@ -710,6 +833,9 @@ function helpText(): string {
     '`!agenda`  — today\'s calendar + due items',
     '`!balance`  — spending + net worth summary',
     '`!find <term>`  — search todos, inventory, notes',
+    '`!done <title>`  — mark a todo as done',
+    '`!status`  — connector health + active alerts',
+    '`!project [name]`  — list all projects or query one by name',
     '',
     '`!help`  — show this message',
   ].join('\n')
@@ -800,6 +926,9 @@ export function startDiscordBot(port: number | string): void {
         case 'balance':   reply = await handleBalance();           break
         case 'account':   reply = await handleAccount(args);       break
         case 'find':      reply = await handleFind(args);          break
+        case 'done':      reply = await handleDone(args);          break
+        case 'status':    reply = await handleStatus();            break
+        case 'project':   reply = await handleProject(args);       break
         case 'help':      reply = helpText();                      break
         default:          return  // ignore unknown commands silently
       }

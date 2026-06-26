@@ -1103,6 +1103,15 @@ export function Memory() {
           <Chip icon={<Database size={11} />} label="store" value={s ? fmtBytes(s.bytes) : '—'} />
         </div>
       </div>
+      {summary?.plugin === 'off' && (
+        <div className="flex items-center gap-3 px-6 py-2.5 bg-amber-950/30 border-b border-amber-800/40 shrink-0">
+          <AlertCircle size={13} className="text-amber-400 shrink-0" />
+          <p className="text-xs text-amber-300/90 flex-1">
+            <span className="font-semibold">Memory plugin is disabled</span> — live capture and embeddings are off.
+            Enable the memory plugin in your OpenClaw settings to start recording events.
+          </p>
+        </div>
+      )}
       <div className="flex-1 min-h-0">
         <TabHub view="memory" tabs={tabs} />
       </div>

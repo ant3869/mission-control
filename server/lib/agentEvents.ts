@@ -96,6 +96,24 @@ function cleanDisplay(s: string): string {
   return s.replace(/\[\[[^\]\n]{0,48}\]\]/g, '').replace(/[ \t]{2,}/g, ' ').trim()
 }
 
+function extractToolJson(s: string): string {
+  const t = s.trim()
+  if (!t.startsWith('{')) return ''
+  try {
+    const obj = JSON.parse(t)
+    if (!obj?.tool) return ''
+    const name  = String(obj.tool.name ?? obj.tool.label ?? obj.tool.id ?? 'tool')
+    const input = obj.tool.input ?? {}
+    const cmd   = String(input.command ?? input.cmd ?? input.code ?? '').trim().slice(0, 120)
+    const rc    = obj.result?.content
+    let out = ''
+    if (Array.isArray(rc)) {
+      out = rc.filter((b: any) => b?.type === 'text').map((b: any) => String(b.text ?? '')).join('\n').trim()
+    } else if (typeof rc === 'string') { out = rc.trim() }
+    return [`⚙ ${name}${cmd ? `: ${cmd}` : ''}`, out.slice(0, 500)].filter(Boolean).join('\n')
+  } catch { return '' }
+}
+
 function extractContent(payload: any): string {
   if (!payload || typeof payload !== 'object') return ''
   const candidates = [
@@ -104,7 +122,10 @@ function extractContent(payload: any): string {
     payload.finalText, payload.assistantText,
   ]
   for (const value of candidates) {
-    if (typeof value === 'string' && value.trim()) return cleanDisplay(value)
+    if (typeof value === 'string' && value.trim()) {
+      const cleaned = cleanDisplay(value)
+      return extractToolJson(cleaned) || cleaned
+    }
   }
   return ''
 }

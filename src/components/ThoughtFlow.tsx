@@ -198,12 +198,28 @@ export function ThoughtFlow() {
       {/* Step log */}
       <div className="flex-1 overflow-y-auto px-6 py-4">
         {steps.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full text-center">
-            <BrainCircuit size={22} className="text-text-muted mb-2" />
-            <p className="text-sm text-text-muted">Waiting for agent activity</p>
-            <p className="text-xxs text-text-muted mt-1 max-w-sm">
-              When a session runs, its reasoning loop streams here in real time — prompt, thinking, tool calls, results, and the final reply.
-            </p>
+          <div className="flex flex-col items-center justify-center h-full text-center gap-1.5">
+            {paused ? (
+              <>
+                <Pause size={22} className="text-amber-400 mb-1" />
+                <p className="text-sm text-text-secondary">Feed paused</p>
+                <p className="text-xs text-text-muted max-w-xs">Resume the live feed with the pause toggle in the top bar to see reasoning steps.</p>
+              </>
+            ) : !connected ? (
+              <>
+                <WifiOff size={22} className="text-red-400/70 mb-1" />
+                <p className="text-sm text-text-secondary">Not connected to {source === 'openclaw' ? 'OpenClaw' : 'Hermes'}</p>
+                <p className="text-xs text-text-muted max-w-xs">Start the {source === 'openclaw' ? 'OpenClaw' : 'Hermes'} agent, or switch sources above to try the other.</p>
+              </>
+            ) : (
+              <>
+                <BrainCircuit size={22} className="text-text-muted mb-1" />
+                <p className="text-sm text-text-secondary">No active session</p>
+                <p className="text-xs text-text-muted max-w-xs">
+                  Connected to {source === 'openclaw' ? 'OpenClaw' : 'Hermes'} and listening. When an agent session starts, its reasoning loop streams here — prompt, tool calls, and final reply.
+                </p>
+              </>
+            )}
           </div>
         ) : (
           <div className="flex flex-col gap-1 max-w-3xl mx-auto">
