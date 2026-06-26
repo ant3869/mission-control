@@ -17,6 +17,7 @@ import { isConnected as liveConnected, request as liveRequest } from './openclaw
 
 const CACHE_TTL_MS = 20_000
 const TIMEOUT_MS = 9_000
+const OC_AGENT_ID = (process.env.OPENCLAW_AGENT_ID ?? 'main').trim()
 
 // Default operator scopes (from the Control UI's `An` constant).
 const SCOPES = ['operator.admin', 'operator.read', 'operator.write', 'operator.approvals', 'operator.pairing']
@@ -184,7 +185,7 @@ const METRIC_CALLS: RpcCall[] = [
   { method: 'skills.status' },
   { method: 'doctor.memory.status' },
   { method: 'update.status' },
-  { method: 'agents.files.list', params: { agentId: 'main' } },
+  { method: 'agents.files.list', params: { agentId: OC_AGENT_ID } },
 ]
 
 let metricsCache: { at: number; data: BatchResult } | null = null
@@ -272,7 +273,7 @@ export async function getHistories(sessionKeys: string[], limit = 120): Promise<
  *  Returns null if the gateway is unreachable or the file is not found. */
 export async function readMemoryFileRpc(name: string): Promise<{ content: string; path: string } | null> {
   const b = await runCalls([
-    { method: 'agents.files.get', params: { name, agentId: 'main' }, key: 'file' },
+    { method: 'agents.files.get', params: { name, agentId: OC_AGENT_ID }, key: 'file' },
   ])
   if (!b.reachable) return null
   const r = b.results['file']
