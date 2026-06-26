@@ -169,24 +169,34 @@ todosRouter.get('/', (_req, res) => {
 
 // POST /api/todos
 todosRouter.post('/', async (req, res) => {
-  const body = req.body ?? {}
-  if (!String(body.title ?? '').trim()) return res.status(400).json({ error: 'title is required' })
+  const body = req.body as Record<string, unknown>
+  const title = typeof body.title === 'string' ? body.title.trim() : ''
+  if (!title) return res.status(400).json({ error: 'title is required' })
+
+  const severity: TodoSeverity = SEVERITIES.includes(body.severity as TodoSeverity)
+    ? (body.severity as TodoSeverity) : 'medium'
+  const horizon: TodoHorizon = HORIZONS.includes(body.horizon as TodoHorizon)
+    ? (body.horizon as TodoHorizon) : 'short'
+  const notes    = typeof body.notes    === 'string' ? body.notes    : ''
+  const dueDate  = typeof body.dueDate  === 'string' ? body.dueDate  : ''
+  const rawInput = typeof body.rawInput === 'string' ? body.rawInput : ''
+  const calendarSyncEnabled = body.calendarSyncEnabled === true
   const todo: Todo = {
     id:          randomUUID(),
-    title:       String(body.title).trim(),
-    notes:       String(body.notes ?? ''),
-    severity:    SEVERITIES.includes(body.severity) ? body.severity : 'medium',
-    horizon:     HORIZONS.includes(body.horizon) ? body.horizon : 'short',
-    dueDate:     parseDueDate(body.dueDate),
+    title,
+    notes,
+    severity,
+    horizon,
+    dueDate:     parseDueDate(dueDate),
     done:        false,
     createdAt:   new Date().toISOString(),
     updatedAt:   new Date().toISOString(),
     completedAt: '',
     details:     sanitizeDetails(body.details),
-    rawInput:    String(body.rawInput ?? '').slice(0, 2000),
+    rawInput:    rawInput.slice(0, 2000),
     research:    emptyResearch(),
     ...defaultSyncFields(),
-    calendarSyncEnabled: Boolean(body.calendarSyncEnabled),
+    calendarSyncEnabled,
   }
   const todos = loadTodos()
   todos.unshift(todo)
@@ -203,20 +213,19 @@ todosRouter.patch('/:id', async (req, res) => {
   const todo  = todos.find(t => t.id === req.params.id)
   if (!todo) return res.status(404).json({ error: 'not found' })
 
-  const body = req.body ?? {}
-  const { title, notes, severity, horizon, dueDate, done, details, rawInput, calendarSyncEnabled } = body
-  if (title !== undefined && String(title).trim()) todo.title = String(title).trim()
-  if (notes !== undefined)                         todo.notes = String(notes)
-  if (SEVERITIES.includes(severity))               todo.severity = severity
-  if (HORIZONS.includes(horizon))                  todo.horizon = horizon
-  if (dueDate !== undefined)                       todo.dueDate = parseDueDate(dueDate)
-  if (details !== undefined)                       todo.details = sanitizeDetails(details)
-  if (rawInput !== undefined)                      todo.rawInput = String(rawInput).slice(0, 2000)
-  if (calendarSyncEnabled !== undefined)           todo.calendarSyncEnabled = Boolean(calendarSyncEnabled)
-  if (done !== undefined) {
-    todo.done = Boolean(done)
-    todo.completedAt = todo.done ? new Date().toISOString() : ''
-  }
+  const body = req.body as Record<string, unknown>
+  const updates: Partial<Todo> = {}
+  if (typeof body.title === 'string') updates.title = body.title.trim()
+  if (typeof body.notes === 'string') updates.notes = body.notes
+  if (SEVERITIES.includes(body.severity as TodoSeverity)) updates.severity = body.severity as TodoSeverity
+  if (HORIZONS.includes(body.horizon as TodoHorizon))     updates.horizon  = body.horizon  as TodoHorizon
+  if (typeof body.dueDate === 'string')                   updates.dueDate  = parseDueDate(body.dueDate)
+  if (body.details !== undefined)                         updates.details  = sanitizeDetails(body.details)
+  if (typeof body.rawInput === 'string')                  updates.rawInput = body.rawInput.slice(0, 2000)
+  if (typeof body.calendarSyncEnabled === 'boolean')      updates.calendarSyncEnabled = body.calendarSyncEnabled
+  if (typeof body.done === 'boolean')                     updates.done     = body.done
+  if (updates.done !== undefined) updates.completedAt = updates.done ? new Date().toISOString() : ''
+  Object.assign(todo, updates)
   todo.updatedAt = new Date().toISOString()
   saveTodos(todos)
 
