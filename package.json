@@ -8,9 +8,16 @@
     "server": "tsx watch --ignore data/ server/index.ts",
     "build": "vite build --emptyOutDir false",
     "preview": "vite preview",
-    "test": "node --import tsx --test server/lib/**/*.test.ts"
+    "test": "node --import tsx --test server/lib/**/*.test.ts",
+    "cap:sync": "npm run build && npx cap sync",
+    "cap:android": "npm run build && npx cap sync android && npx cap open android",
+    "cap:ios": "npm run build && npx cap sync ios && npx cap open ios"
   },
   "dependencies": {
+    "@capacitor/android": "^8.4.1",
+    "@capacitor/cli": "^8.4.1",
+    "@capacitor/core": "^8.4.1",
+    "@capacitor/ios": "^8.4.1",
     "@google/design.md": "^0.3.0",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",

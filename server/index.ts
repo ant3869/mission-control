@@ -43,7 +43,15 @@ import { startDiscordBot } from './lib/discordBot.js'
 const app = express()
 const PORT = process.env.API_PORT ?? 3001
 
-app.use(cors({ origin: 'http://localhost:5173', credentials: true }))
+app.use(cors({
+  origin: [
+    'http://localhost:5173',  // Vite dev server
+    'http://localhost',       // Android Capacitor WebView
+    'capacitor://localhost',  // iOS Capacitor WebView
+    'ionic://localhost',      // Ionic/Capacitor legacy scheme
+  ],
+  credentials: true,
+}))
 app.use(express.json())
 
 app.use('/api/auth',     authRouter)
