@@ -1,10 +1,15 @@
 /**
  * Typed API client for the Mission Control Express backend.
- * All calls go through Vite's /api proxy → localhost:3001.
+ * In dev, calls go through Vite's /api proxy → localhost:3001.
+ * In Capacitor mobile builds, set VITE_API_BASE_URL=http://<server-ip>:3001
+ * so relative paths resolve to the real server instead of the native origin.
  */
 
 import type { TraceRun } from '../components/trace/types'
 export type { TraceRun, TraceSpan, SpanKind, SpanStatus } from '../components/trace/types'
+
+// Empty string → use relative paths (web/dev). Absolute URL → mobile/remote.
+export const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '')
 
 export class ApiError extends Error {
   constructor(public status: number, message: string) {
@@ -14,7 +19,8 @@ export class ApiError extends Error {
 }
 
 async function get<T>(path: string, params?: Record<string, string | number>): Promise<T> {
-  const url = new URL(`/api${path}`, window.location.origin)
+  const origin = API_BASE || window.location.origin
+  const url = new URL(`/api${path}`, origin)
   if (params) {
     for (const [k, v] of Object.entries(params)) {
       url.searchParams.set(k, String(v))
@@ -27,28 +33,28 @@ async function get<T>(path: string, params?: Record<string, string | number>): P
 }
 
 async function post<T>(path: string, body: unknown): Promise<T> {
-  const res  = await fetch(`/api${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+  const res  = await fetch(`${API_BASE}/api${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
   const json = await res.json().catch(() => ({ error: res.statusText }))
   if (!res.ok) throw new ApiError(res.status, json.error ?? res.statusText)
   return json as T
 }
 
 async function patch<T>(path: string, body: unknown): Promise<T> {
-  const res  = await fetch(`/api${path}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+  const res  = await fetch(`${API_BASE}/api${path}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
   const json = await res.json().catch(() => ({ error: res.statusText }))
   if (!res.ok) throw new ApiError(res.status, json.error ?? res.statusText)
   return json as T
 }
 
 async function put<T>(path: string, body: unknown): Promise<T> {
-  const res  = await fetch(`/api${path}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+  const res  = await fetch(`${API_BASE}/api${path}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
   const json = await res.json().catch(() => ({ error: res.statusText }))
   if (!res.ok) throw new ApiError(res.status, json.error ?? res.statusText)
   return json as T
 }
 
 async function del<T>(path: string): Promise<T> {
-  const res  = await fetch(`/api${path}`, { method: 'DELETE' })
+  const res  = await fetch(`${API_BASE}/api${path}`, { method: 'DELETE' })
   const json = await res.json().catch(() => ({ error: res.statusText }))
   if (!res.ok) throw new ApiError(res.status, json.error ?? res.statusText)
   return json as T
@@ -973,7 +979,7 @@ export interface MemoryDiskSummary {
   fetchedAt: string
 }
 
-export const MEMORY_STREAM_URL = '/api/memory/stream'
+export const MEMORY_STREAM_URL = `${API_BASE}/api/memory/stream`
 
 export const memoryOps = {
   overview:      (source: MemorySource, force = false) =>
@@ -1627,7 +1633,7 @@ export interface WatchEvent {
 }
 
 // EventSource URL (not a fetch — opened with `new EventSource(...)`)
-export const WATCH_STREAM_URL = '/api/watch/stream'
+export const WATCH_STREAM_URL = `${API_BASE}/api/watch/stream`
 
 // ─── Evaluations (Hermes + OpenClaw only) ──────────────────────────────────────
 
