@@ -6,6 +6,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.11.0] — 2026-06-26
+
+### Added
+
+- **`!eval`, `!bench`, `!memory` Discord commands.** Read-only commands for the eval leaderboard (`!eval [n]`), most recent harness benchmark runs (`!bench [n]`), and memory health summary (`!memory`) — surfacing the three most advanced subsystems directly from Discord without opening Mission Control.
+- **Discord user allowlist (`DISCORD_ALLOWED_USER_IDS`).** New env var to restrict which Discord users can issue bot commands and click approval buttons. Empty = allow all (backward-compatible). Prevents anyone in an allowed channel from writing data or resolving approvals.
+- **`OPENCLAW_AGENT_ID` env var.** Replaces the hardcoded `'main'` agent ID in the OpenClaw WebSocket client. Multi-agent or non-default-named agent setups can now load memory files correctly without code changes.
+- **Route integration tests.** 21 new tests (supertest, in-process) covering CRUD, 400/404 handling, and enum-default behavior for the tasks, todos, and financials routes.
+
+### Fixed
+
+- **UTC timezone bug in `formatDueDate`.** Due-date labels ("today", "tomorrow", "3d overdue") were one day off in non-UTC timezones. `getUTCFullYear/Month/Date` is now used consistently so "today" and the input ISO date are both measured in UTC.
+
+### Changed
+
+- **Runtime body validation on mutation routes.** Tasks, todos, and financials POST/PATCH handlers now validate enum values (`priority`, `status`, `severity`, `horizon`, `kind`) and field types from `req.body` at runtime using explicit type guards. Invalid enum values fall back to safe defaults; missing required fields return 400.
+
+---
+
 ## [0.10.0] — 2026-06-25
 
 ### Added — rich tool rendering, Today's schedule, Integrations panel, Discord expansions
