@@ -629,6 +629,76 @@ async function handleProject(args: string): Promise<string> {
   return lines.join('\n')
 }
 
+// ─── Eval / Bench / Memory query handlers ─────────────────────────────────────
+
+async function handleEval(args: string): Promise<string> {
+  const limit = Math.min(10, Math.max(1, Number(args.trim()) || 5))
+  const { models, platforms } = await api('GET', '/api/evaluations/models')
+  const all = (models as any[])
+  if (!all.length) {
+    const unreachable = (platforms as any[]).filter((p: any) => !p.reachable).map((p: any) => p.platform)
+    if (unreachable.length === 2) return '📊  No eval data — both platforms unreachable.'
+    return '📊  No eval data yet — run some agent sessions to populate the leaderboard.'
+  }
+  const medals = ['🥇', '🥈', '🥉']
+  const lines = all.slice(0, limit).map((m: any, i: number) => {
+    const icon  = medals[i] ?? '▫️'
+    const score = m.overall != null ? ` · **${m.overall}%**` : ''
+    const count = m.evaluatedCount ? ` · ${m.evaluatedCount} runs` : ''
+    return `${icon} **${m.modelLabel ?? m.model}**${score}${count} · *${m.platform}*`
+  })
+  const total = all.length
+  const header = `**📊 Eval Leaderboard** · ${total} model${total === 1 ? '' : 's'}`
+  return fmtList(lines, header)
+}
+
+async function handleBench(args: string): Promise<string> {
+  const limit = Math.min(10, Math.max(1, Number(args.trim()) || 5))
+  const { runs } = await api('GET', '/api/harness-bench/runs')
+  const all = (runs as any[])
+  if (!all.length) return '🧪  No benchmark runs yet.'
+  const STATUS_ICON: Record<string, string> = {
+    done: '✅', running: '⏳', pending: '⏳', cancelled: '🚫', error: '❌',
+  }
+  const lines = all.slice(0, limit).map((r: any) => {
+    const icon  = STATUS_ICON[r.status] ?? '❓'
+    const score = r.status === 'done' && r.maxScore > 0
+      ? ` · ${r.totalScore}/${r.maxScore}`
+      : r.status === 'running' ? ' · running…' : ''
+    const d = r.startedAt ? new Date(r.startedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : ''
+    return `${icon} **${r.modelName}** · ${r.taskPackName ?? r.taskPackId}${score} · *${r.harness}*${d ? ` · ${d}` : ''}`
+  })
+  const header = `**🧪 Harness Benchmarks** · last ${Math.min(limit, all.length)} of ${all.length}`
+  return fmtList(lines, header)
+}
+
+async function handleMemory(): Promise<string> {
+  const { health, recentEvents, source } = await api('GET', '/api/memory/overview')
+  const src = String(source ?? 'openclaw')
+  const lines: string[] = [`**🧠 Memory · ${src}**`, '']
+
+  if (!health || !health.reachable) {
+    const reason = health?.error ?? 'not connected'
+    lines.push(`🔴 ${reason}`)
+    return lines.join('\n')
+  }
+
+  lines.push('🟢 Connected')
+
+  if (health.vector?.recordCount != null) {
+    lines.push(`📐 Vector store — **${health.vector.recordCount.toLocaleString('en-US')} records**`)
+  }
+
+  if (health.store?.files != null) {
+    lines.push(`📂 Memory files — **${health.store.files}**`)
+  }
+
+  const eventCount = Array.isArray(recentEvents) ? recentEvents.length : 0
+  lines.push(`📡 Recent events captured — **${eventCount}**`)
+
+  return lines.join('\n')
+}
+
 // ─── Approval button builder ──────────────────────────────────────────────────
 
 const URGENCY_EMOJI: Record<string, string> = { urgent: '🔴', normal: '🟡', low: '⚪' }
@@ -843,6 +913,9 @@ function helpText(): string {
     '`!done <title>`  — mark a todo as done',
     '`!status`  — connector health + active alerts',
     '`!project [name]`  — list all projects or query one by name',
+    '`!eval [n]`  — top n models by eval score (default 5)',
+    '`!bench [n]`  — last n harness benchmark runs (default 5)',
+    '`!memory`  — memory health, vector count, recent events',
     '',
     '`!help`  — show this message',
   ].join('\n')
@@ -940,6 +1013,9 @@ export function startDiscordBot(port: number | string): void {
         case 'find':      reply = await handleFind(args);          break
         case 'done':      reply = await handleDone(args);          break
         case 'status':    reply = await handleStatus();            break
+        case 'eval':      reply = await handleEval(args);          break
+        case 'bench':     reply = await handleBench(args);         break
+        case 'memory':    reply = await handleMemory();            break
         case 'project':   reply = await handleProject(args);       break
         case 'help':      reply = helpText();                      break
         default:          return  // ignore unknown commands silently
