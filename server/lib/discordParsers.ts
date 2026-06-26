@@ -72,7 +72,7 @@ export function formatDueDate(isoDate: string): string {
   if (!y || !m || !d) return isoDate
   const dueMs   = Date.UTC(y, m - 1, d)
   const now      = new Date()
-  const todayMs  = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate())
+  const todayMs  = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())
   const dayDiff  = Math.round((dueMs - todayMs) / 86_400_000)
   if (dayDiff === 0)  return 'today'
   if (dayDiff === 1)  return 'tomorrow'
