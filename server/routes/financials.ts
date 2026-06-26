@@ -17,6 +17,9 @@ export const financialsRouter = Router()
 
 export type EntryKind = 'asset' | 'liability'
 
+const VALID_KINDS = ['asset', 'liability'] as const
+type FinanceKind  = typeof VALID_KINDS[number]
+
 // Free-form category, but we suggest a stable set to the client for grouping/colour.
 export const ASSET_CATEGORIES = ['cash', 'bank', 'investment', 'crypto', 'property', 'vehicle', 'hardware', 'receivable', 'other'] as const
 export const LIABILITY_CATEGORIES = ['loan', 'credit', 'mortgage', 'tax', 'other'] as const
@@ -84,17 +87,23 @@ financialsRouter.get('/', (_req, res) => {
 
 // POST /api/financials
 financialsRouter.post('/', (req, res) => {
-  const body = req.body ?? {}
-  if (!String(body.label ?? '').trim()) return res.status(400).json({ error: 'label is required' })
-  const kind: EntryKind = body.kind === 'liability' ? 'liability' : 'asset'
+  const body = req.body as Record<string, unknown>
+  const label = typeof body.label === 'string' ? body.label.trim() : ''
+  if (!label) return res.status(400).json({ error: 'label is required' })
+
+  const kind: FinanceKind = VALID_KINDS.includes(body.kind as FinanceKind)
+    ? (body.kind as FinanceKind) : 'asset'
+  const amount   = typeof body.amount   === 'number' ? body.amount   : 0
+  const category = typeof body.category === 'string' ? body.category : ''
+  const notes    = typeof body.notes    === 'string' ? body.notes    : ''
   const now = new Date().toISOString()
   const entry: FinanceEntry = {
     id:        randomUUID(),
-    label:     String(body.label).trim(),
+    label,
     kind,
-    category:  String(body.category ?? (kind === 'liability' ? 'other' : 'cash')).trim() || 'other',
-    amount:    Math.abs(toNum(body.amount, 0)),
-    notes:     String(body.notes ?? ''),
+    category:  category.trim() || (kind === 'liability' ? 'other' : 'cash'),
+    amount:    Math.abs(toNum(amount, 0)),
+    notes,
     createdAt: now,
     updatedAt: now,
   }
@@ -111,12 +120,12 @@ financialsRouter.patch('/:id', (req, res) => {
   const entry   = entries.find(e => e.id === req.params.id)
   if (!entry) return res.status(404).json({ error: 'not found' })
 
-  const { label, kind, category, amount, notes } = req.body ?? {}
-  if (label !== undefined && String(label).trim()) entry.label = String(label).trim()
-  if (kind === 'asset' || kind === 'liability')    entry.kind = kind
-  if (category !== undefined && String(category).trim()) entry.category = String(category).trim()
-  if (amount !== undefined)                        entry.amount = Math.abs(toNum(amount, entry.amount))
-  if (notes !== undefined)                         entry.notes = String(notes)
+  const body = req.body as Record<string, unknown>
+  if (typeof body.label === 'string' && body.label.trim())   entry.label    = body.label.trim()
+  if (VALID_KINDS.includes(body.kind as FinanceKind))        entry.kind     = body.kind as FinanceKind
+  if (typeof body.category === 'string' && body.category.trim()) entry.category = body.category.trim()
+  if (typeof body.amount === 'number')                       entry.amount   = Math.abs(toNum(body.amount, entry.amount))
+  if (typeof body.notes === 'string')                        entry.notes    = body.notes
   entry.updatedAt = new Date().toISOString()
   saveEntries(entries)
   emitDataChanged('financials')
