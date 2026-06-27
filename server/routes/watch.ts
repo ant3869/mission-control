@@ -5,6 +5,9 @@
 //          with its source so the frontend can split/filter as needed.
 
 import { Router } from 'express'
+import { DatabaseSync } from 'node:sqlite'
+import { existsSync, mkdirSync } from 'node:fs'
+import { join } from 'node:path'
 import { addListener as ocAddListener, recent as ocRecent, rawEvents as ocRawEvents } from '../lib/openclawLive.js'
 import { addListener as hAddListener,  recent as hRecent  } from '../lib/hermesLive.js'
 import { addListener as cAddListener,  recent as cRecent  } from '../lib/claudeLive.js'
@@ -52,6 +55,30 @@ watchRouter.get('/stream', (req, res) => {
 
 watchRouter.get('/debug', (_req, res) => {
   res.json({ rawEvents: ocRawEvents() })
+})
+
+// Hourly event counts for today (00–23 local time), one entry per source.
+watchRouter.get('/heatmap', (_req, res) => {
+  try {
+    const dataDir = join(process.cwd(), 'data')
+    if (!existsSync(dataDir)) mkdirSync(dataDir, { recursive: true })
+    const dbPath = join(dataDir, 'openclaw.db')
+    if (!existsSync(dbPath)) { res.json({ hours: Array(24).fill(0) }); return }
+    const db = new DatabaseSync(dbPath)
+    // SQLite strftime with %H gives local hour (UTC stored; offset via localtime modifier).
+    const rows = db.prepare(`
+      SELECT CAST(strftime('%H', ts, 'localtime') AS INTEGER) AS hr,
+             COUNT(*) AS cnt
+      FROM   openclaw_events
+      WHERE  date(ts, 'localtime') = date('now', 'localtime')
+      GROUP BY hr
+    `).all() as Array<{ hr: number; cnt: number }>
+    const hours = Array(24).fill(0)
+    for (const r of rows) { if (r.hr >= 0 && r.hr < 24) hours[r.hr] = Number(r.cnt) }
+    res.json({ hours })
+  } catch (e: any) {
+    res.json({ hours: Array(24).fill(0), error: e?.message })
+  }
 })
 
 watchRouter.get('/debug-poll', async (req, res) => {

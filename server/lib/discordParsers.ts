@@ -8,6 +8,7 @@ export interface ParsedDue      { due: string; rest: string }
 export interface ParsedPrice    { price: number; rest: string }
 export interface ParsedPriority { priority: 'low' | 'medium' | 'high'; rest: string }
 export interface ParsedSpend    { amount: number; description: string; category: string }
+export interface ParsedFlag     { value: string; rest: string }
 
 function clean(text: string): string {
   return text.replace(/\s{2,}/g, ' ').trim()
@@ -81,6 +82,23 @@ export function formatDueDate(isoDate: string): string {
   if (dayDiff <= 7)   return `in ${dayDiff}d`
   const label = new Date(`${isoDate}T00:00:00Z`)
   return label.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })
+}
+
+// Extract --flag <value> or --flag="value" (quoted or unquoted, up to next --)
+export function extractFlag(text: string, flag: string): ParsedFlag {
+  // Handles: --flag "multi word value", --flag=word, --flag word
+  const re = new RegExp(`--${flag}(?:=|\\s+)(?:"([^"]+)"|'([^']+)'|(\\S+))`, 'i')
+  const m = text.match(re)
+  if (!m) return { value: '', rest: text }
+  const value = (m[1] ?? m[2] ?? m[3] ?? '').trim()
+  return { value, rest: clean(text.replace(m[0], '')) }
+}
+
+// Extract --flag <positive integer>
+export function extractFlagInt(text: string, flag: string): { value: number | null; rest: string } {
+  const { value, rest } = extractFlag(text, flag)
+  const n = parseInt(value, 10)
+  return { value: (Number.isFinite(n) && n > 0) ? n : null, rest: value ? rest : text }
 }
 
 // Trim a bulleted list to fit within Discord's 2000-char message limit.

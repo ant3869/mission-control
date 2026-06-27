@@ -1,3 +1,4 @@
+// Sub-view — rendered as the "Live" tab inside Activity.tsx. Not mounted directly in App.tsx.
 import { useState, useEffect } from 'react'
 import { clsx } from 'clsx'
 import {

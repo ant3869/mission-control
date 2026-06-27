@@ -562,12 +562,12 @@ export const agentCron = {
 // ─── Platform metrics (OpenClaw / Hermes dashboards) ───────────────────────────
 
 export interface MetricBreakdown { name: string; tokens: number; cost: number; count: number }
-export interface MetricSessionRow { key: string; title: string; channel: string; model: string; kind: string; tokens: number; cost: number; updatedAt: string | null; startedAt: string | null; status: string; runtimeMs: number; isHeartbeat: boolean }
+export interface MetricSessionRow { key: string; title: string; channel: string; model: string; kind: string; tokens: number; cost: number; updatedAt: string | null; startedAt: string | null; status: string; runtimeMs: number; isHeartbeat: boolean; contextPct: number | null }
 export interface MetricCronJob { id: string; name: string; agentId: string; enabled: boolean; schedule: string; delivery: string; lastRunAt: string | null; nextRunAt: string | null }
 export interface MetricCronRun { ts: string; jobId: string; status: string; action: string; error: string | null }
 export interface MetricChannel { id: string; label: string; enabled: boolean; configured: boolean; running: boolean; lastStartAt: string | null }
 export interface MetricMemoryFile { name: string; size: number; updatedAt: string | null; missing: boolean; path?: string }
-export interface MetricSubAgent { key: string; title: string; status: string; tokens: number; updatedAt: string | null }
+export interface MetricSubAgent { key: string; title: string; status: string; tokens: number; updatedAt: string | null; parentKey: string | null }
 export interface MetricAutonomyFactor { label: string; score: number; detail: string }
 export interface MetricAutonomy { score: number; level: string; factors: MetricAutonomyFactor[] }
 
@@ -582,7 +582,7 @@ export interface PlatformMetrics {
   cost:      { total: number; input: number; output: number; cacheRead: number; cacheWrite: number }
   daily:     Array<{ date: string; tokens: number; cost: number; input: number; output: number }>
   messages:  { total: number; user: number; assistant: number; toolCalls: number; errors: number } | null
-  tools:     Array<{ name: string; count: number }>
+  tools:     Array<{ name: string; count: number; errors: number; avgMs: number | null }>
   byModel:    MetricBreakdown[]
   byProvider: MetricBreakdown[]
   byAgent:    MetricBreakdown[]
@@ -1634,6 +1634,19 @@ export interface WatchEvent {
 
 // EventSource URL (not a fetch — opened with `new EventSource(...)`)
 export const WATCH_STREAM_URL = `${API_BASE}/api/watch/stream`
+
+export const watchHeatmap = () => get<{ hours: number[]; error?: string }>('/watch/heatmap')
+
+// ─── Budget limits ────────────────────────────────────────────────────────────
+
+export interface BudgetLimits {
+  daily:  { cost: number | null; tokens: number | null }
+  weekly: { cost: number | null; tokens: number | null }
+}
+export const budgets = {
+  get: () => get<BudgetLimits>('/budgets'),
+  set: (b: BudgetLimits) => put<BudgetLimits>('/budgets', b),
+}
 
 // ─── Evaluations (Hermes + OpenClaw only) ──────────────────────────────────────
 

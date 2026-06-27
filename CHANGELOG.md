@@ -6,6 +6,35 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.13.0] — 2026-06-27
+
+### Added
+
+- **Health dashboard: Tool analytics tab.** Per-tool call counts, error rates, and average latency (where available) in a sortable table — visible under Health → Tools for both OpenClaw and Hermes.
+- **Health dashboard: Context utilization column in Sessions.** Each session row now shows a colour-coded bar (green < 60 %, amber 60–85 %, red > 85 %) indicating how much of the model's context window has been consumed, based on a model-family lookup table. Sortable by context % via the tab bar.
+- **Health dashboard: Hourly activity heatmap.** Health → Heatmap shows a 24-column bar chart of today's agent events queried directly from SQLite, refreshing every 60 seconds. Current hour is highlighted.
+- **Health dashboard: Spawn tree tab.** Health → Spawns renders a nested hierarchy of sub-agent sessions. For Hermes, parent–child relationships are resolved from `parent_session_id`; for OpenClaw, sessions are shown flat with a note that parent data is unavailable.
+- **Health dashboard: Budget gauge tab.** Health → Budget shows daily and weekly cost and token consumption against configurable limits. Limits are set inline with an edit form and persisted to `data/budgets.json`.
+- **`/api/budgets` endpoint.** GET returns current daily/weekly cost and token limits; PUT updates them. Consumed by the Budget tab and the new `!budget` Discord command.
+- **`/api/watch/heatmap` endpoint.** Returns today's per-hour event counts from `openclaw.db` for the heatmap tab.
+- **Discord: rich `!inventory` command.** `!inventory` and its alias `!inv` now accept `--cat`, `--qty`, `--loc`, `--cond`, `--val`, `--mfr`, `--model`, `--notes`, `--status`, and `--research` flags, enabling fully-described items to be added from Discord in one message.
+- **Discord: `!inv status <name> <available|in-use|reserved>`.** Flips the deployment status of an existing inventory item without opening the UI.
+- **Discord: `!inv find <query>`.** Searches inventory by name, category, location, or tags and returns up to 15 results with condition, value, and location.
+- **Discord: `!list inventory [filter]`.** Lists inventory items filterable by category, status, or condition (e.g. `!list inventory in-use`, `!list inventory sbc`).
+- **Discord: `!task done <title>`.** Marks an active task as completed — previously only todos could be completed from Discord via `!done`.
+- **Discord: `!budget` command.** Shows today's and this week's cost + token usage against configured limits, with ASCII gauge bars.
+
+### Changed
+
+- **`tools` metrics shape extended.** Each tool entry now carries `errors` (int) and `avgMs` (number | null) in addition to `name` and `count`. Hermes toolsets default to `errors: 0, avgMs: null`.
+- **`sessionList` entries carry `contextPct`.** Both OpenClaw and Hermes session rows now include a `contextPct: number | null` field (0–100) derived from total tokens ÷ model context window.
+- **`subAgents` entries carry `parentKey`.** Hermes sub-agent records now expose `parentKey: string | null` from `parent_session_id`, enabling the spawn tree hierarchy. OpenClaw records default to `null`.
+- **Global Express error handler added.** Unhandled throws from async route handlers now return a consistent `{ error: string }` JSON response instead of hanging the request.
+- **Pipeline JSONL scanner bare `catch` clauses now log errors.** Directory-scan failures are no longer silently swallowed (stat race on file deletion remains silent as expected).
+- **Dead types purged from `src/types/index.ts`.** ~380 lines of types for removed views (Person, Content, Feedback, Agent, ChatSession, InventoryItem, etc.) removed. Live types (View, AgentState, FlowGraph, SystemComponentType/Status) retained.
+
+---
+
 ## [0.12.0] — 2026-06-26
 
 ### Added

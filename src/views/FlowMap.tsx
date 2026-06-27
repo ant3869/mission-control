@@ -1,3 +1,4 @@
+// Sub-view — rendered as the "Map" tab inside Activity.tsx. Not mounted directly in App.tsx.
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { isRefreshPaused } from '../lib/refreshBus'
 import { LiveBadge } from '../components/LiveBadge'

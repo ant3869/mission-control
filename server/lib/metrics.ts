@@ -12,12 +12,38 @@ import { discoverMemoryFilesFromFS, resolveMemoryFilePath } from './memoryFilesF
 import { fetchMemoryFiles } from './gateway.js'
 
 export interface Breakdown { name: string; tokens: number; cost: number; count: number }
-export interface SessionRow { key: string; title: string; channel: string; model: string; kind: string; tokens: number; cost: number; updatedAt: string | null; startedAt: string | null; status: string; runtimeMs: number; isHeartbeat: boolean }
+// Approximate context windows by model family — used to compute contextPct.
+// Values are in tokens. Prefer the model's actual advertised context; these
+// are conservative minimums so contextPct errs on the high side.
+const MODEL_CONTEXT: Array<[RegExp, number]> = [
+  [/claude.*opus-4/i,          200_000],
+  [/claude.*sonnet-4/i,        200_000],
+  [/claude.*haiku-4/i,         200_000],
+  [/claude.*opus/i,            200_000],
+  [/claude.*sonnet/i,          200_000],
+  [/claude.*haiku/i,           200_000],
+  [/claude/i,                  100_000],
+  [/gpt-4o/i,                  128_000],
+  [/gpt-4-turbo/i,             128_000],
+  [/gpt-4/i,                    32_000],
+  [/gpt-3\.5/i,                 16_000],
+  [/gemini-1\.5/i,           1_000_000],
+  [/gemini/i,                  128_000],
+  [/llama-3/i,                 131_072],
+  [/llama/i,                    32_000],
+  [/mistral/i,                  32_000],
+]
+function modelContextWindow(model: string): number {
+  for (const [re, size] of MODEL_CONTEXT) if (re.test(model)) return size
+  return 128_000 // safe default
+}
+
+export interface SessionRow { key: string; title: string; channel: string; model: string; kind: string; tokens: number; cost: number; updatedAt: string | null; startedAt: string | null; status: string; runtimeMs: number; isHeartbeat: boolean; contextPct: number | null }
 export interface CronJobMetric { id: string; name: string; agentId: string; enabled: boolean; schedule: string; delivery: string; lastRunAt: string | null; nextRunAt: string | null }
 export interface CronRunMetric { ts: string; jobId: string; status: string; action: string; error: string | null }
 export interface ChannelMetric { id: string; label: string; enabled: boolean; configured: boolean; running: boolean; lastStartAt: string | null }
 export interface MemoryFile { name: string; size: number; updatedAt: string | null; missing: boolean; path?: string }
-export interface SubAgentInfo { key: string; title: string; status: string; tokens: number; updatedAt: string | null }
+export interface SubAgentInfo { key: string; title: string; status: string; tokens: number; updatedAt: string | null; parentKey: string | null }
 export interface AutonomyFactor { label: string; score: number; detail: string }
 export interface Autonomy { score: number; level: string; factors: AutonomyFactor[] }
 
@@ -32,7 +58,7 @@ export interface PlatformMetrics {
   cost: { total: number; input: number; output: number; cacheRead: number; cacheWrite: number }
   daily: Array<{ date: string; tokens: number; cost: number; input: number; output: number }>
   messages: { total: number; user: number; assistant: number; toolCalls: number; errors: number } | null
-  tools: Array<{ name: string; count: number }>
+  tools: Array<{ name: string; count: number; errors: number; avgMs: number | null }>
   byModel: Breakdown[]
   byProvider: Breakdown[]
   byAgent: Breakdown[]
@@ -171,20 +197,26 @@ async function openclawMetrics(force: boolean): Promise<PlatformMetrics> {
   }))
 
   const sessionList: SessionRow[] = (r['sessions.list']?.sessions ?? [])
-    .map((s: any): SessionRow => ({
-      key: String(s.key ?? s.sessionId ?? ''),
-      title: String(s.displayName ?? s.key ?? 'session'),
-      channel: String(s.channel ?? ''),
-      model: String(s.model ?? ''),
-      kind: String(s.kind ?? ''),
-      tokens: num(s.totalTokens),
-      cost: num(s.estimatedCostUsd ?? s.totalCost),
-      updatedAt: iso(s.updatedAt),
-      startedAt: iso(s.startedAt),
-      status: String(s.status ?? ''),
-      runtimeMs: num(s.runtimeMs),
-      isHeartbeat: /cron|heartbeat|schedule/i.test([s.key, s.kind, s.origin?.provider].filter(Boolean).join(' ')),
-    }))
+    .map((s: any): SessionRow => {
+      const model  = String(s.model ?? '')
+      const tokens = num(s.totalTokens)
+      const ctx    = modelContextWindow(model)
+      return {
+        key: String(s.key ?? s.sessionId ?? ''),
+        title: String(s.displayName ?? s.key ?? 'session'),
+        channel: String(s.channel ?? ''),
+        model,
+        kind: String(s.kind ?? ''),
+        tokens,
+        cost: num(s.estimatedCostUsd ?? s.totalCost),
+        updatedAt: iso(s.updatedAt),
+        startedAt: iso(s.startedAt),
+        status: String(s.status ?? ''),
+        runtimeMs: num(s.runtimeMs),
+        isHeartbeat: /cron|heartbeat|schedule/i.test([s.key, s.kind, s.origin?.provider].filter(Boolean).join(' ')),
+        contextPct: tokens > 0 ? Math.min(100, Math.round((tokens / ctx) * 100)) : null,
+      }
+    })
     .sort((a: SessionRow, b: SessionRow) => new Date(b.updatedAt ?? 0).getTime() - new Date(a.updatedAt ?? 0).getTime())
     .slice(0, 80)
 
@@ -212,7 +244,12 @@ async function openclawMetrics(force: boolean): Promise<PlatformMetrics> {
     cost: { total: num(t.totalCost), input: num(t.inputCost), output: num(t.outputCost), cacheRead: num(t.cacheReadCost), cacheWrite: num(t.cacheWriteCost) },
     daily: (uc.daily ?? []).map((d: any) => ({ date: String(d.date), tokens: num(d.totalTokens), cost: num(d.totalCost), input: num(d.input), output: num(d.output) })),
     messages: agg.messages ? { total: num(agg.messages.total), user: num(agg.messages.user), assistant: num(agg.messages.assistant), toolCalls: num(agg.messages.toolCalls), errors: num(agg.messages.errors) } : null,
-    tools: (agg.tools?.tools ?? []).map((x: any) => ({ name: String(x.name), count: num(x.count) })),
+    tools: (agg.tools?.tools ?? []).map((x: any) => ({
+      name:   String(x.name),
+      count:  num(x.count),
+      errors: num(x.errors ?? x.errorCount ?? 0),
+      avgMs:  x.avgMs != null ? num(x.avgMs) : (x.totalMs && x.count ? Math.round(num(x.totalMs) / Math.max(num(x.count), 1)) : null),
+    })),
     byModel: breakdown(agg.byModel),
     byProvider: breakdown(agg.byProvider),
     byAgent: breakdown(agg.byAgent),
@@ -240,7 +277,7 @@ async function openclawMetrics(force: boolean): Promise<PlatformMetrics> {
     memoryFiles,
     subAgents: {
       total: subAgentSessions.length,
-      recent: subAgentSessions.slice(0, 12).map((s): SubAgentInfo => ({ key: s.key, title: s.title, status: s.status, tokens: s.tokens, updatedAt: s.updatedAt })),
+      recent: subAgentSessions.slice(0, 12).map((s): SubAgentInfo => ({ key: s.key, title: s.title, status: s.status, tokens: s.tokens, updatedAt: s.updatedAt, parentKey: null })),
     },
     autonomy,
   }
@@ -348,7 +385,7 @@ async function hermesMetrics(): Promise<PlatformMetrics> {
     // Hermes has no per-tool usage counts; surface enabled toolsets sized by tool count.
     tools: (toolsetsR.ok ? toolsetsR.data ?? [] : [])
       .filter((ts: any) => ts.enabled !== false)
-      .map((ts: any) => ({ name: String(ts.label ?? ts.name ?? ''), count: Array.isArray(ts.tools) ? ts.tools.length : 0 }))
+      .map((ts: any) => ({ name: String(ts.label ?? ts.name ?? ''), count: Array.isArray(ts.tools) ? ts.tools.length : 0, errors: 0, avgMs: null }))
       .filter((x: any) => x.name)
       .sort((a: any, b: any) => b.count - a.count),
     byModel,
@@ -357,20 +394,26 @@ async function hermesMetrics(): Promise<PlatformMetrics> {
     byChannel: [...chanAgg.values()].sort((a, b) => b.tokens - a.tokens),
     latency: null,
     sessions: { total: num(t.total_sessions) || sessions.length || num(statusR.activeSessions) },
-    sessionList: sessions.map((s: any): SessionRow => ({
-      key: String(s.id ?? ''),
-      title: String(s.title ?? (s.preview ? String(s.preview).slice(0, 50) : '') ?? s.id) || String(s.id),
-      channel: String(s.source ?? ''),
-      model: String(s.model ?? ''),
-      kind: s.parent_session_id ? 'subagent' : '',
-      tokens: num(s.input_tokens) + num(s.output_tokens) + num(s.cache_read_tokens),
-      cost: num(s.estimated_cost_usd ?? s.actual_cost_usd),
-      updatedAt: iso(s.last_active),
-      startedAt: iso(s.started_at),
-      status: s.is_active ? 'active' : String(s.end_reason ?? ''),
-      runtimeMs: 0,
-      isHeartbeat: /cron|heartbeat/i.test(String(s.source ?? '')),
-    })).sort((a, b) => new Date(b.updatedAt ?? 0).getTime() - new Date(a.updatedAt ?? 0).getTime()).slice(0, 80),
+    sessionList: sessions.map((s: any): SessionRow => {
+      const model  = String(s.model ?? '')
+      const tokens = num(s.input_tokens) + num(s.output_tokens) + num(s.cache_read_tokens)
+      const ctx    = modelContextWindow(model)
+      return {
+        key: String(s.id ?? ''),
+        title: String(s.title ?? (s.preview ? String(s.preview).slice(0, 50) : '') ?? s.id) || String(s.id),
+        channel: String(s.source ?? ''),
+        model,
+        kind: s.parent_session_id ? 'subagent' : '',
+        tokens,
+        cost: num(s.estimated_cost_usd ?? s.actual_cost_usd),
+        updatedAt: iso(s.last_active),
+        startedAt: iso(s.started_at),
+        status: s.is_active ? 'active' : String(s.end_reason ?? ''),
+        runtimeMs: 0,
+        isHeartbeat: /cron|heartbeat/i.test(String(s.source ?? '')),
+        contextPct: tokens > 0 ? Math.min(100, Math.round((tokens / ctx) * 100)) : null,
+      }
+    }).sort((a, b) => new Date(b.updatedAt ?? 0).getTime() - new Date(a.updatedAt ?? 0).getTime()).slice(0, 80),
     channels: [...chanAgg.keys()].map(id => ({ id, label: id.charAt(0).toUpperCase() + id.slice(1), enabled: true, configured: true, running: true, lastStartAt: null })),
     cron: { total: jobs.length, enabled: true, nextWakeAt: null, jobs, runs: [], runsTotal: 0, failures: cronFailures, successRate: jobs.length ? Math.round(((jobs.length - cronFailures) / jobs.length) * 100) : 100 },
     models: byModel.map(b => ({ id: b.name, name: b.name.includes('/') ? b.name.split('/').slice(1).join('/') : b.name, provider: b.name.includes('/') ? b.name.split('/')[0] : '' })),
@@ -380,7 +423,7 @@ async function hermesMetrics(): Promise<PlatformMetrics> {
     memoryFiles,
     subAgents: {
       total: subAgentSessions.length,
-      recent: subAgentSessions.slice(0, 12).map((s: any): SubAgentInfo => ({ key: String(s.id ?? ''), title: String(s.title ?? s.id ?? ''), status: s.is_active ? 'active' : String(s.end_reason ?? ''), tokens: num(s.input_tokens) + num(s.output_tokens), updatedAt: iso(s.last_active) })),
+      recent: subAgentSessions.slice(0, 12).map((s: any): SubAgentInfo => ({ key: String(s.id ?? ''), title: String(s.title ?? s.id ?? ''), status: s.is_active ? 'active' : String(s.end_reason ?? ''), tokens: num(s.input_tokens) + num(s.output_tokens), updatedAt: iso(s.last_active), parentKey: s.parent_session_id ? String(s.parent_session_id) : null })),
     },
     autonomy: computeAutonomy({
       user: userMsgs, assistant: assistantCalls, toolCalls: totalToolCalls, total: totalMessages,

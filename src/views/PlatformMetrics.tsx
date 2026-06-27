@@ -10,8 +10,8 @@ import {
 } from 'lucide-react'
 import { isRefreshPaused } from '../lib/refreshBus'
 import {
-  metrics as metricsApi, memoryFile as memoryFileApi, openclawChats, hermesChats,
-  type PlatformMetrics, type ConnectorId, type MetricBreakdown, type MetricSessionRow, type LiveChatMessage,
+  metrics as metricsApi, memoryFile as memoryFileApi, openclawChats, hermesChats, watchHeatmap, budgets as budgetsApi,
+  type PlatformMetrics, type ConnectorId, type MetricBreakdown, type MetricSessionRow, type MetricSubAgent, type BudgetLimits, type LiveChatMessage,
 } from '../lib/api'
 import BrainView from './Brain'
 import FlowView from './Flow'
@@ -55,7 +55,7 @@ const THEME: Record<ConnectorId, { label: string; icon: string; accent: string; 
   hermes:   { label: 'Hermes',   icon: '☤',  accent: 'text-purple-300', bar: 'bg-purple-500/70', dot: 'bg-purple-400' },
 }
 
-type TabId = 'overview' | 'activity' | 'autonomy' | 'sessions' | 'cron' | 'breakdowns' | 'system' | 'brain' | 'flow' | 'alerts' | 'security'
+type TabId = 'overview' | 'activity' | 'autonomy' | 'sessions' | 'cron' | 'breakdowns' | 'tools' | 'heatmap' | 'spawntree' | 'budget' | 'system' | 'brain' | 'flow' | 'alerts' | 'security'
 const TABS: Array<{ id: TabId; label: string; icon: React.ReactNode }> = [
   { id: 'overview',   label: 'Overview',   icon: <LayoutGrid size={13} /> },
   { id: 'activity',   label: 'Activity',   icon: <Activity size={13} /> },
@@ -63,6 +63,10 @@ const TABS: Array<{ id: TabId; label: string; icon: React.ReactNode }> = [
   { id: 'sessions',   label: 'Sessions',   icon: <MessageSquare size={13} /> },
   { id: 'cron',       label: 'Cron',       icon: <Clock size={13} /> },
   { id: 'breakdowns', label: 'Breakdowns', icon: <Cpu size={13} /> },
+  { id: 'tools',      label: 'Tools',      icon: <Wrench size={13} /> },
+  { id: 'heatmap',    label: 'Heatmap',    icon: <Hash size={13} /> },
+  { id: 'spawntree',  label: 'Spawns',     icon: <Bot size={13} /> },
+  { id: 'budget',     label: 'Budget',     icon: <DollarSign size={13} /> },
   { id: 'system',     label: 'System',     icon: <Shield size={13} /> },
   { id: 'brain',      label: 'Brain',      icon: <Brain size={13} /> },
   { id: 'flow',       label: 'Flow',       icon: <GitBranch size={13} /> },
@@ -278,19 +282,37 @@ function TranscriptDrawer({ source, session, badge, onClose }: {
   )
 }
 
+function ContextBar({ pct }: { pct: number | null }) {
+  if (pct == null) return null
+  const color = pct >= 85 ? 'bg-red-500' : pct >= 60 ? 'bg-amber-400' : 'bg-green-500'
+  return (
+    <div className="flex items-center gap-1.5 shrink-0 w-16" title={`~${pct}% of context window`}>
+      <div className="flex-1 h-1 rounded-full bg-base overflow-hidden">
+        <div className={clsx('h-full rounded-full', color)} style={{ width: `${pct}%` }} />
+      </div>
+      <span className={clsx('text-xxs tabular-nums w-7 text-right', pct >= 85 ? 'text-red-400' : pct >= 60 ? 'text-amber-300' : 'text-text-muted')}>{pct}%</span>
+    </div>
+  )
+}
+
 function SessionsTable({ sessions, onPick }: { sessions: MetricSessionRow[]; onPick: (s: MetricSessionRow) => void }) {
-  const [sort, setSort] = useState<'recent' | 'tokens' | 'cost'>('recent')
+  const [sort, setSort] = useState<'recent' | 'tokens' | 'cost' | 'ctx'>('recent')
   const sorted = [...sessions].sort((a, b) =>
     sort === 'tokens' ? b.tokens - a.tokens
-    : sort === 'cost' ? b.cost - a.cost
+    : sort === 'cost'   ? b.cost - a.cost
+    : sort === 'ctx'    ? (b.contextPct ?? -1) - (a.contextPct ?? -1)
     : new Date(b.updatedAt ?? 0).getTime() - new Date(a.updatedAt ?? 0).getTime(),
   ).slice(0, 40)
+
+  const hasCtx = sessions.some(s => s.contextPct != null)
 
   return (
     <div>
       <div className="flex items-center gap-1 mb-3 bg-base rounded border border-border p-0.5 w-fit">
-        {(['recent', 'tokens', 'cost'] as const).map(k => (
-          <button key={k} onClick={() => setSort(k)} className={clsx('px-2 py-0.5 rounded text-xxs capitalize', sort === k ? 'bg-card-hover text-text-primary' : 'text-text-muted hover:text-text-secondary')}>{k}</button>
+        {(['recent', 'tokens', 'cost', ...(hasCtx ? ['ctx'] : [])] as const).map(k => (
+          <button key={k} onClick={() => setSort(k as typeof sort)} className={clsx('px-2 py-0.5 rounded text-xxs capitalize', sort === k ? 'bg-card-hover text-text-primary' : 'text-text-muted hover:text-text-secondary')}>
+            {k === 'ctx' ? 'context %' : k}
+          </button>
         ))}
       </div>
       <div className="flex flex-col divide-y divide-border rounded-lg border border-border overflow-hidden">
@@ -303,6 +325,7 @@ function SessionsTable({ sessions, onPick }: { sessions: MetricSessionRow[]; onP
                 {[s.channel, s.model, s.status].filter(Boolean).join(' · ') || s.key}
               </p>
             </div>
+            {hasCtx && <ContextBar pct={s.contextPct} />}
             <div className="text-right shrink-0">
               <p className="text-xxs text-text-secondary tabular-nums">{fmtTokens(s.tokens)} tok{s.cost > 0 ? ` · ${fmtCost(s.cost)}` : ''}</p>
               <p className="text-xxs text-text-muted">{relTime(s.updatedAt)}</p>
@@ -908,6 +931,300 @@ function fmtUptime(ms: number): string {
   return `${m}m`
 }
 
+// ─── Tool analytics table ──────────────────────────────────────────────────────────
+
+type ToolSort = 'calls' | 'errors' | 'errRate' | 'avgMs'
+
+function ToolsTable({ tools, theme }: { tools: PlatformMetrics['tools']; theme: typeof THEME[ConnectorId] }) {
+  const [sort, setSort] = useState<ToolSort>('calls')
+
+  const totalCalls = tools.reduce((s, t) => s + t.count, 0) || 1
+  const sorted = [...tools].sort((a, b) => {
+    if (sort === 'calls')   return b.count - a.count
+    if (sort === 'errors')  return b.errors - a.errors
+    if (sort === 'errRate') return (b.errors / Math.max(b.count, 1)) - (a.errors / Math.max(a.count, 1))
+    if (sort === 'avgMs')   return (b.avgMs ?? -1) - (a.avgMs ?? -1)
+    return 0
+  })
+
+  const hasLatency = tools.some(t => t.avgMs != null && t.avgMs > 0)
+  const hasErrors  = tools.some(t => t.errors > 0)
+
+  const ColHeader = ({ id, label }: { id: ToolSort; label: string }) => (
+    <button onClick={() => setSort(id)} className={clsx('text-left text-xxs uppercase tracking-wide font-semibold transition-colors', sort === id ? 'text-text-primary' : 'text-text-muted hover:text-text-secondary')}>
+      {label}{sort === id ? ' ↓' : ''}
+    </button>
+  )
+
+  if (tools.length === 0) return <p className="text-xxs text-text-muted py-4 text-center">No tool usage data</p>
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-xs border-collapse">
+        <thead>
+          <tr className="border-b border-border">
+            <th className="text-left pb-2 pr-4 min-w-[140px]"><ColHeader id="calls" label="Tool" /></th>
+            <th className="text-right pb-2 px-3 w-20"><ColHeader id="calls" label="Calls" /></th>
+            <th className="text-right pb-2 px-3 w-20"><span className="text-xxs uppercase tracking-wide font-semibold text-text-muted">Share</span></th>
+            {hasErrors && <>
+              <th className="text-right pb-2 px-3 w-16"><ColHeader id="errors" label="Errors" /></th>
+              <th className="text-right pb-2 px-3 w-16"><ColHeader id="errRate" label="Err%" /></th>
+            </>}
+            {hasLatency && <th className="text-right pb-2 pl-3 w-20"><ColHeader id="avgMs" label="Avg ms" /></th>}
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-border">
+          {sorted.map(t => {
+            const share   = t.count / totalCalls
+            const errPct  = t.count > 0 ? (t.errors / t.count) * 100 : 0
+            const errTone = errPct > 20 ? 'text-red-400' : errPct > 5 ? 'text-amber-300' : 'text-text-muted'
+            return (
+              <tr key={t.name} className="group hover:bg-card-hover transition-colors">
+                <td className="py-2 pr-4">
+                  <span className="font-mono text-text-primary">{t.name}</span>
+                </td>
+                <td className="py-2 px-3 text-right tabular-nums text-text-secondary">{fmtNum(t.count)}</td>
+                <td className="py-2 px-3">
+                  <div className="flex items-center gap-1.5">
+                    <div className="flex-1 h-1.5 rounded-full bg-base overflow-hidden min-w-[40px]">
+                      <div className={clsx('h-full rounded-full', theme.bar)} style={{ width: `${Math.max(2, share * 100)}%` }} />
+                    </div>
+                    <span className="tabular-nums text-text-muted text-xxs w-8 text-right">{Math.round(share * 100)}%</span>
+                  </div>
+                </td>
+                {hasErrors && <>
+                  <td className="py-2 px-3 text-right tabular-nums text-text-muted">{t.errors > 0 ? fmtNum(t.errors) : '—'}</td>
+                  <td className={clsx('py-2 px-3 text-right tabular-nums font-medium', errTone)}>{t.errors > 0 ? `${errPct.toFixed(1)}%` : '—'}</td>
+                </>}
+                {hasLatency && <td className="py-2 pl-3 text-right tabular-nums text-text-muted">{t.avgMs != null && t.avgMs > 0 ? fmtMs(t.avgMs) : '—'}</td>}
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+// ─── Budget gauge ─────────────────────────────────────────────────────────────
+
+function BudgetBar({ label, used, limit, fmt }: { label: string; used: number; limit: number | null; fmt: (n: number) => string }) {
+  const pct   = limit ? Math.min(100, Math.round((used / limit) * 100)) : null
+  const color  = pct == null ? 'bg-slate-600' : pct >= 90 ? 'bg-red-500' : pct >= 70 ? 'bg-amber-400' : 'bg-emerald-500'
+  const textCl = pct == null ? 'text-text-muted' : pct >= 90 ? 'text-red-400' : pct >= 70 ? 'text-amber-300' : 'text-emerald-400'
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex items-center justify-between text-xxs">
+        <span className="text-text-muted uppercase tracking-wide">{label}</span>
+        <span className={textCl}>{fmt(used)}{limit ? ` / ${fmt(limit)}` : ' (no limit)'}</span>
+      </div>
+      <div className="h-2 rounded-full bg-base overflow-hidden">
+        <div className={clsx('h-full rounded-full transition-all', color)} style={{ width: `${pct ?? 0}%` }} />
+      </div>
+      {pct != null && <div className="flex justify-between text-xxs text-text-muted"><span>{pct}% used</span>{limit && <span>{fmt(limit - used)} remaining</span>}</div>}
+    </div>
+  )
+}
+
+type BudgetField = 'daily.cost' | 'daily.tokens' | 'weekly.cost' | 'weekly.tokens'
+
+function BudgetGauge({ m }: { m: PlatformMetrics }) {
+  const [limits, setLimits]   = useState<BudgetLimits>({ daily: { cost: null, tokens: null }, weekly: { cost: null, tokens: null } })
+  const [editing, setEditing] = useState(false)
+  const [saving, setSaving]   = useState(false)
+  const [draft, setDraft]     = useState<Record<BudgetField, string>>({
+    'daily.cost': '', 'daily.tokens': '', 'weekly.cost': '', 'weekly.tokens': '',
+  })
+
+  useEffect(() => {
+    budgetsApi.get().then(b => {
+      setLimits(b)
+      setDraft({
+        'daily.cost':    b.daily.cost    != null ? String(b.daily.cost)    : '',
+        'daily.tokens':  b.daily.tokens  != null ? String(b.daily.tokens)  : '',
+        'weekly.cost':   b.weekly.cost   != null ? String(b.weekly.cost)   : '',
+        'weekly.tokens': b.weekly.tokens != null ? String(b.weekly.tokens) : '',
+      })
+    }).catch(() => {})
+  }, [])
+
+  // Today's usage from daily array
+  const today = new Date().toISOString().slice(0, 10)
+  const todayRow = m.daily.find(d => d.date === today)
+  const todayTokens = todayRow?.tokens ?? 0
+  const todayCost   = todayRow?.cost   ?? 0
+
+  // This week — sum last 7 days
+  const weekAgo = new Date(Date.now() - 7 * 86_400_000).toISOString().slice(0, 10)
+  const weekRows = m.daily.filter(d => d.date >= weekAgo)
+  const weekTokens = weekRows.reduce((s, d) => s + d.tokens, 0)
+  const weekCost   = weekRows.reduce((s, d) => s + d.cost, 0)
+
+  const save = async () => {
+    setSaving(true)
+    const parse = (k: BudgetField) => { const v = parseFloat(draft[k]); return (Number.isFinite(v) && v > 0) ? v : null }
+    const updated: BudgetLimits = {
+      daily:  { cost: parse('daily.cost'),  tokens: parse('daily.tokens') },
+      weekly: { cost: parse('weekly.cost'), tokens: parse('weekly.tokens') },
+    }
+    try { const r = await budgetsApi.set(updated); setLimits(r); setEditing(false) } catch { /* ignore */ } finally { setSaving(false) }
+  }
+
+  return (
+    <div className="flex flex-col gap-6">
+      <div className="grid grid-cols-1 gap-4">
+        <div className="rounded-lg border border-border bg-surface/30 p-4 flex flex-col gap-3">
+          <p className="text-xs font-semibold text-text-primary uppercase tracking-wide">Today</p>
+          <BudgetBar label="Cost"   used={todayCost}   limit={limits.daily.cost}   fmt={fmtCost} />
+          <BudgetBar label="Tokens" used={todayTokens} limit={limits.daily.tokens} fmt={fmtTokens} />
+        </div>
+        <div className="rounded-lg border border-border bg-surface/30 p-4 flex flex-col gap-3">
+          <p className="text-xs font-semibold text-text-primary uppercase tracking-wide">This week</p>
+          <BudgetBar label="Cost"   used={weekCost}   limit={limits.weekly.cost}   fmt={fmtCost} />
+          <BudgetBar label="Tokens" used={weekTokens} limit={limits.weekly.tokens} fmt={fmtTokens} />
+        </div>
+      </div>
+
+      {!editing ? (
+        <button onClick={() => setEditing(true)} className="flex items-center gap-1.5 text-xxs text-text-muted hover:text-text-secondary transition-colors self-start">
+          <Edit2 size={11} /> Set budget limits
+        </button>
+      ) : (
+        <div className="rounded-lg border border-border bg-card p-4 flex flex-col gap-3">
+          <p className="text-xs font-semibold text-text-primary">Budget limits</p>
+          {([ ['daily.cost','Daily cost ($)'], ['daily.tokens','Daily tokens'], ['weekly.cost','Weekly cost ($)'], ['weekly.tokens','Weekly tokens'] ] as [BudgetField, string][]).map(([k, lbl]) => (
+            <div key={k} className="flex items-center gap-3">
+              <span className="text-xxs text-text-muted w-32 shrink-0">{lbl}</span>
+              <input
+                type="number" min={0} value={draft[k]} placeholder="no limit"
+                onChange={e => setDraft(d => ({ ...d, [k]: e.target.value }))}
+                className="flex-1 bg-base border border-border rounded px-2 py-1 text-xs text-text-primary placeholder-text-muted focus:outline-none focus:ring-1 focus:ring-border"
+              />
+            </div>
+          ))}
+          <div className="flex gap-2 mt-1">
+            <button onClick={save} disabled={saving} className="flex items-center gap-1.5 text-xxs px-3 py-1.5 bg-card-hover rounded border border-border text-text-primary hover:border-text-muted transition-colors">
+              {saving ? <Loader size={11} className="animate-spin" /> : <Save size={11} />} Save
+            </button>
+            <button onClick={() => setEditing(false)} className="text-xxs px-3 py-1.5 text-text-muted hover:text-text-secondary">Cancel</button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Hourly heatmap ───────────────────────────────────────────────────────────
+
+// ─── Spawn tree ───────────────────────────────────────────────────────────────
+
+type SpawnNode = { agent: MetricSubAgent; children: SpawnNode[] }
+
+function buildTree(agents: MetricSubAgent[]): SpawnNode[] {
+  const byKey = new Map(agents.map(a => [a.key, { agent: a, children: [] as SpawnNode[] }]))
+  const roots: SpawnNode[] = []
+  for (const node of byKey.values()) {
+    const parentNode = node.agent.parentKey ? byKey.get(node.agent.parentKey) : null
+    if (parentNode) parentNode.children.push(node)
+    else roots.push(node)
+  }
+  return roots
+}
+
+function SpawnNode({ node, depth = 0 }: { node: SpawnNode; depth?: number }) {
+  const a = node.agent
+  const isActive = a.status === 'active' || a.status === 'running'
+  return (
+    <div>
+      <div className={clsx('flex items-center gap-2 py-1.5 px-2 rounded hover:bg-card-hover transition-colors', depth > 0 && 'ml-4 border-l border-border pl-4')} style={depth > 1 ? { marginLeft: depth * 16 } : {}}>
+        <div className={clsx('w-1.5 h-1.5 rounded-full shrink-0', isActive ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500')} />
+        <div className="flex-1 min-w-0">
+          <p className="text-xs text-text-primary truncate">{a.title || a.key}</p>
+          {a.key !== a.title && <p className="text-xxs text-text-muted font-mono truncate">{a.key}</p>}
+        </div>
+        <span className={clsx('text-xxs px-1.5 py-0.5 rounded shrink-0', isActive ? 'bg-emerald-900/40 text-emerald-300' : 'bg-card text-text-muted')}>{a.status || 'done'}</span>
+        {a.tokens > 0 && <span className="text-xxs text-text-muted tabular-nums shrink-0">{fmtTokens(a.tokens)}</span>}
+      </div>
+      {node.children.map(c => <SpawnNode key={c.agent.key} node={c} depth={depth + 1} />)}
+    </div>
+  )
+}
+
+function SpawnTree({ subAgents }: { subAgents: PlatformMetrics['subAgents'] }) {
+  const { recent, total } = subAgents
+  if (recent.length === 0) {
+    return <p className="text-xxs text-text-muted py-2">No sub-agent sessions found</p>
+  }
+  const roots = buildTree(recent)
+  const hasParentData = recent.some(a => a.parentKey != null)
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex items-center gap-2 mb-2 text-xxs text-text-muted">
+        <Bot size={12} />
+        <span>{total} total sub-agent spawn{total === 1 ? '' : 's'} · showing {recent.length} recent</span>
+        {!hasParentData && <span className="ml-auto italic">parent data unavailable for this source</span>}
+      </div>
+      {roots.map(r => <SpawnNode key={r.agent.key} node={r} />)}
+    </div>
+  )
+}
+
+function HourlyHeatmap({ source }: { source: ConnectorId }) {
+  const [hours, setHours]   = useState<number[]>(Array(24).fill(0))
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    let cancelled = false
+    const load = () => watchHeatmap().then(d => { if (!cancelled) { setHours(d.hours); setLoading(false) } }).catch(() => setLoading(false))
+    load()
+    const t = setInterval(load, 60_000)
+    return () => { cancelled = true; clearInterval(t) }
+  }, [source])
+
+  const max   = Math.max(...hours, 1)
+  const total = hours.reduce((a, b) => a + b, 0)
+  const now   = new Date().getHours()
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center gap-2 text-xxs text-text-muted">
+        <span>{total.toLocaleString()} events today</span>
+        {loading && <Loader size={10} className="animate-spin" />}
+      </div>
+      <div className="flex items-end gap-px" style={{ height: 80 }}>
+        {hours.map((cnt, hr) => {
+          const pct = Math.round((cnt / max) * 100)
+          const isCurrent = hr === now
+          const intensity = pct === 0 ? 'bg-base' : pct < 20 ? 'bg-amber-900/40' : pct < 50 ? 'bg-amber-700/60' : pct < 80 ? 'bg-amber-500/80' : 'bg-amber-400'
+          return (
+            <div key={hr} className="flex-1 flex flex-col items-center gap-1" title={`${hr}:00 — ${cnt} events`}>
+              <div className="w-full flex items-end justify-center" style={{ height: 64 }}>
+                <div
+                  className={clsx('w-full rounded-t transition-all', intensity, isCurrent && 'ring-1 ring-white/30')}
+                  style={{ height: `${Math.max(pct, cnt > 0 ? 6 : 1)}%` }}
+                />
+              </div>
+              {hr % 4 === 0 && (
+                <span className={clsx('text-xxs tabular-nums', isCurrent ? 'text-amber-300' : 'text-text-muted')}>
+                  {hr.toString().padStart(2, '0')}
+                </span>
+              )}
+            </div>
+          )
+        })}
+      </div>
+      <div className="flex gap-6 flex-wrap">
+        {hours.map((cnt, hr) => cnt > 0 && (
+          <div key={hr} className="flex items-center gap-1.5 text-xxs">
+            <span className={clsx('font-mono text-text-secondary', hr === now && 'text-amber-300')}>{hr.toString().padStart(2, '0')}:00</span>
+            <span className="text-text-muted">{cnt}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 // ─── Security / health alerts ─────────────────────────────────────────────────────
 
 type Sev = 'high' | 'medium' | 'low' | 'ok'
@@ -1308,6 +1625,33 @@ export function PlatformMetrics({ source, onNavigate }: { source: ConnectorId; o
           </Section>
         )}
         </>}
+
+        {tab === 'tools' && (
+          <Section title={`Tool analytics (${m.tools.length} tools · ${fmtNum(m.tools.reduce((s, t) => s + t.count, 0))} total calls)`} icon={<Wrench size={13} />}
+            right={<span className="text-xxs text-text-muted">click column headers to sort</span>}>
+            <ToolsTable tools={m.tools} theme={theme} />
+          </Section>
+        )}
+
+        {tab === 'heatmap' && (
+          <Section title="Hourly activity — today" icon={<Hash size={13} />}
+            right={<span className="text-xxs text-text-muted">refreshes every 60 s</span>}>
+            <HourlyHeatmap source={source} />
+          </Section>
+        )}
+
+        {tab === 'spawntree' && (
+          <Section title={`Spawn tree (${m.subAgents.total} sub-agent${m.subAgents.total === 1 ? '' : 's'})`} icon={<Bot size={13} />}>
+            <SpawnTree subAgents={m.subAgents} />
+          </Section>
+        )}
+
+        {tab === 'budget' && (
+          <Section title="Spend budget" icon={<DollarSign size={13} />}
+            right={<span className="text-xxs text-text-muted">limits apply per source</span>}>
+            <BudgetGauge m={m} />
+          </Section>
+        )}
 
         {tab === 'cron' && <>
         {/* Cron */}

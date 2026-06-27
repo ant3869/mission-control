@@ -143,12 +143,13 @@ function collectJsonlFiles(dir: string): Array<{ path: string; slug: string; mti
           for (const child of readdirSync(full)) {
             if (!child.endsWith('.jsonl')) continue
             const cp = join(full, child)
-            try { files.push({ path: cp, slug: entry, mtime: statSync(cp).mtimeMs }) } catch {}
+            // stat can race with file deletion — skip silently
+            try { files.push({ path: cp, slug: entry, mtime: statSync(cp).mtimeMs }) } catch { /* expected */ }
           }
         }
-      } catch {}
+      } catch (e) { console.error('[pipeline] error scanning entry', full, e) }
     }
-  } catch {}
+  } catch (e) { console.error('[pipeline] error reading session dir', dir, e) }
   return files.sort((a, b) => b.mtime - a.mtime)
 }
 

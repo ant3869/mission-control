@@ -1,3 +1,4 @@
+// Sub-view — rendered as the "Agents" tab inside Activity.tsx. Not mounted directly in App.tsx.
 import { useState, useEffect, useCallback } from 'react'
 import { useEscapeKey } from '../hooks/useEscapeKey'
 import { friendlyError } from '../lib/friendlyError'

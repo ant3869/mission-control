@@ -27,6 +27,7 @@ import { openclawRouter } from './routes/openclaw.js'
 import { hermesRouter }   from './routes/hermes.js'
 import { settingsRouter } from './routes/settings.js'
 import { watchRouter }    from './routes/watch.js'
+import { budgetsRouter }  from './routes/budgets.js'
 import { brainRouter }    from './routes/brain.js'
 import { flowRouter }     from './routes/flow.js'
 import { flowmapRouter }  from './routes/flowmap.js'
@@ -79,6 +80,7 @@ app.use('/api/openclaw', openclawRouter)
 app.use('/api/hermes',   hermesRouter)
 app.use('/api/settings', settingsRouter)
 app.use('/api/watch',    watchRouter)
+app.use('/api/budgets',  budgetsRouter)
 app.use('/api/brain',    brainRouter)
 app.use('/api/flow',     flowRouter)
 app.use('/api/flowmap',  flowmapRouter)
@@ -92,6 +94,15 @@ app.use('/api/news',     newsRouter)
 app.use('/api/finance',  financeRouter)
 
 app.get('/api/health', (_req, res) => res.json({ ok: true, ts: new Date().toISOString() }))
+
+// Global error handler — catches any unhandled throw from async route handlers.
+// Express 5 propagates async errors automatically; this ensures they're logged
+// and return a consistent JSON shape instead of hanging the request.
+app.use((err: unknown, _req: import('express').Request, res: import('express').Response, _next: import('express').NextFunction) => {
+  const message = err instanceof Error ? err.message : String(err)
+  console.error('[api] unhandled error:', message, err)
+  if (!res.headersSent) res.status(500).json({ error: message })
+})
 
 app.listen(PORT, () => {
   console.log(`Mission Control API → http://localhost:${PORT}`)

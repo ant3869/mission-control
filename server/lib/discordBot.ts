@@ -23,7 +23,7 @@ import {
   type MessageCreateOptions, ComponentType,
 } from 'discord.js'
 import {
-  extractSeverity, extractDue, extractPrice, extractPriority,
+  extractSeverity, extractDue, extractPrice, extractPriority, extractFlag, extractFlagInt,
   parseSpend, formatDueDate, fmtList, fmtMoney,
 } from './discordParsers.js'
 import { discordNotifier, type ApprovalEvent, type ResearchDoneEvent, type AlertFiredEvent } from './discordNotifier.js'
@@ -195,17 +195,120 @@ async function handleAccount(args: string): Promise<string> {
   return `🏦  **${label}** added — ${fmtMoney(amount)} *(${kind} · ${category})*`
 }
 
+// !inventory <name> [--cat <category>] [--qty <n>] [--loc <location>]
+//                   [--cond working|untested|partial|broken]
+//                   [--val $<price>] [--notes <text>]
+//                   [--status available|in-use|reserved] [--research]
+// !inv status <name> <available|in-use|reserved>   — quick deployment flip
+// !inv find  <query>                                — search inventory
 async function handleInventory(args: string): Promise<string> {
-  if (!args) return '❌  `!inventory <item name> [--research]`'
+  if (!args) {
+    return [
+      '❌  Usage:',
+      '`!inventory <name> [--cat <cat>] [--qty <n>] [--loc <location>]`',
+      '`               [--cond working|untested|partial|broken] [--val $<price>]`',
+      '`               [--notes <text>] [--status available|in-use|reserved] [--research]`',
+      '`!inv status <name> <available|in-use|reserved>`',
+      '`!inv find <query>`',
+    ].join('\n')
+  }
+
+  // Sub-commands via !inv alias (routed here with full args)
+  const firstWord = args.split(/\s+/)[0].toLowerCase()
+
+  if (firstWord === 'status') {
+    const rest  = args.slice(firstWord.length).trim()
+    const VALID = ['available', 'in-use', 'reserved'] as const
+    const newStatus = VALID.find(s => rest.toLowerCase().endsWith(s))
+    if (!newStatus) return `❌  Valid statuses: ${VALID.join(' | ')}`
+    const nameQuery = rest.slice(0, rest.toLowerCase().lastIndexOf(newStatus)).trim()
+    if (!nameQuery) return '❌  `!inv status <name> <available|in-use|reserved>`'
+    const { items } = await api('GET', '/api/inventory')
+    const match = (items as any[]).find((i: any) => i.name.toLowerCase().includes(nameQuery.toLowerCase()))
+    if (!match) return `❌  No inventory item matching "${nameQuery}"`
+    await api('PATCH', `/api/inventory/${match.id}`, { status: newStatus })
+    const icon = newStatus === 'in-use' ? '🔴' : newStatus === 'reserved' ? '🟡' : '🟢'
+    return `${icon}  **${match.name}** → \`${newStatus}\``
+  }
+
+  if (firstWord === 'find') {
+    const query = args.slice(firstWord.length).trim()
+    if (!query) return '❌  `!inv find <query>`'
+    const { items } = await api('GET', '/api/inventory')
+    const q = query.toLowerCase()
+    const hits = (items as any[]).filter((i: any) =>
+      i.name.toLowerCase().includes(q) ||
+      i.category?.toLowerCase().includes(q) ||
+      i.location?.toLowerCase().includes(q) ||
+      i.tags?.some((t: string) => t.toLowerCase().includes(q))
+    )
+    if (!hits.length) return `🔍  No inventory items matching "${query}".`
+    const lines = hits.slice(0, 15).map((i: any) => {
+      const s = i.status === 'in-use' ? '🔴' : i.status === 'reserved' ? '🟡' : '🟢'
+      const v = i.estimatedValue > 0 ? ` · ~${fmtMoney(i.estimatedValue)}` : ''
+      const loc = i.location ? ` · 📍 ${i.location}` : ''
+      return `${s} **${i.name}** · ${i.category} · *${i.condition}*${v}${loc}`
+    })
+    return fmtList(lines, `**📦 Inventory search: "${query}"** · ${hits.length} result${hits.length === 1 ? '' : 's'}`)
+  }
+
+  // Create: extract flags, remainder is the item name
   const doResearch = /--research\b/i.test(args)
-  const name       = args.replace(/--research\b/i, '').replace(/\s{2,}/g, ' ').trim()
-  if (!name) return '❌  An item name is required — e.g. `!inventory Raspberry Pi 4`'
-  const { item } = await api('POST', '/api/inventory', { name, addedBy: 'discord' })
+  let rest = args.replace(/--research\b/i, '').trim()
+
+  const { value: cat,      rest: r1 } = extractFlag(rest, 'cat')
+  rest = r1
+  const { value: loc,      rest: r2 } = extractFlag(rest, 'loc')
+  rest = r2
+  const { value: cond,     rest: r3 } = extractFlag(rest, 'cond')
+  rest = r3
+  const { value: notes,    rest: r4 } = extractFlag(rest, 'notes')
+  rest = r4
+  const { value: statusRaw,rest: r5 } = extractFlag(rest, 'status')
+  rest = r5
+  const { value: mfr,      rest: r6 } = extractFlag(rest, 'mfr')
+  rest = r6
+  const { value: model,    rest: r7 } = extractFlag(rest, 'model')
+  rest = r7
+  const { value: qtyStr,   rest: r8 } = extractFlag(rest, 'qty')
+  rest = r8
+  const { price: val,      rest: r9 } = extractPrice(rest.replace(/--val\s*/i, ''))
+  // If --val flag was present, use extracted price; otherwise use price from leftover rest
+  const hasValFlag = /--val\b/i.test(rest)
+  rest = hasValFlag ? r9 : rest
+
+  const qty    = qtyStr ? Math.max(1, parseInt(qtyStr, 10) || 1) : undefined
+  const status = ['available', 'in-use', 'reserved'].includes(statusRaw) ? statusRaw : undefined
+  const name   = rest.replace(/\s{2,}/g, ' ').trim()
+
+  if (!name) return '❌  An item name is required — e.g. `!inventory Raspberry Pi 4 --cat sbc --qty 2`'
+
+  const body: Record<string, unknown> = { name, addedBy: 'discord' }
+  if (cat)    body.category        = cat
+  if (qty)    body.quantity        = qty
+  if (loc)    body.location        = loc
+  if (cond)   body.condition       = cond
+  if (notes)  body.notes          = notes
+  if (status) body.status         = status
+  if (mfr)    body.manufacturer   = mfr
+  if (model)  body.model          = model
+  if (hasValFlag && val > 0) body.estimatedValue = val
+
+  const { item } = await api('POST', '/api/inventory', body)
+
   if (doResearch) {
     api('POST', `/api/inventory/${item.id}/research`, { source: 'openclaw' }).catch(() => {})
-    return `📦  **Inventory added** — "${name}" · research queued via OpenClaw`
   }
-  return `📦  **Inventory added** — "${name}" · add \`--research\` to trigger agent enrichment`
+
+  const parts: string[] = [`📦  **Inventory added** — "${item.name}"`]
+  if (cat)    parts.push(`cat: *${cat}*`)
+  if (qty && qty > 1) parts.push(`×${qty}`)
+  if (loc)    parts.push(`📍 ${loc}`)
+  if (cond)   parts.push(`cond: *${cond}*`)
+  if (hasValFlag && val > 0) parts.push(`~${fmtMoney(val)}`)
+  if (doResearch) parts.push('research queued via OpenClaw')
+
+  return parts.join(' · ')
 }
 
 async function handleTask(args: string): Promise<string> {
@@ -227,6 +330,72 @@ async function handleDone(args: string): Promise<string> {
   if (!match) return `❌  No open todo matching "${args}"`
   await api('PATCH', `/api/todos/${match.id}`, { done: true })
   return `✅  **Done** — "${match.title}"`
+}
+
+async function handleTaskDone(args: string): Promise<string> {
+  if (!args) return '❌  `!task done <title or partial match>`'
+  const { tasks } = await api('GET', '/api/tasks')
+  const active = (tasks as any[]).filter((t: any) => t.status !== 'completed')
+  const query  = args.trim().toLowerCase()
+  const match  = active.find((t: any) => t.title.toLowerCase().includes(query))
+  if (!match) return `❌  No active task matching "${args}"`
+  await api('PATCH', `/api/tasks/${match.id}`, { status: 'completed' })
+  return `✅  **Task completed** — "${match.title}"`
+}
+
+async function handleBudget(): Promise<string> {
+  const [budgetRes, metricsOcRes, metricsHRes] = await Promise.allSettled([
+    api('GET', '/api/budgets'),
+    api('GET', '/api/openclaw/metrics'),
+    api('GET', '/api/hermes/metrics'),
+  ])
+
+  const budget = budgetRes.status === 'fulfilled' ? budgetRes.value : null
+  const today  = new Date().toISOString().slice(0, 10)
+  const weekAgo = new Date(Date.now() - 7 * 86_400_000).toISOString().slice(0, 10)
+
+  let todayCost = 0, todayTokens = 0, weekCost = 0, weekTokens = 0
+
+  for (const r of [metricsOcRes, metricsHRes]) {
+    if (r.status !== 'fulfilled') continue
+    const daily: any[] = r.value?.metrics?.daily ?? []
+    for (const d of daily) {
+      if (d.date === today) { todayCost += d.cost ?? 0; todayTokens += d.tokens ?? 0 }
+      if (d.date >= weekAgo) { weekCost  += d.cost ?? 0; weekTokens  += d.tokens ?? 0 }
+    }
+  }
+
+  const lines: string[] = ['**💰 Budget**', '']
+
+  function gauge(label: string, used: number, limit: number | null, fmt: (n: number) => string): string {
+    if (!limit) return `${label}: **${fmt(used)}** *(no limit)*`
+    const pct   = Math.min(100, Math.round((used / limit) * 100))
+    const emoji = pct >= 90 ? '🔴' : pct >= 70 ? '🟡' : '🟢'
+    const bar   = '█'.repeat(Math.round(pct / 10)).padEnd(10, '░')
+    return `${emoji} ${label}: **${fmt(used)}** / ${fmt(limit)} · \`${bar}\` ${pct}%`
+  }
+
+  const dailyCost   = budget?.daily?.cost   ?? null
+  const dailyTok    = budget?.daily?.tokens  ?? null
+  const weeklyCost  = budget?.weekly?.cost   ?? null
+  const weeklyTok   = budget?.weekly?.tokens ?? null
+
+  lines.push('**Today**')
+  lines.push(gauge('Cost',   todayCost,   dailyCost,  fmtMoney))
+  if (dailyTok || todayTokens > 0)
+    lines.push(gauge('Tokens', todayTokens, dailyTok,  n => n >= 1e6 ? `${(n/1e6).toFixed(1)}M` : n >= 1e3 ? `${(n/1e3).toFixed(1)}k` : String(Math.round(n))))
+
+  lines.push('')
+  lines.push('**This week**')
+  lines.push(gauge('Cost',   weekCost,   weeklyCost, fmtMoney))
+  if (weeklyTok || weekTokens > 0)
+    lines.push(gauge('Tokens', weekTokens, weeklyTok,  n => n >= 1e6 ? `${(n/1e6).toFixed(1)}M` : n >= 1e3 ? `${(n/1e3).toFixed(1)}k` : String(Math.round(n))))
+
+  if (!dailyCost && !dailyTok && !weeklyCost && !weeklyTok) {
+    lines.push('\n*No budget limits set. Use the Health → Budget tab in Mission Control to configure.*')
+  }
+
+  return lines.join('\n')
 }
 
 async function handleStatus(): Promise<string> {
@@ -361,6 +530,29 @@ async function handleList(sub: string): Promise<string> {
       return fmtList(lines, `**Approvals** · ${shown.length} ${filter || 'pending'}`)
     }
 
+    case 'inventory':
+    case 'inv': {
+      const { items, stats } = await api('GET', '/api/inventory')
+      const all = items as any[]
+      // filter can be a category ("sbc", "computer"), a status ("in-use"), or condition
+      const shown = !filter || filter === 'all' ? all
+        : all.filter((i: any) =>
+            i.status === filter || i.category === filter || i.condition === filter
+          )
+      if (!shown.length) return `📦  No inventory items${filter ? ` matching "${filter}"` : ''}.`
+      const S = stats as any
+      const lines = shown.slice(0, 20).map((i: any) => {
+        const dot  = i.status === 'in-use' ? '🔴' : i.status === 'reserved' ? '🟡' : '🟢'
+        const val  = i.estimatedValue > 0 ? ` · ~${fmtMoney(i.estimatedValue)}` : ''
+        const qty  = i.quantity > 1 ? ` ×${i.quantity}` : ''
+        const loc  = i.location ? ` · 📍 ${i.location}` : ''
+        return `${dot} **${i.name}**${qty} · *${i.category}* · ${i.condition}${val}${loc}`
+      })
+      const header = `**📦 Inventory** · ${shown.length} item${shown.length === 1 ? '' : 's'}` +
+        (S?.totalValue > 0 ? ` · ~${fmtMoney(S.totalValue)}` : '')
+      return fmtList(lines, header)
+    }
+
     default:
       return [
         '**!list** — available subcommands:',
@@ -369,6 +561,7 @@ async function handleList(sub: string): Promise<string> {
         '`!list tobuy [open|purchased|all]`',
         '`!list spend [month|all]`',
         '`!list approvals [pending|all]`',
+        '`!list inventory [category|status|condition|all]`',
       ].join('\n')
   }
 }
@@ -893,11 +1086,20 @@ function helpText(): string {
     '',
     '**Create**',
     '`!todo <title> [high|medium|low|critical] [due:YYYY-MM-DD]`',
+    '`!task <title> [due:YYYY-MM-DD]`',
+    '`!task done <title>`  — mark a task completed',
     '`!buy <item> [$price] [high|medium|low]`',
     '`!spend $<amount> <description>  [category]`  *(double space before category)*',
-    '`!task <title> [due:YYYY-MM-DD]`',
     '`!note <content>`',
-    '`!inventory <name> [--research]`',
+    '',
+    '**Inventory**',
+    '`!inventory <name> [--cat <cat>] [--qty <n>] [--loc <location>]`',
+    '`               [--cond working|untested|partial|broken] [--val $<price>]`',
+    '`               [--mfr <maker>] [--model <model>] [--notes <text>]`',
+    '`               [--status available|in-use|reserved] [--research]`',
+    '`!inv status <name> <available|in-use|reserved>`  — flip deployment status',
+    '`!inv find <query>`  — search inventory',
+    '`!list inventory [category|status|condition|all]`',
     '',
     '**Query**',
     '`!list todos [open|done|high|critical|all]`',
@@ -909,6 +1111,7 @@ function helpText(): string {
     '`!account list`  — net worth breakdown',
     '`!agenda`  — today\'s calendar + due items',
     '`!balance`  — spending + net worth summary',
+    '`!budget`  — daily/weekly cost + token usage vs limits',
     '`!find <term>`  — search todos, inventory, notes',
     '`!done <title>`  — mark a todo as done',
     '`!status`  — connector health + active alerts',
@@ -1005,7 +1208,16 @@ export function startDiscordBot(port: number | string): void {
         case 'spend':     reply = await handleSpend(args);         break
         case 'note':      reply = await handleNote(args);          break
         case 'inventory': reply = await handleInventory(args);     break
-        case 'task':      reply = await handleTask(args);          break
+        case 'inv':       reply = await handleInventory(args);     break   // alias with sub-commands
+        case 'task': {
+          // !task done <title> — mark task completed; else create
+          if (args.toLowerCase().startsWith('done ') || args.toLowerCase() === 'done') {
+            reply = await handleTaskDone(args.slice(4).trim())
+          } else {
+            reply = await handleTask(args)
+          }
+          break
+        }
         case 'list':      reply = await handleList(args);          break
         case 'agenda':    reply = await handleAgenda();            break
         case 'balance':   reply = await handleBalance();           break
@@ -1013,6 +1225,7 @@ export function startDiscordBot(port: number | string): void {
         case 'find':      reply = await handleFind(args);          break
         case 'done':      reply = await handleDone(args);          break
         case 'status':    reply = await handleStatus();            break
+        case 'budget':    reply = await handleBudget();            break
         case 'eval':      reply = await handleEval(args);          break
         case 'bench':     reply = await handleBench(args);         break
         case 'memory':    reply = await handleMemory();            break
