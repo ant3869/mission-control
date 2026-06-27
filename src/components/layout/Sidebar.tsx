@@ -187,7 +187,12 @@ export function Sidebar({ activeView, onNavigate }: SidebarProps) {
                     <>
                       <span className="flex-1 text-sm font-medium leading-none">{item.label}</span>
                       {badge !== undefined && (
-                        <span className="flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-accent-blue/20 text-accent-blue text-xxs font-semibold tabular-nums">
+                        <span className={clsx(
+                          'flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full text-xxs font-semibold tabular-nums',
+                          item.id === 'health'
+                            ? 'bg-accent-red/20 text-accent-red'
+                            : 'bg-accent-blue/20 text-accent-blue',
+                        )}>
                           {badge}
                         </span>
                       )}
@@ -198,7 +203,10 @@ export function Sidebar({ activeView, onNavigate }: SidebarProps) {
                   )}
                   {/* Dot indicator when collapsed + badge */}
                   {collapsed && badge !== undefined && (
-                    <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-accent-blue" />
+                    <span className={clsx(
+                      'absolute top-1 right-1 w-1.5 h-1.5 rounded-full',
+                      item.id === 'health' ? 'bg-accent-red' : 'bg-accent-blue',
+                    )} />
                   )}
                 </button>
               )

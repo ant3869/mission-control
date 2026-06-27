@@ -6,6 +6,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.14.0] — 2026-06-27
+
+### Added
+
+- **Home: Next event chip in hero.** The static local clock in the top-right of the Home hero is replaced with a live "Next event" display — event name, countdown, and a pulsing dot when an event is currently in progress. Falls back to the clock when the calendar is empty.
+- **Home: Priority queue lead item banner.** The most urgent attention item is now promoted to a full-width, colour-bordered banner above the rest of the grid, giving a clear "act on this first" signal. Remaining items stay in the existing grid.
+- **Global `Ctrl+T` quick-capture.** A minimal single-line overlay lets you create a to-do from anywhere in the app without navigating to the To-Do view. Also accessible via a new `+ To-do` button in the top bar. Pressing Enter saves and auto-closes; `Esc` cancels.
+- **Critical alert toast.** When a critical alert fires while you are on any view other than Home or Health, a dismissable red banner appears in the bottom-right corner with a "View in Health →" link.
+
+### Changed
+
+- **Home: Actionable panels before usage chart.** Bottom grid reordered — To-Do and Project status panels appear in the first row (immediately visible without scrolling), followed by Alerts, then the usage histogram.
+- **Home: Status pill loading state.** The hero status pill now shows "Scanning systems…" while initial data loads instead of prematurely reporting "All systems nominal".
+- **Home: Ticker shows anomalies only.** The telemetry ticker now filters out zero-value items (e.g. "Overdue: 0") and is capped at 8 entries, reducing noise when everything is healthy.
+- **Home: Capture & triage section tightened.** Removed two lines of explanatory prose from the Unified Inbox and Saved Links sub-panels; the action buttons and stats are now immediately visible without scrolling past description text.
+- **Sidebar: Health badge colour.** Alert/warning count badge on the Health nav item is now red (previously blue) to visually distinguish it from informational badges.
+
+### Removed
+
+- **`/api/office` endpoint removed.** The integrations-hub route (`server/routes/office.ts`) had no frontend consumer and was dead code. Removed the route file and its registration.
+
+---
+
 ## [0.13.0] — 2026-06-27
 
 ### Added

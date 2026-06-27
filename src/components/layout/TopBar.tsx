@@ -9,7 +9,7 @@ import { clsx } from 'clsx'
 import {
   Search, Loader2, X, FileText, BookOpen, CheckSquare, CornerDownLeft,
   ArrowRight, Pause, Play, Inbox as InboxIcon, Link2, ListTodo, NotebookPen,
-  ShieldCheck,
+  ShieldCheck, Plus, Check,
 } from 'lucide-react'
 import type { View } from '../../types'
 import { approvals, inbox, links, tasks as tasksApi, todosApi, system, type ConnectivityIndicator } from '../../lib/api'
@@ -452,15 +452,69 @@ function ConnectivityStrip() {
   )
 }
 
+// ─── Quick todo capture ────────────────────────────────────────────────────────
+
+function QuickTodoCapture({ onClose }: { onClose: () => void }) {
+  const [text, setText] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [done, setDone] = useState(false)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => { inputRef.current?.focus() }, [])
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [onClose])
+
+  const submit = async () => {
+    const title = text.trim()
+    if (!title || saving || done) return
+    setSaving(true)
+    try {
+      await todosApi.create({ title, severity: 'medium', horizon: 'short' })
+      setDone(true)
+      setTimeout(onClose, 700)
+    } catch { setSaving(false) }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center pt-[15vh] bg-black/60 backdrop-blur-sm" onClick={onClose}>
+      <div className="w-full max-w-sm rounded-xl border border-border bg-card shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center gap-3 px-4 py-3">
+          {done
+            ? <Check size={14} className="text-accent-green shrink-0" />
+            : <ListTodo size={14} className="text-accent-blue shrink-0" />}
+          <input
+            ref={inputRef}
+            value={text}
+            onChange={e => setText(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); void submit() } }}
+            placeholder="Quick to-do… (Enter to save)"
+            className="flex-1 bg-transparent text-sm text-text-primary outline-none placeholder:text-text-muted"
+            disabled={done}
+          />
+          {saving && !done && <Loader2 size={13} className="animate-spin text-text-muted shrink-0" />}
+          {done && <span className="text-xs text-accent-green shrink-0">Saved</span>}
+          {!saving && !done && <kbd className="text-xxs text-text-muted bg-base px-1.5 py-0.5 rounded border border-border shrink-0">ESC</kbd>}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── TopBar ───────────────────────────────────────────────────────────────────
 
 export function TopBar({ title, onNavigate, views }: TopBarProps) {
   const [searchOpen, setSearchOpen] = useState(false)
+  const [quickTodo, setQuickTodo]   = useState(false)
   const paused = usePaused()
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') { e.preventDefault(); setSearchOpen(v => !v) }
+      if ((e.metaKey || e.ctrlKey) && e.key === 't') { e.preventDefault(); setQuickTodo(v => !v) }
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
@@ -475,6 +529,14 @@ export function TopBar({ title, onNavigate, views }: TopBarProps) {
 
         <div className="flex items-center gap-2">
           <ConnectivityStrip />
+
+          <button onClick={() => setQuickTodo(true)}
+            title="Quick add to-do (Ctrl+T)"
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded border border-border bg-card hover:bg-card-hover text-text-secondary hover:text-text-primary transition-colors text-xs">
+            <Plus size={12} />
+            <span className="hidden sm:inline">To-do</span>
+            <span className="flex items-center justify-center px-1 rounded bg-border text-text-muted font-mono text-xxs hidden sm:flex">^T</span>
+          </button>
 
           <button onClick={() => setSearchOpen(true)}
             className="flex items-center gap-2 px-3 py-1.5 rounded border border-border bg-card hover:bg-card-hover text-text-secondary hover:text-text-primary transition-colors text-xs">
@@ -496,6 +558,7 @@ export function TopBar({ title, onNavigate, views }: TopBarProps) {
       </header>
 
       {searchOpen && <GlobalSearch onClose={() => setSearchOpen(false)} onNavigate={onNavigate} views={views} />}
+      {quickTodo && <QuickTodoCapture onClose={() => setQuickTodo(false)} />}
     </>
   )
 }

@@ -1,12 +1,12 @@
-import { useState, useEffect, lazy, Suspense } from 'react'
+import { useState, useEffect, useRef, lazy, Suspense } from 'react'
 import { clsx } from 'clsx'
-import { Loader2 } from 'lucide-react'
+import { Loader2, ShieldAlert, X } from 'lucide-react'
 import { Sidebar } from './components/layout/Sidebar'
 import { TopBar } from './components/layout/TopBar'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { Home } from './views/Home'                       // eager — default landing view
 import type { View } from './types'
-import { NAVIGATE_EVENT } from './lib/quickActions'
+import { NAVIGATE_EVENT, openHubTab } from './lib/quickActions'
 import { startDataRefresh } from './lib/dataRefresh'
 
 // Lazy views: each becomes its own chunk, fetched on first navigation, so the
@@ -76,6 +76,60 @@ function initialView(): View {
   return 'home'
 }
 
+// ─── Critical alert toast ─────────────────────────────────────────────────────
+// Polls for critical alerts and surfaces a dismissable banner when the user is
+// NOT already on Home or Health (where alerts are already visible).
+
+interface FiredAlert { ruleId: string; ruleName: string; severity: string; message: string; firedAt: string }
+
+function CriticalAlertToast({ activeView, onNavigate }: { activeView: View; onNavigate: (v: View) => void }) {
+  const [toast, setToast]       = useState<FiredAlert | null>(null)
+  const seenRef                 = useRef<Set<string>>(new Set())
+  const timerRef                = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    const poll = async () => {
+      if (activeView === 'home' || activeView === 'health') return
+      try {
+        const res  = await fetch('/api/alerts/active')
+        const data = await res.json()
+        const critical: FiredAlert[] = (data.alerts ?? []).filter((a: FiredAlert) => a.severity === 'critical')
+        const unseen = critical.find(a => !seenRef.current.has(`${a.ruleId}-${a.firedAt}`))
+        if (unseen) {
+          seenRef.current.add(`${unseen.ruleId}-${unseen.firedAt}`)
+          setToast(unseen)
+          if (timerRef.current) clearTimeout(timerRef.current)
+          timerRef.current = setTimeout(() => setToast(null), 10_000)
+        }
+      } catch { /* ignore */ }
+    }
+    poll()
+    const t = setInterval(poll, 45_000)
+    return () => { clearInterval(t); if (timerRef.current) clearTimeout(timerRef.current) }
+  }, [activeView])
+
+  const dismiss = () => { setToast(null); if (timerRef.current) clearTimeout(timerRef.current) }
+  const view    = () => { dismiss(); openHubTab('health', 'alerts'); onNavigate('health') }
+
+  if (!toast) return null
+
+  return (
+    <div className="fixed bottom-4 right-4 z-50 flex items-start gap-3 max-w-sm w-full rounded-xl border border-red-800/60 bg-red-950/90 shadow-2xl px-4 py-3 backdrop-blur-sm animate-in slide-in-from-bottom-2 duration-200">
+      <ShieldAlert size={16} className="text-red-400 shrink-0 mt-0.5" />
+      <div className="flex-1 min-w-0">
+        <p className="text-xs font-semibold text-red-300 uppercase tracking-wider">Critical alert</p>
+        <p className="text-sm text-red-100 mt-0.5 leading-snug truncate">{toast.message}</p>
+        <button onClick={view} className="mt-1.5 text-[11px] font-medium text-red-300 hover:text-red-100 transition-colors underline underline-offset-2">
+          View in Health →
+        </button>
+      </div>
+      <button onClick={dismiss} className="text-red-500 hover:text-red-300 transition-colors shrink-0">
+        <X size={14} />
+      </button>
+    </div>
+  )
+}
+
 export default function App() {
   const [activeView, setActiveView] = useState<View>(initialView)
   const [mounted, setMounted]       = useState<Set<View>>(() => new Set([activeView]))
@@ -138,6 +192,7 @@ export default function App() {
 
         </main>
       </div>
+      <CriticalAlertToast activeView={activeView} onNavigate={navigate} />
     </div>
   )
 }

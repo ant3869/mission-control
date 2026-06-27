@@ -317,6 +317,63 @@ function EmptyNote({ icon, text }: { icon: React.ReactNode; text: string }) {
   )
 }
 
+// ─── Next event chip ──────────────────────────────────────────────────────────
+
+function fmtEventCountdown(ms: number): string {
+  if (ms <= 0) return 'now'
+  const s = Math.floor(ms / 1000)
+  if (s < 60) return `${s}s`
+  const m = Math.floor(s / 60)
+  if (m < 60) return `${m}m`
+  const h = Math.floor(m / 60)
+  return `${h}h ${m % 60}m`
+}
+
+function NextEventChip({ events, now, onNavigate }: { events: CalendarEvent[]; now: Date; onNavigate: (v: View) => void }) {
+  // find next upcoming event today (non-all-day, in the future)
+  const upcoming = events
+    .filter(e => !e.allDay && e.startIso && new Date(e.startIso) > now)
+    .sort((a, b) => new Date(a.startIso!).getTime() - new Date(b.startIso!).getTime())
+  const next = upcoming[0] ?? null
+  const inProgress = events.filter(e => !e.allDay && e.startIso && e.endIso &&
+    new Date(e.startIso) <= now && new Date(e.endIso) > now)[0] ?? null
+  const show = inProgress ?? next
+
+  if (!show) {
+    // no event: show hhmm clock as fallback
+    const hhmm = now.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' })
+    const ss   = now.toLocaleTimeString('en-US', { hour12: false, second: '2-digit' })
+    return (
+      <div>
+        <p className="text-[10px] font-semibold uppercase tracking-wider text-text-muted">Local time</p>
+        <p className="font-mono text-2xl font-semibold tabular-nums text-text-primary leading-none mt-1">
+          {hhmm}<span className="text-text-muted text-base">:{ss}</span>
+        </p>
+      </div>
+    )
+  }
+
+  const isNow   = !!inProgress
+  const msUntil = show.startIso ? new Date(show.startIso).getTime() - now.getTime() : 0
+  const accent  = isNow ? ACCENT.amber : ACCENT.teal
+  const label   = isNow ? 'In progress' : `in ${fmtEventCountdown(msUntil)}`
+
+  return (
+    <button onClick={() => onNavigate('calendar')} className="group text-left">
+      <p className="text-[10px] font-semibold uppercase tracking-wider text-text-muted flex items-center gap-1.5">
+        <CalendarDays size={10} /> {isNow ? 'Happening now' : 'Next event'}
+        <ArrowUpRight size={10} className="opacity-0 group-hover:opacity-100 transition-opacity" />
+      </p>
+      <p className="text-sm font-semibold leading-tight mt-1 text-text-primary truncate max-w-[160px]">{show.name}</p>
+      <div className="flex items-center gap-1.5 mt-1">
+        {isNow && <span className="relative flex w-2 h-2"><span className="absolute inline-flex w-full h-full rounded-full opacity-60 animate-ping" style={{ backgroundColor: accent }} /><span className="relative w-2 h-2 rounded-full" style={{ backgroundColor: accent }} /></span>}
+        <span className="text-[11px] font-medium tabular-nums" style={{ color: accent }}>{label}</span>
+        {show.meetLink && <span className="text-[10px] text-accent-blue">· has Meet link</span>}
+      </div>
+    </button>
+  )
+}
+
 // ─── Heartbeat monitor widget ─────────────────────────────────────────────────
 // Compact at-a-glance card: last heartbeat tick, what it did, and a live
 // countdown to the next scheduled tick (from the agent's cron cadence).
@@ -474,18 +531,18 @@ export function Home({ onNavigate }: { onNavigate: (view: View) => void }) {
     ?? [...cronJobs].sort((a, b) => b.runCount - a.runCount)[0]
     ?? null
 
-  const statusColor = criticalAttn ? ACCENT.red : attention.length > 0 ? ACCENT.amber : ACCENT.green
-  const statusText  = criticalAttn
-    ? 'Critical issues need attention'
-    : attention.length > 0
-      ? `${attention.length} item${attention.length === 1 ? '' : 's'} need attention`
-      : 'All systems nominal'
+  const statusColor = !loaded ? ACCENT.muted : criticalAttn ? ACCENT.red : attention.length > 0 ? ACCENT.amber : ACCENT.green
+  const statusText  = !loaded
+    ? 'Scanning systems…'
+    : criticalAttn
+      ? 'Critical issues need attention'
+      : attention.length > 0
+        ? `${attention.length} item${attention.length === 1 ? '' : 's'} need attention`
+        : 'All systems nominal'
 
   const spend = useCountUp(usage?.totalCost ?? 0, 1100)
 
   const dateLabel = clock.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
-  const hhmm = clock.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' })
-  const ss   = clock.toLocaleTimeString('en-US', { hour12: false, second: '2-digit' })
 
   const topTodos = [...openTodos]
     .sort((a, b) => {
@@ -522,20 +579,21 @@ export function Home({ onNavigate }: { onNavigate: (view: View) => void }) {
     openTasksTab('inbox')
   }
 
-  // Telemetry ticker — duplicated once in the DOM for a seamless loop.
+  // Telemetry ticker — only show items with notable (non-zero) values to reduce noise.
   const tickerItems: Array<{ label: string; value: string; color: string }> = [
-    { label: 'Tokens 7d',  value: usage ? fmtNum(usage.totalTokens) : '—',          color: ACCENT.purple },
-    { label: 'AI value 7d', value: usage ? `$${usage.totalCost.toFixed(2)}` : '—',  color: ACCENT.green },
-    { label: 'Runs 7d',    value: usage ? fmtNum(usage.totalRuns) : '—',            color: ACCENT.blue },
-    { label: 'Open to-dos', value: String(openTodos.length),                        color: overdueCount > 0 ? ACCENT.red : ACCENT.blue },
-    { label: 'Inbox',      value: `${activeInbox} active`,                           color: activeInbox > 0 ? ACCENT.amber : ACCENT.green },
-    { label: 'Links',      value: `${savedLinks.length} saved`,                      color: pinnedLinks > 0 ? ACCENT.blue : ACCENT.muted },
-    { label: 'Overdue',    value: String(overdueCount),                             color: overdueCount > 0 ? ACCENT.red : ACCENT.muted },
-    { label: 'Alerts',     value: String(alerts.length),                            color: alerts.length > 0 ? ACCENT.amber : ACCENT.green },
-    { label: 'Approvals',  value: `${pending.length} pending`,                      color: ACCENT.purple },
-    { label: 'Projects',   value: `${activeProjects} active`,                       color: ACCENT.teal },
-    { label: 'Components', value: components.length ? `${healthy}/${components.length} healthy` : '—', color: sysErrors.length > 0 ? ACCENT.amber : ACCENT.green },
-  ]
+    usage && { label: 'Tokens 7d',   value: fmtNum(usage.totalTokens),        color: ACCENT.purple },
+    usage && { label: 'AI value 7d', value: `$${usage.totalCost.toFixed(2)}`, color: ACCENT.green },
+    usage && { label: 'Runs 7d',     value: fmtNum(usage.totalRuns),          color: ACCENT.blue },
+    openTodos.length > 0   && { label: 'Open to-dos', value: String(openTodos.length),       color: overdueCount > 0 ? ACCENT.red : ACCENT.blue },
+    overdueCount > 0       && { label: 'Overdue',     value: String(overdueCount),           color: ACCENT.red },
+    activeInbox > 0        && { label: 'Inbox',       value: `${activeInbox} active`,         color: ACCENT.amber },
+    pending.length > 0     && { label: 'Approvals',   value: `${pending.length} pending`,    color: ACCENT.purple },
+    alerts.length > 0      && { label: 'Alerts',      value: String(alerts.length),          color: ACCENT.amber },
+    sysErrors.length > 0   && { label: 'Sys errors',  value: String(sysErrors.length),       color: ACCENT.red },
+    activeProjects > 0     && { label: 'Projects',    value: `${activeProjects} active`,     color: ACCENT.teal },
+    savedLinks.length > 0  && { label: 'Links',       value: `${savedLinks.length} saved`,   color: ACCENT.muted },
+    components.length > 0  && { label: 'Components',  value: `${healthy}/${components.length} healthy`, color: sysErrors.length > 0 ? ACCENT.amber : ACCENT.green },
+  ].filter(Boolean).slice(0, 8) as Array<{ label: string; value: string; color: string }>
 
   return (
     <div className="h-full overflow-y-auto bg-base">
@@ -577,16 +635,11 @@ export function Home({ onNavigate }: { onNavigate: (view: View) => void }) {
               </div>
             </div>
 
-            {/* Right: radar + clock + spend */}
+            {/* Right: radar + next event + spend */}
             <div className="flex items-center gap-6 home-rise" style={{ animationDelay: '120ms' }}>
               <RadarSweep alert={criticalAttn} />
               <div className="flex flex-col gap-3.5">
-                <div>
-                  <p className="text-[10px] font-semibold uppercase tracking-wider text-text-muted">Local time</p>
-                  <p className="font-mono text-2xl font-semibold tabular-nums text-text-primary leading-none mt-1">
-                    {hhmm}<span className="text-text-muted text-base">:{ss}</span>
-                  </p>
-                </div>
+                <NextEventChip events={todayEvents} now={clock} onNavigate={onNavigate} />
                 <button onClick={() => onNavigate('spend')} className="group text-left">
                   <p className="text-[10px] font-semibold uppercase tracking-wider text-text-muted flex items-center gap-1.5">
                     <TrendingUp size={10} /> Claude Code value · 7d
@@ -665,28 +718,59 @@ export function Home({ onNavigate }: { onNavigate: (view: View) => void }) {
           {attention.length === 0 ? (
             <EmptyNote icon={<CheckCircle2 size={20} className="text-accent-green" />} text={loaded ? 'Nothing urgent. Quiet skies.' : 'Scanning…'} />
           ) : (
-            <ul className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-px bg-border-subtle">
-              {attention.map(item => (
-                <li key={item.key} className="bg-card">
+            <>
+              {/* Lead item — full-width, visually dominant */}
+              {(() => {
+                const lead = attention[0]
+                return (
                   <button
-                    onClick={() => item.tab ? openHubTab(item.view, item.tab) : onNavigate(item.view)}
-                    className="group flex items-start gap-3 w-full px-4 py-3 hover:bg-card-hover transition-colors text-left"
+                    onClick={() => lead.tab ? openHubTab(lead.view, lead.tab) : onNavigate(lead.view)}
+                    className="group flex items-center gap-3 w-full px-4 py-3.5 hover:bg-card-hover transition-colors text-left border-b border-border-subtle"
+                    style={{ borderLeft: `3px solid ${lead.color}` }}
                   >
                     <span
-                      className="flex items-center justify-center w-7 h-7 rounded-lg shrink-0 mt-0.5"
-                      style={{ backgroundColor: `${item.color}1a`, color: item.color }}
+                      className="flex items-center justify-center w-8 h-8 rounded-lg shrink-0"
+                      style={{ backgroundColor: `${lead.color}20`, color: lead.color }}
                     >
-                      {item.icon}
+                      {lead.icon}
                     </span>
                     <span className="flex flex-col min-w-0 flex-1">
-                      <span className="text-sm font-medium text-text-primary truncate">{item.title}</span>
-                      <span className="text-[11px] text-text-muted truncate mt-0.5">{item.sub}</span>
+                      <span className="text-sm font-semibold text-text-primary truncate">{lead.title}</span>
+                      <span className="text-[11px] text-text-muted truncate mt-0.5">{lead.sub}</span>
                     </span>
-                    <ArrowUpRight size={12} className="text-text-muted shrink-0 self-center opacity-0 group-hover:opacity-100 transition-opacity" />
+                    <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wider px-2 py-1 rounded" style={{ color: lead.color, backgroundColor: `${lead.color}18` }}>
+                      Act first
+                    </span>
+                    <ArrowUpRight size={12} className="text-text-muted shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
                   </button>
-                </li>
-              ))}
-            </ul>
+                )
+              })()}
+              {/* Remaining items */}
+              {attention.length > 1 && (
+                <ul className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-px bg-border-subtle">
+                  {attention.slice(1).map(item => (
+                    <li key={item.key} className="bg-card">
+                      <button
+                        onClick={() => item.tab ? openHubTab(item.view, item.tab) : onNavigate(item.view)}
+                        className="group flex items-start gap-3 w-full px-4 py-3 hover:bg-card-hover transition-colors text-left"
+                      >
+                        <span
+                          className="flex items-center justify-center w-7 h-7 rounded-lg shrink-0 mt-0.5"
+                          style={{ backgroundColor: `${item.color}1a`, color: item.color }}
+                        >
+                          {item.icon}
+                        </span>
+                        <span className="flex flex-col min-w-0 flex-1">
+                          <span className="text-sm font-medium text-text-primary truncate">{item.title}</span>
+                          <span className="text-[11px] text-text-muted truncate mt-0.5">{item.sub}</span>
+                        </span>
+                        <ArrowUpRight size={12} className="text-text-muted shrink-0 self-center opacity-0 group-hover:opacity-100 transition-opacity" />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </>
           )}
         </section>
 
@@ -760,17 +844,14 @@ export function Home({ onNavigate }: { onNavigate: (view: View) => void }) {
 
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-px bg-border-subtle">
             <div className="bg-card p-4">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-sm font-semibold text-text-primary">Unified inbox</p>
-                  <p className="mt-1 text-xs text-text-muted">Critical approvals, blocked work, feedback, and publications ready for triage.</p>
-                </div>
+              <div className="flex items-center justify-between gap-3 mb-3">
+                <p className="text-sm font-semibold text-text-primary">Unified inbox</p>
                 <button onClick={openInboxHub} className="flex items-center gap-1 rounded border border-border bg-base px-2.5 py-1 text-[11px] text-text-secondary hover:bg-card-hover hover:text-text-primary transition-colors shrink-0">
-                  Open inbox <ArrowRight size={11} />
+                  Open <ArrowRight size={11} />
                 </button>
               </div>
 
-              <div className="mt-3 grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-3 gap-2">
                 {[
                   { label: 'Active', value: activeInbox, color: activeInbox > 0 ? ACCENT.amber : ACCENT.green },
                   { label: 'Snoozed', value: snoozedInbox, color: ACCENT.blue },
@@ -818,17 +899,14 @@ export function Home({ onNavigate }: { onNavigate: (view: View) => void }) {
             </div>
 
             <div className="bg-card p-4">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-sm font-semibold text-text-primary">Saved links</p>
-                  <p className="mt-1 text-xs text-text-muted">Reference docs, research, and follow-up reading with quick task or note conversion.</p>
-                </div>
+              <div className="flex items-center justify-between gap-3 mb-3">
+                <p className="text-sm font-semibold text-text-primary">Saved links</p>
                 <button onClick={openLinksHub} className="flex items-center gap-1 rounded border border-border bg-base px-2.5 py-1 text-[11px] text-text-secondary hover:bg-card-hover hover:text-text-primary transition-colors shrink-0">
-                  Open links <ArrowRight size={11} />
+                  Open <ArrowRight size={11} />
                 </button>
               </div>
 
-              <div className="mt-3 grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-3 gap-2">
                 {[
                   { label: 'Saved', value: savedLinks.length, color: ACCENT.blue },
                   { label: 'Pinned', value: pinnedLinks, color: ACCENT.amber },
@@ -872,9 +950,107 @@ export function Home({ onNavigate }: { onNavigate: (view: View) => void }) {
         {/* ─── Quick-view grid ─────────────────────────────────────────────── */}
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
 
-          {/* Usage — spans 2 */}
+          {/* To-dos — col 1 */}
+          <PanelCard title="To-Do" icon={<ListTodo size={14} />} view="todos" onNavigate={onNavigate} accent={ACCENT.blue} delay={220}>
+            {topTodos.length === 0 ? (
+              <EmptyNote icon={<CheckCircle2 size={20} className="text-accent-green" />} text={loaded ? 'Inbox zero. Nicely done.' : 'Loading…'} />
+            ) : (
+              <ul className="space-y-1">
+                {topTodos.map(t => {
+                  const overdue = isOverdue(t)
+                  return (
+                    <li key={t.id}>
+                      <button onClick={() => onNavigate('todos')} className="flex items-center gap-2.5 w-full px-2 py-1.5 rounded-lg hover:bg-card-hover transition-colors text-left">
+                        <Circle size={13} className="shrink-0" style={{ color: SEV_COLOR[t.severity] }} fill={t.severity === 'critical' ? ACCENT.red : 'none'} fillOpacity={0.3} />
+                        <span className="flex-1 text-sm text-text-primary truncate">{t.title}</span>
+                        {t.dueDate && (
+                          <span
+                            className={clsx('flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium tabular-nums shrink-0', !overdue && !isDueToday(t) && 'bg-card-hover text-text-muted')}
+                            style={overdue
+                              ? { color: ACCENT.red,   backgroundColor: `${ACCENT.red}1a` }
+                              : isDueToday(t) ? { color: ACCENT.amber, backgroundColor: `${ACCENT.amber}1a` } : undefined}
+                          >
+                            {overdue ? <Flame size={9} /> : <CalendarDays size={9} />}
+                            {overdue ? 'overdue' : isDueToday(t) ? 'today' : t.dueDate.slice(5, 10)}
+                          </span>
+                        )}
+                      </button>
+                    </li>
+                  )
+                })}
+                {openTodos.length > topTodos.length && (
+                  <li className="pt-1 text-center text-[11px] text-text-muted">+{openTodos.length - topTodos.length} more open</li>
+                )}
+              </ul>
+            )}
+          </PanelCard>
+
+          {/* Projects — col 2 */}
+          <PanelCard title="Project status" icon={<FolderKanban size={14} />} view="projects" onNavigate={onNavigate} accent={ACCENT.teal} delay={280}>
+            {topProjects.length === 0 ? (
+              <EmptyNote icon={<FolderKanban size={20} />} text={loaded ? 'No projects yet' : 'Loading…'} />
+            ) : (
+              <ul className="space-y-3">
+                {topProjects.map(p => (
+                  <li key={p.id}>
+                    <button onClick={() => onNavigate('projects')} className="w-full text-left group">
+                      <div className="flex items-center gap-2">
+                        <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: PROJECT_STATUS_COLOR[p.status] }} />
+                        <span className="flex-1 text-sm font-medium text-text-primary truncate">{p.name}</span>
+                        <span
+                          className="px-1.5 py-0.5 rounded text-[10px] font-medium capitalize shrink-0"
+                          style={{ color: PROJECT_STATUS_COLOR[p.status], backgroundColor: `${PROJECT_STATUS_COLOR[p.status]}1a` }}
+                        >
+                          {p.status}
+                        </span>
+                        <span className="text-xs text-text-secondary tabular-nums w-9 text-right shrink-0">{p.progress}%</span>
+                      </div>
+                      <div className="mt-1.5 h-1.5 rounded-full bg-base overflow-hidden">
+                        <div
+                          className="h-full rounded-full transition-all duration-700"
+                          style={{ width: `${Math.max(p.progress, 2)}%`, backgroundColor: PROJECT_STATUS_COLOR[p.status] }}
+                        />
+                      </div>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </PanelCard>
+
+          {/* Alerts & errors — col 3 */}
+          <PanelCard title="Alerts & errors" icon={<Bell size={14} />} view="health" onNavigate={() => openHubTab('health', 'alerts')} accent={ACCENT.amber} delay={340}>
+            {alerts.length === 0 && sysErrors.length === 0 ? (
+              <EmptyNote icon={<CheckCircle2 size={20} className="text-accent-green" />} text={loaded ? 'No active alerts — quiet skies' : 'Loading…'} />
+            ) : (
+              <ul className="space-y-1.5">
+                {alerts.slice(0, 4).map(a => (
+                  <li key={`${a.ruleId}-${a.firedAt}`} className="flex items-start gap-2.5 px-2.5 py-2 rounded-lg bg-base">
+                    {a.severity === 'critical'
+                      ? <ShieldAlert size={14} className="shrink-0 mt-0.5 text-accent-red" />
+                      : <AlertTriangle size={14} className={clsx('shrink-0 mt-0.5', a.severity === 'warning' ? 'text-accent-amber' : 'text-accent-blue')} />}
+                    <div className="min-w-0">
+                      <p className="text-sm text-text-primary truncate">{a.message}</p>
+                      <p className="text-[10px] text-text-muted truncate">{[a.ruleName, a.source, agoShort(a.firedAt)].filter(Boolean).join(' · ')}</p>
+                    </div>
+                  </li>
+                ))}
+                {sysErrors.slice(0, 3).map(c => (
+                  <li key={c.id} className="flex items-start gap-2.5 px-2.5 py-2 rounded-lg bg-base">
+                    <ServerCrash size={14} className={clsx('shrink-0 mt-0.5', c.status === 'error' ? 'text-accent-red' : 'text-text-muted')} />
+                    <div className="min-w-0">
+                      <p className="text-sm text-text-primary truncate">{c.name} <span className="text-text-muted">({c.status})</span></p>
+                      {(c.error || c.description) && <p className="text-[10px] text-text-muted truncate">{c.error || c.description}</p>}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </PanelCard>
+
+          {/* Usage — spans 2 cols */}
           <PanelCard title="Usage — last 7 days" icon={<Radar size={14} />} view="usage" onNavigate={onNavigate}
-            accent={ACCENT.purple} delay={220} className="xl:col-span-2">
+            accent={ACCENT.purple} delay={400} className="xl:col-span-2">
             {!usage ? (
               <EmptyNote icon={<Activity size={20} />} text={loaded ? 'Usage data unavailable' : 'Loading usage…'} />
             ) : (
@@ -918,105 +1094,7 @@ export function Home({ onNavigate }: { onNavigate: (view: View) => void }) {
             )}
           </PanelCard>
 
-          {/* To-dos */}
-          <PanelCard title="To-Do" icon={<ListTodo size={14} />} view="todos" onNavigate={onNavigate} accent={ACCENT.blue} delay={280}>
-            {topTodos.length === 0 ? (
-              <EmptyNote icon={<CheckCircle2 size={20} className="text-accent-green" />} text={loaded ? 'Inbox zero. Nicely done.' : 'Loading…'} />
-            ) : (
-              <ul className="space-y-1">
-                {topTodos.map(t => {
-                  const overdue = isOverdue(t)
-                  return (
-                    <li key={t.id}>
-                      <button onClick={() => onNavigate('todos')} className="flex items-center gap-2.5 w-full px-2 py-1.5 rounded-lg hover:bg-card-hover transition-colors text-left">
-                        <Circle size={13} className="shrink-0" style={{ color: SEV_COLOR[t.severity] }} fill={t.severity === 'critical' ? ACCENT.red : 'none'} fillOpacity={0.3} />
-                        <span className="flex-1 text-sm text-text-primary truncate">{t.title}</span>
-                        {t.dueDate && (
-                          <span
-                            className={clsx('flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium tabular-nums shrink-0', !overdue && !isDueToday(t) && 'bg-card-hover text-text-muted')}
-                            style={overdue
-                              ? { color: ACCENT.red,   backgroundColor: `${ACCENT.red}1a` }
-                              : isDueToday(t) ? { color: ACCENT.amber, backgroundColor: `${ACCENT.amber}1a` } : undefined}
-                          >
-                            {overdue ? <Flame size={9} /> : <CalendarDays size={9} />}
-                            {overdue ? 'overdue' : isDueToday(t) ? 'today' : t.dueDate.slice(5, 10)}
-                          </span>
-                        )}
-                      </button>
-                    </li>
-                  )
-                })}
-                {openTodos.length > topTodos.length && (
-                  <li className="pt-1 text-center text-[11px] text-text-muted">+{openTodos.length - topTodos.length} more open</li>
-                )}
-              </ul>
-            )}
-          </PanelCard>
-
-          {/* Projects */}
-          <PanelCard title="Project status" icon={<FolderKanban size={14} />} view="projects" onNavigate={onNavigate} accent={ACCENT.teal} delay={340}>
-            {topProjects.length === 0 ? (
-              <EmptyNote icon={<FolderKanban size={20} />} text={loaded ? 'No projects yet' : 'Loading…'} />
-            ) : (
-              <ul className="space-y-3">
-                {topProjects.map(p => (
-                  <li key={p.id}>
-                    <button onClick={() => onNavigate('projects')} className="w-full text-left group">
-                      <div className="flex items-center gap-2">
-                        <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: PROJECT_STATUS_COLOR[p.status] }} />
-                        <span className="flex-1 text-sm font-medium text-text-primary truncate">{p.name}</span>
-                        <span
-                          className="px-1.5 py-0.5 rounded text-[10px] font-medium capitalize shrink-0"
-                          style={{ color: PROJECT_STATUS_COLOR[p.status], backgroundColor: `${PROJECT_STATUS_COLOR[p.status]}1a` }}
-                        >
-                          {p.status}
-                        </span>
-                        <span className="text-xs text-text-secondary tabular-nums w-9 text-right shrink-0">{p.progress}%</span>
-                      </div>
-                      <div className="mt-1.5 h-1.5 rounded-full bg-base overflow-hidden">
-                        <div
-                          className="h-full rounded-full transition-all duration-700"
-                          style={{ width: `${Math.max(p.progress, 2)}%`, backgroundColor: PROJECT_STATUS_COLOR[p.status] }}
-                        />
-                      </div>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </PanelCard>
-
-          {/* Alerts & errors */}
-          <PanelCard title="Alerts & errors" icon={<Bell size={14} />} view="health" onNavigate={() => openHubTab('health', 'alerts')} accent={ACCENT.amber} delay={400}>
-            {alerts.length === 0 && sysErrors.length === 0 ? (
-              <EmptyNote icon={<CheckCircle2 size={20} className="text-accent-green" />} text={loaded ? 'No active alerts — quiet skies' : 'Loading…'} />
-            ) : (
-              <ul className="space-y-1.5">
-                {alerts.slice(0, 4).map(a => (
-                  <li key={`${a.ruleId}-${a.firedAt}`} className="flex items-start gap-2.5 px-2.5 py-2 rounded-lg bg-base">
-                    {a.severity === 'critical'
-                      ? <ShieldAlert size={14} className="shrink-0 mt-0.5 text-accent-red" />
-                      : <AlertTriangle size={14} className={clsx('shrink-0 mt-0.5', a.severity === 'warning' ? 'text-accent-amber' : 'text-accent-blue')} />}
-                    <div className="min-w-0">
-                      <p className="text-sm text-text-primary truncate">{a.message}</p>
-                      <p className="text-[10px] text-text-muted truncate">{[a.ruleName, a.source, agoShort(a.firedAt)].filter(Boolean).join(' · ')}</p>
-                    </div>
-                  </li>
-                ))}
-                {sysErrors.slice(0, 3).map(c => (
-                  <li key={c.id} className="flex items-start gap-2.5 px-2.5 py-2 rounded-lg bg-base">
-                    <ServerCrash size={14} className={clsx('shrink-0 mt-0.5', c.status === 'error' ? 'text-accent-red' : 'text-text-muted')} />
-                    <div className="min-w-0">
-                      <p className="text-sm text-text-primary truncate">{c.name} <span className="text-text-muted">({c.status})</span></p>
-                      {(c.error || c.description) && <p className="text-[10px] text-text-muted truncate">{c.error || c.description}</p>}
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </PanelCard>
-
-          {/* System health */}
+          {/* System health — col 3 */}
           <PanelCard title="System health" icon={<Activity size={14} />} view="health" onNavigate={() => openHubTab('health', 'system')} accent={ACCENT.green} delay={460}>
             {components.length === 0 ? (
               <EmptyNote icon={<Cpu size={20} />} text={loaded ? 'No component data' : 'Loading…'} />

@@ -13,7 +13,6 @@ import { startMemoryCollector } from './lib/memoryCollector.js'
 import { docsRouter }   from './routes/docs.js'
 import { agentsRouter }   from './routes/agents.js'
 import { pipelineRouter } from './routes/pipeline.js'
-import { officeRouter }   from './routes/office.js'
 import { tasksRouter }    from './routes/tasks.js'
 import { todosRouter }    from './routes/todos.js'
 import { toBuyRouter }    from './routes/tobuy.js'
@@ -66,7 +65,6 @@ app.use('/api/memory',  memoryOpsRouter)
 app.use('/api/docs',    docsRouter)
 app.use('/api/agents',   agentsRouter)
 app.use('/api/pipeline', pipelineRouter)
-app.use('/api/office',   officeRouter)
 app.use('/api/tasks',    tasksRouter)
 app.use('/api/todos',    todosRouter)
 app.use('/api/tobuy',    toBuyRouter)
