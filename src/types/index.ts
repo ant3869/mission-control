@@ -10,6 +10,7 @@ export type View =
   | 'calendar'
   // ── Knowledge ──
   | 'docs'        // Docs + Notes
+  | 'links'       // Bookmarks / saved links
   | 'news'        // News — live RSS, GitHub trending, social buzz
   | 'memory'
   // ── Build (hardware → ideas → projects) ──

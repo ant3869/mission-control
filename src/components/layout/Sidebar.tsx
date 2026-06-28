@@ -4,7 +4,7 @@ import {
   MessageSquare, Calendar, Brain, Wallet,
   Activity, Target, Package, Lightbulb,
   Cog, ChevronLeft, ChevronRight, FlaskConical,
-  HeartPulse, House, ShoppingCart, Newspaper,
+  HeartPulse, House, ShoppingCart, Newspaper, Link,
 } from 'lucide-react'
 import { clsx } from 'clsx'
 import type { View } from '../../types'
@@ -35,6 +35,7 @@ const NAV: NavSection[] = [
     label: 'Knowledge',
     items: [
       { id: 'docs',   label: 'Docs',   icon: <BookOpen  size={iconSize} /> },
+      { id: 'links',  label: 'Links',  icon: <Link      size={iconSize} /> },
       { id: 'news',   label: 'News',   icon: <Newspaper size={iconSize} /> },
       { id: 'memory', label: 'Memory', icon: <Brain     size={iconSize} /> },
     ],

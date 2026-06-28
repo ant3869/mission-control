@@ -13,6 +13,7 @@ export const securityRouter = Router()
 
 // GET /api/security/posture — full connector health + auth + error surface
 securityRouter.get('/posture', async (_req, res) => {
+  try {
   const connectors = getConnectors()
   const now = Date.now()
   const windowMs = 60 * 60_000  // 1 hour window for error scan
@@ -102,29 +103,40 @@ securityRouter.get('/posture', async (_req, res) => {
     },
     fetchedAt: new Date().toISOString(),
   })
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to load security posture', detail: (err as Error).message })
+  }
 })
 
 // GET /api/security/diagnostics/:source — full path probe for one connector
 securityRouter.get('/diagnostics/:source', async (req, res) => {
-  const source = req.params.source as AgentSource
-  if (source !== 'openclaw' && source !== 'hermes') {
-    return res.status(400).json({ error: 'invalid source' })
+  try {
+    const source = req.params.source as AgentSource
+    if (source !== 'openclaw' && source !== 'hermes') {
+      return res.status(400).json({ error: 'invalid source' })
+    }
+    if (!isLive(source)) {
+      return res.status(409).json({ error: 'connector not enabled — add a token in Settings', probes: [] })
+    }
+    const probes = await fetchDiagnostics(source)
+    res.json({ probes, fetchedAt: new Date().toISOString() })
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to run diagnostics', detail: (err as Error).message })
   }
-  if (!isLive(source)) {
-    return res.status(409).json({ error: 'connector not enabled — add a token in Settings', probes: [] })
-  }
-  const probes = await fetchDiagnostics(source)
-  res.json({ probes, fetchedAt: new Date().toISOString() })
 })
 
 // GET /api/security/events — recent auth/error events across all sources
 securityRouter.get('/events', (_req, res) => {
-  const cutoff = new Date(Date.now() - 24 * 3_600_000).toISOString()
-  const events = (['openclaw', 'hermes'] as AgentSource[])
-    .flatMap(s => getRawEvents(s, 200).filter(e => e.ts >= cutoff &&
-      (e.eventType.includes('error') || e.eventType.includes('fail') || e.eventType.includes('auth'))))
-    .sort((a, b) => new Date(b.ts).getTime() - new Date(a.ts).getTime())
-    .slice(0, 100)
+  try {
+    const cutoff = new Date(Date.now() - 24 * 3_600_000).toISOString()
+    const events = (['openclaw', 'hermes'] as AgentSource[])
+      .flatMap(s => getRawEvents(s, 200).filter(e => e.ts >= cutoff &&
+        (e.eventType.includes('error') || e.eventType.includes('fail') || e.eventType.includes('auth'))))
+      .sort((a, b) => new Date(b.ts).getTime() - new Date(a.ts).getTime())
+      .slice(0, 100)
 
-  res.json({ events, total: events.length, fetchedAt: new Date().toISOString() })
+    res.json({ events, total: events.length, fetchedAt: new Date().toISOString() })
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to load security events', detail: (err as Error).message })
+  }
 })

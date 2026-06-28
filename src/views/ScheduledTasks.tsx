@@ -307,27 +307,34 @@ function EventComposer({ state, onClose, onSaved }: {
 
 // ─── Month cell ───────────────────────────────────────────────────────────────
 
-function MonthCell({ date, events, inMonth, onPick }: {
-  date: Date; events: CalendarEvent[]; inMonth: boolean; onPick: (d: Date) => void
+function MonthCell({ date, events, inMonth, onPick, onAdd }: {
+  date: Date; events: CalendarEvent[]; inMonth: boolean
+  onPick: (d: Date) => void; onAdd: (d: Date) => void
 }) {
   const today = isToday(date)
   const shown = events.slice(0, 3)
   const extra = events.length - shown.length
   return (
-    <button
-      onClick={() => onPick(date)}
+    <div
       className={clsx(
-        'flex flex-col gap-0.5 border-r border-b border-border p-1 text-left min-h-[84px] overflow-hidden transition-colors hover:bg-card-hover',
+        'group/cell flex flex-col gap-0.5 border-r border-b border-border p-1 text-left min-h-[84px] overflow-hidden transition-colors hover:bg-card-hover cursor-pointer',
         !inMonth && 'bg-surface/30',
         today && 'bg-accent-blue/5',
       )}
+      onClick={() => onPick(date)}
     >
       <div className="flex items-center justify-between">
         <span className={clsx('flex items-center justify-center w-5 h-5 rounded-full text-xxs font-semibold',
           today ? 'bg-accent-blue text-black' : inMonth ? 'text-text-secondary' : 'text-text-muted/50')}>
           {format(date, 'd')}
         </span>
-        {events.length > 0 && <span className="text-[9px] text-text-muted tabular-nums">{events.length}</span>}
+        <button
+          onClick={e => { e.stopPropagation(); onAdd(date) }}
+          title="Add event"
+          className="opacity-0 group-hover/cell:opacity-100 text-text-muted hover:text-emerald-400 transition-all"
+        >
+          <Plus size={12} />
+        </button>
       </div>
       <div className="flex flex-col gap-0.5">
         {shown.map(e => (
@@ -338,7 +345,7 @@ function MonthCell({ date, events, inMonth, onPick }: {
         ))}
         {extra > 0 && <span className="text-[9px] text-text-muted pl-1">+{extra} more</span>}
       </div>
-    </button>
+    </div>
   )
 }
 
@@ -666,7 +673,7 @@ export function ScheduledTasks() {
             </div>
             <div className="grid grid-cols-7 grid-rows-6 flex-1 border-l border-t border-border">
               {monthCells.map((date, i) => (
-                <MonthCell key={i} date={date} events={eventsForDate(date)} inMonth={isSameMonth(date, anchor)} onPick={pickDay} />
+                <MonthCell key={i} date={date} events={eventsForDate(date)} inMonth={isSameMonth(date, anchor)} onPick={pickDay} onAdd={d => setComposer({ mode: 'create', date: d })} />
               ))}
             </div>
           </div>
@@ -697,16 +704,25 @@ export function ScheduledTasks() {
                 {days.map(({ date, items }) => {
                   const todayFlag = isToday(date)
                   return (
-                    <div key={dateKey(date)} className="flex gap-3 px-4 sm:px-6 py-3 border-b border-border-subtle">
-                      <button onClick={() => pickDay(date)} className="shrink-0 w-14 text-left">
-                        <div className={clsx('text-xxs font-semibold uppercase tracking-wider', todayFlag ? 'text-accent-blue' : 'text-text-muted')}>
-                          {DAY_LABELS[date.getDay()]}
-                        </div>
-                        <div className={clsx('text-lg font-semibold leading-none tabular-nums', todayFlag ? 'text-accent-blue' : 'text-text-primary')}>
-                          {format(date, 'd')}
-                        </div>
-                        <div className="text-xxs text-text-muted">{format(date, 'MMM')}</div>
-                      </button>
+                    <div key={dateKey(date)} className="group/agenda flex gap-3 px-4 sm:px-6 py-3 border-b border-border-subtle">
+                      <div className="shrink-0 w-14">
+                        <button onClick={() => pickDay(date)} className="w-full text-left">
+                          <div className={clsx('text-xxs font-semibold uppercase tracking-wider', todayFlag ? 'text-accent-blue' : 'text-text-muted')}>
+                            {DAY_LABELS[date.getDay()]}
+                          </div>
+                          <div className={clsx('text-lg font-semibold leading-none tabular-nums', todayFlag ? 'text-accent-blue' : 'text-text-primary')}>
+                            {format(date, 'd')}
+                          </div>
+                          <div className="text-xxs text-text-muted">{format(date, 'MMM')}</div>
+                        </button>
+                        <button
+                          onClick={() => setComposer({ mode: 'create', date })}
+                          title="Add event"
+                          className="mt-1 opacity-0 group-hover/agenda:opacity-100 text-text-muted hover:text-emerald-400 transition-all"
+                        >
+                          <Plus size={12} />
+                        </button>
+                      </div>
                       <div className="flex flex-col gap-1.5 flex-1 min-w-0">
                         {items.map(ev => <EventCard key={ev.id} event={ev} onClick={() => setComposer({ mode: 'edit', event: ev })} />)}
                       </div>

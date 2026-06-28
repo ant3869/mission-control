@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { clsx } from 'clsx'
 import {
   Settings as SettingsIcon, RefreshCw, AlertCircle, CheckCircle2, XCircle,
-  Loader, Plug, KeyRound, Save, Zap, CalendarDays, Unplug, Network,
+  Loader, Plug, KeyRound, Save, Zap, CalendarDays, Unplug, Network, Download,
 } from 'lucide-react'
 import {
   settings as settingsApi, auth as authApi, office as officeApi,
@@ -555,6 +555,27 @@ export function Settings() {
             {integrations.map(item => <IntegrationCard key={item.id} item={item} />)}
           </div>
         )}
+
+        {/* Export & backup */}
+        <p className="text-xxs font-semibold uppercase tracking-wider text-text-muted mt-8 mb-3 flex items-center gap-1.5">
+          <Download size={11} /> Export &amp; backup
+          <span className="font-normal normal-case tracking-normal opacity-60">· download a snapshot of your local data</span>
+        </p>
+        <div className="flex items-start gap-4 p-4 rounded-lg border border-border bg-card max-w-2xl">
+          <div className="flex-1 min-w-0">
+            <p className="text-sm text-text-primary font-medium">JSON snapshot</p>
+            <p className="text-xs text-text-muted mt-0.5">
+              Tasks, to-dos, links, to-buy list, alerts, projects and connector config — all in one file. Does not include SQLite databases (inventory, evals, memory) or uploaded attachments.
+            </p>
+          </div>
+          <a
+            href="/api/export"
+            download
+            className="shrink-0 flex items-center gap-1.5 px-3 py-2 rounded border border-border bg-base hover:bg-card-hover text-text-secondary hover:text-text-primary transition-colors text-xs font-medium"
+          >
+            <Download size={12} /> Download
+          </a>
+        </div>
       </div>
     </div>
   )

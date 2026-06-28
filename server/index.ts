@@ -40,9 +40,16 @@ import { newsRouter }     from './routes/news.js'
 import { financeRouter }  from './routes/finance.js'
 import { officeRouter }  from './routes/office.js'
 import { searchRouter }  from './routes/search.js'
+import { exportRouter }  from './routes/export.js'
+import { rateLimit }    from './lib/rateLimit.js'
 
 const app = express()
 const PORT = process.env.API_PORT ?? 3001
+
+// General API rate limit: 300 req/min (protects against runaway loops)
+const generalLimit = rateLimit({ max: 300, windowMs: 60_000 })
+// Tight limit for routes that call external AI/search APIs
+const aiLimit = rateLimit({ max: 20, windowMs: 60_000, message: 'AI API rate limit reached — wait 60s.' })
 
 app.use(cors({
   origin: [
@@ -54,12 +61,13 @@ app.use(cors({
   credentials: true,
 }))
 app.use(express.json())
+app.use('/api', generalLimit)
 
 app.use('/api/auth',     authRouter)
 app.use('/api/calendar', calendarRouter)
 app.use('/api/system',   systemRouter)
-app.use('/api/radar',    radarRouter)
-app.use('/api/modelops', modelOpsRouter)
+app.use('/api/radar',    aiLimit, radarRouter)
+app.use('/api/modelops', aiLimit, modelOpsRouter)
 app.use('/api/chats',    chatsRouter)
 app.use('/api/memory',  memoryRouter)
 app.use('/api/memory',  memoryOpsRouter)
@@ -89,10 +97,11 @@ app.use('/api/evaluations', evaluationsRouter)
 app.use('/api/harness-bench', harnessBenchRouter)
 app.use('/api/links',    linksRouter)
 app.use('/api/inbox',    inboxRouter)
-app.use('/api/news',     newsRouter)
+app.use('/api/news',     aiLimit, newsRouter)
 app.use('/api/finance',  financeRouter)
 app.use('/api/office',  officeRouter)
 app.use('/api/search',  searchRouter)
+app.use('/api/export',  exportRouter)
 
 app.get('/api/health', (_req, res) => res.json({ ok: true, ts: new Date().toISOString() }))
 

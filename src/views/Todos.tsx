@@ -11,7 +11,7 @@ import {
   ListTodo, RefreshCw, AlertCircle, Plus, Trash2, Sparkles, Loader2,
   Circle, CheckCircle2, ExternalLink, Pencil, Check, X, CalendarDays,
   ChevronDown, MapPin, Phone, DollarSign, Clock, Link2, User, Tag, Wand2,
-  CalendarCheck,
+  CalendarCheck, CheckSquare, Square, MinusSquare,
 } from 'lucide-react'
 import { useEscapeKey } from '../hooks/useEscapeKey'
 import { isRefreshPaused } from '../lib/refreshBus'
@@ -441,11 +441,13 @@ function rowSubtext(todo: Todo): string {
 
 // ─── Todo row ─────────────────────────────────────────────────────────────────
 
-function TodoRow({ todo, active, onToggle, onClick }: {
-  todo:     Todo
-  active:   boolean
-  onToggle: (t: Todo) => void
-  onClick:  () => void
+function TodoRow({ todo, active, onToggle, onClick, selected, onSelectToggle }: {
+  todo:            Todo
+  active:          boolean
+  onToggle:        (t: Todo) => void
+  onClick:         () => void
+  selected?:       boolean
+  onSelectToggle?: (id: string) => void
 }) {
   const r    = todo.research
   const due  = todo.dueDate && !todo.done ? dueBadge(todo.dueDate) : null
@@ -459,11 +461,28 @@ function TodoRow({ todo, active, onToggle, onClick }: {
         ? 'before:bg-red-500/50'
         : active ? 'before:bg-emerald-400' : 'before:bg-transparent',
       active ? 'bg-card-hover' : 'bg-card hover:bg-card-hover',
+      selected && 'bg-accent-blue/5',
     )}>
+      {/* Bulk checkbox — only rendered when bulk mode is active */}
+      {onSelectToggle && (
+        <button
+          onClick={e => { e.stopPropagation(); onSelectToggle(todo.id) }}
+          className="shrink-0 pl-3 py-2.5 text-text-muted hover:text-accent-blue transition-colors"
+          title={selected ? 'Deselect' : 'Select'}
+        >
+          {selected
+            ? <CheckSquare size={15} className="text-accent-blue" />
+            : <Square size={15} />
+          }
+        </button>
+      )}
       {/* Circle toggle — independent quick action */}
       <button
         onClick={e => { e.stopPropagation(); onToggle(todo) }}
-        className="shrink-0 pl-3 py-2.5 text-text-muted hover:text-emerald-400 transition-colors"
+        className={clsx(
+          'shrink-0 py-2.5 text-text-muted hover:text-emerald-400 transition-colors',
+          onSelectToggle ? '' : 'pl-3',
+        )}
         title={todo.done ? 'Mark as open' : 'Mark as done'}
       >
         {todo.done
@@ -910,6 +929,7 @@ export default function Todos() {
   const [showDetails, setShowDetails]   = useState(false)
   const [quickDetails, setQuickDetails] = useState<TodoDetails>(emptyDetails())
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [bulkSelected, setBulkSelected] = useState<Set<string>>(new Set())
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -994,6 +1014,35 @@ export default function Todos() {
     finally { setClearing(false) }
   }
 
+  async function handleBulkComplete() {
+    const ids = [...bulkSelected]
+    if (!ids.length) return
+    try {
+      await Promise.all(ids.map(id => patchTodo(id, { done: true })))
+      setTodos(ts => ts.map(t => bulkSelected.has(t.id) ? { ...t, done: true } : t))
+      setBulkSelected(new Set())
+    } catch (e: any) { setError(e.message) }
+  }
+
+  async function handleBulkDelete() {
+    const ids = [...bulkSelected]
+    if (!ids.length || !confirm(`Delete ${ids.length} to-do${ids.length > 1 ? 's' : ''}?`)) return
+    try {
+      await Promise.all(ids.map(id => deleteTodo(id)))
+      setTodos(ts => ts.filter(t => !bulkSelected.has(t.id)))
+      setBulkSelected(new Set())
+      setSelectedId(null)
+    } catch (e: any) { setError(e.message) }
+  }
+
+  function toggleBulkItem(id: string) {
+    setBulkSelected(prev => {
+      const next = new Set(prev)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
+  }
+
   async function handleResearch(todo: Todo, source: ResearchSource, guidance?: string) {
     try {
       const r = await startResearch(todo.id, source, guidance)
@@ -1019,6 +1068,9 @@ export default function Todos() {
           || SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity]
           || dueRank(a) - dueRank(b)
           || b.createdAt.localeCompare(a.createdAt))
+
+  const allVisibleSelected  = visible.length > 0 && visible.every(t => bulkSelected.has(t.id))
+  const someVisibleSelected = visible.some(t => bulkSelected.has(t.id))
 
   const openCount = todos.filter(t => !t.done).length
   const counts: Record<Filter, number> = {
@@ -1118,8 +1170,33 @@ export default function Todos() {
           )}
 
           <div className="flex items-center gap-1">
+            {/* Select-all toggle */}
+            {visible.length > 0 && (
+              <button
+                onClick={() => {
+                  if (allVisibleSelected) {
+                    setBulkSelected(prev => {
+                      const next = new Set(prev)
+                      visible.forEach(t => next.delete(t.id))
+                      return next
+                    })
+                  } else {
+                    setBulkSelected(prev => new Set([...prev, ...visible.map(t => t.id)]))
+                  }
+                }}
+                className="shrink-0 mr-1 text-text-muted hover:text-accent-blue transition-colors"
+                title={allVisibleSelected ? 'Deselect all' : 'Select all visible'}
+              >
+                {allVisibleSelected
+                  ? <CheckSquare size={14} className="text-accent-blue" />
+                  : someVisibleSelected
+                    ? <MinusSquare size={14} className="text-accent-blue/60" />
+                    : <Square size={14} />
+                }
+              </button>
+            )}
             {(['open', 'short', 'long', 'done'] as Filter[]).map(f => (
-              <button key={f} onClick={() => setFilter(f)}
+              <button key={f} onClick={() => { setFilter(f); setBulkSelected(new Set()) }}
                       className={clsx(
                         'px-2.5 py-1 rounded text-xs transition-colors',
                         filter === f ? 'bg-card-hover text-text-primary' : 'text-text-muted hover:text-text-secondary hover:bg-card',
@@ -1135,6 +1212,27 @@ export default function Todos() {
               </button>
             )}
           </div>
+
+          {/* Bulk action bar */}
+          {bulkSelected.size > 0 && (
+            <div className="flex items-center gap-2 px-2 py-1.5 rounded-lg border border-accent-blue/30 bg-accent-blue/10 text-xs">
+              <span className="text-accent-blue font-medium tabular-nums">{bulkSelected.size} selected</span>
+              <div className="flex items-center gap-1 ml-auto">
+                <button onClick={handleBulkComplete}
+                        className="flex items-center gap-1 px-2 py-1 rounded bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-400 transition-colors">
+                  <CheckCircle2 size={11} /> Mark done
+                </button>
+                <button onClick={handleBulkDelete}
+                        className="flex items-center gap-1 px-2 py-1 rounded bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 transition-colors">
+                  <Trash2 size={11} /> Delete
+                </button>
+                <button onClick={() => setBulkSelected(new Set())}
+                        className="flex items-center gap-1 px-2 py-1 rounded text-text-muted hover:text-text-secondary hover:bg-card transition-colors">
+                  <X size={11} /> Clear
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* List */}
@@ -1161,6 +1259,8 @@ export default function Todos() {
                   active={t.id === selectedId}
                   onToggle={handleToggle}
                   onClick={() => setSelectedId(prev => prev === t.id ? null : t.id)}
+                  selected={bulkSelected.has(t.id)}
+                  onSelectToggle={toggleBulkItem}
                 />
               ))}
             </div>

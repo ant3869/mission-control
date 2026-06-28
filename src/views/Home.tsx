@@ -23,7 +23,7 @@ import {
 } from '../lib/api'
 import { Histogram, SegmentBar, Donut, fmtNum } from '../components/charts'
 import { isRefreshPaused } from '../lib/refreshBus'
-import { openDocsTab, openInboxItem as focusInboxItem, openTasksTab, openHubTab } from '../lib/quickActions'
+import { openInboxItem as focusInboxItem, openTasksTab, openHubTab } from '../lib/quickActions'
 import type { View } from '../types'
 
 // ─── Theme accents (mirror tailwind.config.js — never introduce new colors) ───
@@ -570,8 +570,7 @@ export function Home({ onNavigate }: { onNavigate: (view: View) => void }) {
   }
 
   function openLinksHub(): void {
-    openDocsTab('links')
-    onNavigate('docs')
+    onNavigate('links')
   }
 
   function openFocusedInboxItem(item: InboxItem): void {

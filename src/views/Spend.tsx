@@ -16,10 +16,10 @@ import {
   Receipt, CreditCard, Calendar,
 } from 'lucide-react'
 import {
-  radar, modelOps, inventory, financials, bills as billsApi, finance as ledgerApi,
+  radar, modelOps, inventory, financials, bills as billsApi, finance as ledgerApi, toBuy as toBuyApi,
   type RadarUsageResponse, type RadarInsightsResponse, type ModelOpsResponse, type InventoryStats,
   type FinanceEntry, type FinanceKind, type FinancialsResponse, type BillsResponse,
-  type LedgerEntry, type LedgerResponse,
+  type LedgerEntry, type LedgerResponse, type BuyItem,
 } from '../lib/api'
 import { Donut, SegmentBar, Histogram, fmtNum } from '../components/charts'
 
@@ -41,7 +41,6 @@ function shortMoney(n: number): string {
   return `${n < 0 ? '-' : ''}$${Math.round(a)}`
 }
 
-interface BuyItem { id: string; estimatedPrice: number; quantity: number; purchased: boolean }
 
 // ─── Category metadata ───────────────────────────────────────────────────────────
 
@@ -501,7 +500,7 @@ export function Spend() {
         radar.insights(DAYS),
         modelOps.summary(DAYS, 'all'),
         inventory.list(),
-        fetch('/api/tobuy').then(r => r.json()),
+        toBuyApi.list(),
         financials.list(),
         billsApi.list(),
         ledgerApi.list(),

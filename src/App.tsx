@@ -23,6 +23,7 @@ const Factory           = lazy(() => import('./views/Factory').then(m => ({ defa
 const Evaluations       = lazy(() => import('./views/Evaluations').then(m => ({ default: m.Evaluations })))
 const HarnessBenchmarks = lazy(() => import('./views/HarnessBenchmarks').then(m => ({ default: m.HarnessBenchmarks })))
 const News              = lazy(() => import('./views/News').then(m => ({ default: m.News })))
+const Links             = lazy(() => import('./views/Links').then(m => ({ default: m.Links })))
 const ToBuy             = lazy(() => import('./views/ToBuy'))
 const Spend             = lazy(() => import('./views/Spend').then(m => ({ default: m.Spend })))
 // Consolidated AI-Ops hubs (each pulls its now-tabbed sub-views on first visit)
@@ -38,6 +39,7 @@ const VIEW_TITLES: Record<View, string> = {
   council:     'Chats',
   calendar:    'Scheduled Tasks',
   docs:        'Docs & Notes',
+  links:       'Links',
   news:        'News',
   memory:      'Memory',
   projects:    'Projects & Pipeline',
@@ -207,6 +209,7 @@ export default function App() {
           <ViewPane view="council"     active={activeView} mounted={mounted}><Chats /></ViewPane>
           <ViewPane view="calendar"    active={activeView} mounted={mounted}><ScheduledTasks /></ViewPane>
           <ViewPane view="docs"        active={activeView} mounted={mounted}><DocsNotes /></ViewPane>
+          <ViewPane view="links"       active={activeView} mounted={mounted}><Links /></ViewPane>
           <ViewPane view="news"        active={activeView} mounted={mounted}><News /></ViewPane>
           <ViewPane view="memory"      active={activeView} mounted={mounted}><Memory /></ViewPane>
           <ViewPane view="projects"    active={activeView} mounted={mounted}><ProjectsPipeline /></ViewPane>

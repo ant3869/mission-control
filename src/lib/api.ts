@@ -1439,6 +1439,27 @@ export const links = {
   remove: (id: string) => del<{ ok: boolean }>(`/links/${id}`),
 }
 
+// ─── To-Buy ──────────────────────────────────────────────────────────────────
+
+export type BuyPriority = 'low' | 'medium' | 'high'
+
+export interface BuyItem {
+  id:             string
+  title:          string
+  notes:          string
+  priority:       BuyPriority
+  quantity:       number
+  estimatedPrice: number
+  purchased:      boolean
+  createdAt:      string
+  updatedAt:      string
+  purchasedAt:    string
+}
+
+export const toBuy = {
+  list: () => get<{ items: BuyItem[] }>('/tobuy'),
+}
+
 // ─── Inbox ────────────────────────────────────────────────────────────────────
 
 export type InboxKind = 'approval' | 'task' | 'todo'

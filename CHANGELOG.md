@@ -6,6 +6,37 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.16.0] — 2026-06-28
+
+### Added
+
+- **Links view (restored).** Links is now a first-class sidebar entry under Knowledge — navigable directly from the sidebar, Home quick-action, and Ctrl+K palette. Previously orphaned: the view and API existed but were cut from navigation.
+- **Bulk actions in To-Do.** A checkbox appears on each to-do row, with select-all, "Mark done", and "Delete" controls in a context bar above the list. Works across all filter tabs.
+- **Quick-create calendar events from month/agenda views.** A "+" button appears on hover in every month cell and agenda day row, opening the event composer pre-filled with that date. Week/day view already had this.
+- **`GET /api/export` data backup endpoint.** Returns a timestamped JSON snapshot of all flat-file stores (tasks, to-dos, links, to-buy, alerts, projects, connectors) as a downloadable file. Accessible from Settings → Export & Backup.
+- **Export & Backup section in Settings.** One-click "Download" button under a new section that describes what is and isn't included.
+- **Expanded global search coverage.** Ctrl+K now searches inventory (SQLite LIKE), unpurchased to-buy items, and notes pages in addition to the existing tasks/todos/links/projects fan-out.
+- **In-memory rate limiter.** All `/api/` routes are capped at 300 req/min; AI-backed routes (`/api/radar`, `/api/modelops`, `/api/news`) are additionally limited to 20 req/min to protect API spend.
+
+### Changed
+
+- **`PlatformMetrics.tsx` split.** `MemoryAnalyticsBoard` (≈ 270 lines) extracted to `src/components/metrics/MemoryAnalyticsBoard.tsx`; formatter utilities extracted to `src/components/metrics/formatters.ts`. Main file reduced from 1 785 to 1 459 lines.
+- **Calendar month/agenda cells.** Month cells are now `div` (was `button`) to allow the nested "+" button without invalid HTML nesting; clicking anywhere still navigates to day view.
+- **Error handling hardened.** `brain.ts`, `flow.ts`, `security.ts`, and `settings.ts` routes now wrap handlers in explicit try/catch returning `{ error, detail }` on 500 instead of letting Express swallow the exception silently.
+
+### Fixed
+
+- **Dead code removed from `Chats.tsx`.** ~425 lines of commented-out legacy component code and stale `selectSession`/`loadSessions` implementations removed; no runtime behaviour changed.
+- **`Spend.tsx` used raw `fetch` instead of the typed API client** for the to-buy list. Now calls `toBuy.list()` through `src/lib/api.ts`.
+- **`Home.tsx` deep-link to Links.** `openLinksHub` previously called `openDocsTab('links')` and navigated to the Docs view. Now navigates directly to the restored Links view.
+- **`TopBar.tsx` Ctrl+K links action** now navigates to the Links view instead of Docs → links tab.
+
+### Tests
+
+- Added route tests for `GET /api/search` (8 tests) and full CRUD for `GET|POST|PATCH|DELETE /api/links` (8 tests). Total test count: 192.
+
+---
+
 ## [0.15.0] — 2026-06-27
 
 ### Added
