@@ -17,9 +17,11 @@ import {
 } from 'lucide-react'
 import {
   radar, modelOps, inventory, financials, bills as billsApi, finance as ledgerApi, toBuy as toBuyApi,
+  budgets, metrics,
   type RadarUsageResponse, type RadarInsightsResponse, type ModelOpsResponse, type InventoryStats,
   type FinanceEntry, type FinanceKind, type FinancialsResponse, type BillsResponse,
-  type LedgerEntry, type LedgerResponse, type BuyItem,
+  type LedgerEntry, type LedgerResponse, type BuyItem, type DailyUsageLive, type BudgetLimits,
+  type MetricSessionRow,
 } from '../lib/api'
 import { Donut, SegmentBar, Histogram, fmtNum } from '../components/charts'
 
@@ -27,6 +29,14 @@ const DAYS = 30
 
 const ACCENT = { blue: '#60a5fa', purple: '#a78bfa', teal: '#2dd4bf', amber: '#fbbf24', green: '#4ade80', red: '#f87171' }
 const PALETTE = ['#60a5fa', '#a78bfa', '#2dd4bf', '#fbbf24', '#fb7185', '#38bdf8', '#a3e635', '#f472b6', '#94a3b8']
+
+function shortModel(m: string): string {
+  if (!m) return ''
+  if (m.includes('opus'))   return 'Opus'
+  if (m.includes('sonnet')) return 'Sonnet'
+  if (m.includes('haiku'))  return 'Haiku'
+  return m.split('-').slice(-2).join('-')
+}
 
 function money(n: number): string {
   if (!isFinite(n)) return '—'
@@ -273,6 +283,23 @@ function BreakdownPanel({
 }) {
   useEscapeKey(onClose)
 
+  // Lazy-load top sessions by cost when the AI panel opens.
+  const [topSessions, setTopSessions] = useState<MetricSessionRow[]>([])
+  useEffect(() => {
+    if (card !== 'ai') return
+    Promise.allSettled([metrics.openclaw(), metrics.hermes()]).then(results => {
+      const all: MetricSessionRow[] = []
+      for (const r of results) {
+        if (r.status === 'fulfilled') all.push(...r.value.metrics.sessionList)
+      }
+      setTopSessions(
+        all.filter(s => s.cost > 0 && !s.isHeartbeat)
+           .sort((a, b) => b.cost - a.cost)
+           .slice(0, 8)
+      )
+    })
+  }, [card])
+
   const TITLE: Record<CardId, { label: string; icon: React.ReactNode }> = {
     networth: { label: 'Net worth breakdown', icon: <Landmark size={15} /> },
     bills:    { label: 'Recurring bills',     icon: <Receipt size={15} /> },
@@ -416,6 +443,22 @@ function BreakdownPanel({
               </div>
               {dailyBars.length > 0 && <div className="mt-2"><Histogram bars={dailyBars} height={40} /></div>}
             </div>
+
+            {topSessions.length > 0 && (
+              <PanelSection title="Top sessions by cost">
+                <div className="flex flex-col gap-1">
+                  {topSessions.map(s => (
+                    <div key={s.key} className="flex items-center gap-2 text-xs py-0.5">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-text-secondary truncate">{s.title || s.key.slice(0, 24)}</p>
+                        <p className="text-xxs text-text-muted">{s.model ? shortModel(s.model) : ''}{s.channel ? ` · ${s.channel}` : ''}</p>
+                      </div>
+                      <span className="tabular-nums font-medium text-text-primary shrink-0">{money(s.cost)}</span>
+                    </div>
+                  ))}
+                </div>
+              </PanelSection>
+            )}
           </>
         )}
 
@@ -467,6 +510,96 @@ function BreakdownPanel({
   )
 }
 
+// ─── Budget gauges ────────────────────────────────────────────────────────────────
+
+function BudgetGauge({ label, actual, limit, fmt, onSetLimit }: {
+  label: string; actual: number; limit: number | null
+  fmt: (n: number) => string; onSetLimit: (v: number | null) => void
+}) {
+  const [editing, setEditing] = useState(false)
+  const [val, setVal]         = useState('')
+
+  const pct   = limit ? Math.min((actual / limit) * 100, 100) : 0
+  const color  = pct >= 90 ? ACCENT.red : pct >= 75 ? ACCENT.amber : ACCENT.green
+
+  function commit() {
+    const n = parseFloat(val)
+    onSetLimit(!isNaN(n) && n > 0 ? n : null)
+    setEditing(false)
+  }
+
+  return (
+    <div className="rounded-xl border border-border bg-base p-3 flex flex-col gap-2">
+      <div className="flex items-center justify-between">
+        <span className="text-xxs uppercase tracking-wide text-text-muted">{label}</span>
+        <button onClick={() => { setVal(limit != null ? String(limit) : ''); setEditing(e => !e) }}
+          className="text-text-muted hover:text-text-secondary transition-colors" title="Edit limit">
+          <Pencil size={11} />
+        </button>
+      </div>
+      {editing ? (
+        <div className="flex items-center gap-1">
+          <input autoFocus value={val} onChange={e => setVal(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') setEditing(false) }}
+            placeholder="no limit" inputMode="decimal"
+            className="flex-1 min-w-0 bg-surface border border-border rounded px-2 py-1 text-xs text-text-primary outline-none focus:border-accent-blue/50" />
+          <button onClick={commit} className="p-1 text-green-400 hover:text-green-300 transition-colors"><Check size={12} /></button>
+          <button onClick={() => setEditing(false)} className="p-1 text-text-muted hover:text-text-secondary transition-colors"><X size={12} /></button>
+        </div>
+      ) : limit != null ? (
+        <>
+          <div className="flex items-baseline justify-between gap-1">
+            <span className="text-sm font-semibold tabular-nums" style={{ color }}>{fmt(actual)}</span>
+            <span className="text-xxs text-text-muted">/ {fmt(limit)}</span>
+          </div>
+          <div className="h-1.5 rounded-full bg-card overflow-hidden">
+            <div className="h-full rounded-full transition-all duration-500" style={{ width: `${pct}%`, backgroundColor: color }} />
+          </div>
+          <p className="text-xxs text-text-muted">{pct.toFixed(0)}% of limit</p>
+        </>
+      ) : (
+        <button onClick={() => { setVal(''); setEditing(true) }}
+          className="text-xs text-text-muted hover:text-accent-blue transition-colors text-left py-1">
+          No limit — click to set
+        </button>
+      )}
+    </div>
+  )
+}
+
+function BudgetSection({ dailyUsage, limits, onSave }: {
+  dailyUsage: DailyUsageLive[]
+  limits: BudgetLimits | null
+  onSave: (b: BudgetLimits) => Promise<void>
+}) {
+  const today    = new Date().toISOString().slice(0, 10)
+  const todayRow = dailyUsage.find(d => d.dateIso.startsWith(today)) ?? { cost: 0, tokens: 0 }
+  const last7    = dailyUsage.slice(-7)
+  const weekCost = last7.reduce((s, d) => s + d.cost, 0)
+  const weekTok  = last7.reduce((s, d) => s + d.tokens, 0)
+
+  const lim = limits ?? { daily: { cost: null, tokens: null }, weekly: { cost: null, tokens: null } }
+
+  async function patch(period: 'daily' | 'weekly', field: 'cost' | 'tokens', value: number | null) {
+    await onSave({ ...lim, [period]: { ...lim[period], [field]: value } })
+  }
+
+  return (
+    <section className="rounded-2xl border border-border bg-card overflow-hidden">
+      <div className="px-5 pt-4 pb-3 border-b border-border-subtle">
+        <span className="text-xs font-semibold uppercase tracking-[0.15em] text-text-muted">Agent spend budgets</span>
+        <p className="text-xxs text-text-muted mt-0.5">Claude Code token-equivalent · click the pencil to set a limit</p>
+      </div>
+      <div className="p-4 grid grid-cols-2 gap-3">
+        <BudgetGauge label="Daily cost"    actual={todayRow.cost}   limit={lim.daily.cost}    fmt={money}   onSetLimit={v => patch('daily',  'cost',   v)} />
+        <BudgetGauge label="Daily tokens"  actual={todayRow.tokens} limit={lim.daily.tokens}  fmt={fmtNum}  onSetLimit={v => patch('daily',  'tokens', v)} />
+        <BudgetGauge label="Weekly cost"   actual={weekCost}        limit={lim.weekly.cost}   fmt={money}   onSetLimit={v => patch('weekly', 'cost',   v)} />
+        <BudgetGauge label="Weekly tokens" actual={weekTok}         limit={lim.weekly.tokens} fmt={fmtNum}  onSetLimit={v => patch('weekly', 'tokens', v)} />
+      </div>
+    </section>
+  )
+}
+
 // ─── Main view ───────────────────────────────────────────────────────────────────
 
 export function Spend() {
@@ -487,6 +620,7 @@ export function Spend() {
   const [logAmount, setLogAmount] = useState('')
   const [logCat, setLogCat]     = useState('Misc')
   const [logBusy, setLogBusy]   = useState(false)
+  const [budgetLimits, setBudgetLimits] = useState<BudgetLimits | null>(null)
 
   const loadFinancials = useCallback(async () => {
     try { setFin(await financials.list()) } catch { /* keep previous */ }
@@ -495,7 +629,7 @@ export function Spend() {
   const load = useCallback(async () => {
     setLoading(true); setError(null)
     try {
-      const [u, ins, mo, inv, tb, fn, bl, lg] = await Promise.allSettled([
+      const [u, ins, mo, inv, tb, fn, bl, lg, bg] = await Promise.allSettled([
         radar.usage(DAYS),
         radar.insights(DAYS),
         modelOps.summary(DAYS, 'all'),
@@ -504,6 +638,7 @@ export function Spend() {
         financials.list(),
         billsApi.list(),
         ledgerApi.list(),
+        budgets.get(),
       ])
       if (u.status   === 'fulfilled') setUsage(u.value)
       if (ins.status === 'fulfilled') setInsights(ins.value)
@@ -512,6 +647,7 @@ export function Spend() {
       if (fn.status  === 'fulfilled') setFin(fn.value)
       if (bl.status  === 'fulfilled') setBills(bl.value)
       if (lg.status  === 'fulfilled') setLedger(lg.value)
+      if (bg.status  === 'fulfilled') setBudgetLimits(bg.value)
       if (tb.status  === 'fulfilled') {
         const open: BuyItem[] = (tb.value?.items ?? []).filter((i: BuyItem) => !i.purchased)
         setBuyOpen({ total: open.reduce((s, i) => s + (i.estimatedPrice || 0) * (i.quantity || 1), 0), count: open.length })
@@ -533,6 +669,8 @@ export function Spend() {
     window.addEventListener(DATA_REFRESH_EVENT, handler)
     return () => window.removeEventListener(DATA_REFRESH_EVENT, handler)
   }, [load])
+
+  const saveLimits = async (b: BudgetLimits) => { const updated = await budgets.set(b); setBudgetLimits(updated) }
 
   const addEntry        = async (body: { label: string; kind: FinanceKind; category: string; amount: number }) => { await financials.create(body); await loadFinancials() }
   const saveEntry       = async (id: string, body: Partial<FinanceEntry>) => { await financials.update(id, body as any); await loadFinancials() }
@@ -636,6 +774,13 @@ export function Spend() {
             <Stat label="Hardware"   value={money(invValue)}      icon={<Package size={12} />}      tone="text-teal-400"  sub={`${invItems} items`} onClick={() => setCard('hardware')} active={card === 'hardware'} />
             <Stat label="To-buy"     value={money(buyTotal)}      icon={<ShoppingCart size={12} />} tone={buyCount > 0 ? 'text-amber-400' : undefined} sub={buyCount > 0 ? `${buyCount} open` : 'clear'} onClick={() => setCard('tobuy')} active={card === 'tobuy'} />
           </div>
+
+          {/* ── Budget gauges ── */}
+          <BudgetSection
+            dailyUsage={usage?.dailyUsage ?? []}
+            limits={budgetLimits}
+            onSave={saveLimits}
+          />
 
           {/* ── Expense ledger (Discord !spend + manual) ── */}
           <section className="rounded-2xl border border-border bg-card overflow-hidden">

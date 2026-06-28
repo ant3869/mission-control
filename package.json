@@ -1,7 +1,7 @@
 {
   "name": "mission-control",
   "private": true,
-  "version": "0.16.0",
+  "version": "0.17.0",
   "type": "module",
   "scripts": {
     "dev": "concurrently -n \"api,vite\" -c \"cyan,magenta\" \"npm run server\" \"wait-on http://localhost:3001/api/health && vite\"",
@@ -31,6 +31,7 @@
     "lucide-react": "0.489.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "supermemory": "^4.24.12",
     "tsx": "^4.22.4"
   },
   "devDependencies": {

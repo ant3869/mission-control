@@ -117,29 +117,47 @@ function AgentCard({ agent, onClick }: { agent: LiveAgent; onClick: () => void }
         </div>
 
         {/* Stats */}
-        <div className="grid grid-cols-3 gap-2 pt-2 border-t border-border-subtle">
-          <div className="flex flex-col gap-0.5">
-            <div className="flex items-center gap-1 text-text-muted">
-              <Activity size={9} />
-              <span className="text-xxs">Tokens</span>
+        {(() => {
+          const ratio       = agent.inputTokens > 0 ? agent.outputTokens / agent.inputTokens : null
+          const costPerSess = agent.sessionCount > 0 ? agent.cost / agent.sessionCount : null
+          return (
+            <div className="grid grid-cols-3 gap-2 pt-2 border-t border-border-subtle">
+              <div className="flex flex-col gap-0.5">
+                <div className="flex items-center gap-1 text-text-muted">
+                  <Activity size={9} />
+                  <span className="text-xxs">Tokens</span>
+                </div>
+                <span className="text-xs font-semibold text-text-primary tabular-nums">{fmtTokens(agent.totalTokens)}</span>
+              </div>
+              <div className="flex flex-col gap-0.5">
+                <div className="flex items-center gap-1 text-text-muted">
+                  <DollarSign size={9} />
+                  <span className="text-xxs">Cost</span>
+                </div>
+                <span className="text-xs font-semibold text-text-primary tabular-nums">${agent.cost.toFixed(2)}</span>
+              </div>
+              <div className="flex flex-col gap-0.5">
+                <div className="flex items-center gap-1 text-text-muted">
+                  <Cpu size={9} />
+                  <span className="text-xxs">Sessions</span>
+                </div>
+                <span className="text-xs font-semibold text-text-primary tabular-nums">{agent.sessionCount}</span>
+              </div>
+              {ratio !== null && (
+                <div className="flex flex-col gap-0.5 col-span-2">
+                  <span className="text-xxs text-text-muted">Out/In ratio</span>
+                  <span className={clsx('text-xs font-semibold tabular-nums', ratio >= 0.3 ? 'text-green-400' : ratio >= 0.15 ? 'text-amber-400' : 'text-text-muted')}>{ratio.toFixed(2)}×</span>
+                </div>
+              )}
+              {costPerSess !== null && agent.sessionCount > 1 && (
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-xxs text-text-muted">$/session</span>
+                  <span className="text-xs font-semibold tabular-nums text-text-primary">${costPerSess.toFixed(3)}</span>
+                </div>
+              )}
             </div>
-            <span className="text-xs font-semibold text-text-primary tabular-nums">{fmtTokens(agent.totalTokens)}</span>
-          </div>
-          <div className="flex flex-col gap-0.5">
-            <div className="flex items-center gap-1 text-text-muted">
-              <DollarSign size={9} />
-              <span className="text-xxs">Cost</span>
-            </div>
-            <span className="text-xs font-semibold text-text-primary tabular-nums">${agent.cost.toFixed(2)}</span>
-          </div>
-          <div className="flex flex-col gap-0.5">
-            <div className="flex items-center gap-1 text-text-muted">
-              <Cpu size={9} />
-              <span className="text-xxs">Sessions</span>
-            </div>
-            <span className="text-xs font-semibold text-text-primary tabular-nums">{agent.sessionCount}</span>
-          </div>
-        </div>
+          )
+        })()}
 
         {/* Model */}
         <div className="flex items-center justify-between">
@@ -236,6 +254,28 @@ function AgentDrawer({ agent, onClose }: { agent: LiveAgent; onClose: () => void
               </div>
             ))}
           </div>
+          {/* Efficiency metrics */}
+          {agent.inputTokens > 0 && (() => {
+            const ratio       = agent.outputTokens / agent.inputTokens
+            const costPerSess = agent.sessionCount > 0 ? agent.cost / agent.sessionCount : null
+            const ratioColor  = ratio >= 0.3 ? 'text-green-400' : ratio >= 0.15 ? 'text-amber-400' : 'text-text-muted'
+            return (
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                <div className="flex flex-col gap-1 px-3 py-2.5 rounded-lg bg-base border border-border">
+                  <span className="text-xxs text-text-muted">Out / In ratio</span>
+                  <span className={clsx('text-sm font-semibold tabular-nums', ratioColor)}>{ratio.toFixed(2)}×</span>
+                  <span className="text-xxs text-text-muted">{ratio >= 0.3 ? 'high output' : ratio >= 0.15 ? 'moderate' : 'input heavy'}</span>
+                </div>
+                {costPerSess !== null && agent.sessionCount > 1 && (
+                  <div className="flex flex-col gap-1 px-3 py-2.5 rounded-lg bg-base border border-border">
+                    <span className="text-xxs text-text-muted">Cost / session</span>
+                    <span className="text-sm font-semibold tabular-nums text-text-primary">${costPerSess.toFixed(3)}</span>
+                    <span className="text-xxs text-text-muted">{agent.sessionCount} sessions</span>
+                  </div>
+                )}
+              </div>
+            )
+          })()}
         </div>
 
         {/* System prompt */}

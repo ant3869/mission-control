@@ -10,6 +10,7 @@ import {
   MessageSquare, Activity, Hash, Coins, Heart, BarChart3,
 } from 'lucide-react'
 import { MiniStat, Histogram, SegmentBar, ChartCard, fmtNum, type Bar } from '../components/charts'
+import { metrics } from '../lib/api'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -235,7 +236,19 @@ function RunDetailPanel({ run, source, onClose }: { run: FlowRun; source: string
 
 // ─── Run row ──────────────────────────────────────────────────────────────────
 
-function RunRow({ run, selected, onClick }: { run: FlowRun; selected: boolean; onClick: () => void }) {
+function ContextBar({ pct }: { pct: number }) {
+  const color = pct >= 90 ? '#f87171' : pct >= 75 ? '#fbbf24' : '#4ade80'
+  return (
+    <div className="flex items-center gap-1.5 mt-1">
+      <div className="flex-1 h-1 rounded-full bg-white/5 overflow-hidden">
+        <div className="h-full rounded-full transition-all" style={{ width: `${Math.min(pct, 100)}%`, backgroundColor: color }} />
+      </div>
+      <span className="text-[10px] tabular-nums shrink-0" style={{ color }}>{Math.round(pct)}% ctx</span>
+    </div>
+  )
+}
+
+function RunRow({ run, contextPct, selected, onClick }: { run: FlowRun; contextPct?: number | null; selected: boolean; onClick: () => void }) {
   return (
     <button
       onClick={onClick}
@@ -261,6 +274,7 @@ function RunRow({ run, selected, onClick }: { run: FlowRun; selected: boolean; o
           )}
           {run.isHeartbeat && <span className="text-[10px] bg-blue-500/10 text-blue-400 px-1.5 rounded-full border border-blue-500/20">heartbeat</span>}
         </div>
+        {contextPct != null && contextPct > 0 && <ContextBar pct={contextPct} />}
       </div>
       <ChevronRight size={14} className={clsx('flex-shrink-0 transition-transform', selected && 'rotate-90')} />
     </button>
@@ -277,6 +291,7 @@ export default function Flow() {
   const [selected, setSelected]               = useState<{ run: FlowRun; source: string } | null>(null)
   const [loading, setLoading]                 = useState(false)
   const [error, setError]                     = useState<string | null>(null)
+  const [contextPctMap, setCtxMap]            = useState<Map<string, number | null>>(new Map())
 
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true)
@@ -287,6 +302,20 @@ export default function Flow() {
     } catch (e: any) { setError(e.message ?? 'Failed to load') }
     finally { if (!silent) setLoading(false) }
   }, [source, limit])
+
+  // Non-blocking: fetch contextPct for sessions from platform metrics.
+  // Failures are silent — the bar simply won't appear for unresolvable sessions.
+  useEffect(() => {
+    Promise.allSettled([metrics.openclaw(), metrics.hermes()]).then(results => {
+      const map = new Map<string, number | null>()
+      for (const r of results) {
+        if (r.status === 'fulfilled') {
+          for (const s of r.value.metrics.sessionList) map.set(s.key, s.contextPct)
+        }
+      }
+      setCtxMap(map)
+    })
+  }, [])
 
   useEffect(() => { load() }, [load])
 
@@ -369,6 +398,7 @@ export default function Flow() {
                   <RunRow
                     key={`${run.source}:${run.id}`}
                     run={run}
+                    contextPct={contextPctMap.get(run.id)}
                     selected={selected?.run.id === run.id}
                     onClick={() => setSelected(selected?.run.id === run.id ? null : { run, source: run.source })}
                   />

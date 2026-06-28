@@ -245,9 +245,10 @@ export default function Brain() {
   const [source, setSource]         = usePersistedState<Source>('mc:brain:source', 'all')
   const [typeFilter, setTypeFilter] = usePersistedState('mc:brain:typeFilter', 'all')
   const [limit, setLimit]           = usePersistedState<number>('mc:brain:limit', 200)
-  const [tab, setTab]               = usePersistedState<'events' | 'stats' | 'loops'>('mc:brain:tab', 'events')
+  const [tab, setTab]               = usePersistedState<'events' | 'stats' | 'loops' | 'errors'>('mc:brain:tab', 'events')
   const [data, setData]             = useState<BrainResponse | null>(null)
   const [stats, setStats]           = useState<StatsResponse | null>(null)
+  const [errorData, setErrorData]   = useState<BrainResponse | null>(null)
   const [loading, setLoading]       = useState(false)
   const [error, setError]           = useState<string | null>(null)
 
@@ -255,8 +256,12 @@ export default function Brain() {
     if (!silent) setLoading(true)
     setError(null)
     try {
-      const [evR, stR] = await Promise.all([fetchBrainEvents(source, limit, typeFilter), fetchBrainStats()])
-      setData(evR); setStats(stR)
+      const [evR, stR, errR] = await Promise.all([
+        fetchBrainEvents(source, limit, typeFilter),
+        fetchBrainStats(),
+        fetchBrainEvents(source, 500, 'error'),
+      ])
+      setData(evR); setStats(stR); setErrorData(errR)
     } catch (e: any) {
       setError(e.message ?? 'Failed to load')
     } finally {
@@ -326,7 +331,7 @@ export default function Brain() {
 
       {/* Tabs */}
       <div className="flex items-center gap-1 px-6 pt-3 flex-shrink-0">
-        {(['events', 'stats', 'loops'] as const).map(t => (
+        {(['events', 'stats', 'loops', 'errors'] as const).map(t => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -338,6 +343,9 @@ export default function Brain() {
             {t}
             {t === 'loops' && (data?.loopSignals?.length ?? 0) > 0 && (
               <span className="ml-1.5 bg-amber-500/20 text-amber-400 text-[10px] px-1.5 rounded-full">{data!.loopSignals.length}</span>
+            )}
+            {t === 'errors' && (errorData?.total ?? 0) > 0 && (
+              <span className="ml-1.5 bg-red-500/20 text-red-400 text-[10px] px-1.5 rounded-full">{errorData!.total}</span>
             )}
           </button>
         ))}
@@ -458,6 +466,67 @@ export default function Brain() {
             )}
           </div>
         )}
+
+        {/* Errors tab */}
+        {tab === 'errors' && (() => {
+          const events = errorData?.events ?? []
+          // Group by calendar date
+          const byDate = new Map<string, number>()
+          for (const e of events) {
+            const d = e.ts.slice(0, 10)
+            byDate.set(d, (byDate.get(d) ?? 0) + 1)
+          }
+          const sortedDates = [...byDate.entries()].sort((a, b) => a[0].localeCompare(b[0]))
+          const bars: Bar[] = sortedDates.map(([date, count]) => ({
+            value: count, color: '#f87171',
+            label: `${date}: ${count} error${count !== 1 ? 's' : ''}`,
+          }))
+
+          return (
+            <div className="mx-6 mb-6 space-y-4">
+              {events.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-20 text-text-muted gap-3 bg-bg-secondary border border-white/10 rounded-xl">
+                  <AlertCircle size={40} className="opacity-30" />
+                  <p className="text-sm text-emerald-400">No error events in the window</p>
+                  <p className="text-xs opacity-60">Error events appear when agents report failures or exceptions</p>
+                </div>
+              ) : (
+                <>
+                  <ChartCard title="Error events per day" icon={<BarChart3 size={13} className="text-red-400" />}
+                    right={<span className="text-[10px] text-text-muted">{errorData!.total} total · last 500 fetched</span>}>
+                    <Histogram bars={bars} height={64} />
+                    <div className="flex items-center justify-between mt-2 text-xxs text-text-muted">
+                      <span>{sortedDates[0]?.[0] ?? ''}</span>
+                      <span className="text-red-400 font-medium">{errorData!.total} errors</span>
+                      <span>{sortedDates[sortedDates.length - 1]?.[0] ?? ''}</span>
+                    </div>
+                  </ChartCard>
+
+                  <div className="bg-bg-secondary border border-white/10 rounded-xl overflow-hidden">
+                    <div className="px-4 py-2.5 border-b border-white/5">
+                      <p className="text-xs font-semibold text-text-muted uppercase tracking-wide">Recent errors</p>
+                    </div>
+                    {events.slice(0, 50).map(e => (
+                      <div key={e.id} className="flex items-start gap-3 px-4 py-2.5 border-b border-white/5 last:border-0 hover:bg-white/5 transition-colors">
+                        <AlertCircle size={12} className="text-red-400 shrink-0 mt-0.5" />
+                        <div className="flex-1 min-w-0">
+                          <p className={clsx('text-xs font-mono truncate', typeColor(e.eventType))}>{e.eventType}</p>
+                          <p className="text-xxs text-text-muted mt-0.5 truncate">
+                            {(e.payload as any)?.error ?? (e.payload as any)?.message ?? JSON.stringify(e.payload).slice(0, 80)}
+                          </p>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <p className="text-xxs text-text-muted">{fmtDate(e.ts)}</p>
+                          <p className="text-xxs text-text-muted">{fmtTime(e.ts)}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          )
+        })()}
       </div>
     </div>
   )

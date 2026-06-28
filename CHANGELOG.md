@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.17.0] — 2026-06-28
+
+### Added
+
+- **Cron job manager tab in Activity.** New "Cron" tab lists all scheduled jobs from OpenClaw and Hermes with cron expression, enabled status, success rate (color-coded green/amber/red), last/next run, and inline pause/resume/trigger controls. Expands to show run history for each job.
+- **Context % bar on session rows.** Each session row in the Sessions tab now shows a color-coded mini progress bar indicating how full the context window was (green < 75%, amber 75–90%, red ≥ 90%), pulled non-blocking from platform metrics.
+- **Error trend tab in Brain.** New "Errors" tab groups brain error events by calendar date into a histogram and lists up to 50 recent errors with type, payload message, and timestamp. Tab shows a red badge when errors are present.
+- **Budget gauges in Spend.** Four inline gauges (daily cost, daily tokens, weekly cost, weekly tokens) sit above the transaction ledger. Click the pencil icon to set a spend limit; gauge fills green → amber → red as spend approaches the limit. Saved to `/api/budgets`.
+- **Top sessions by cost in Spend AI panel.** Opening the AI breakdown panel lazy-loads the top 8 costliest agent sessions with model, channel, and cost, giving a quick view of what's driving AI spend.
+- **Agent efficiency metrics.** Agent cards and the agent drawer now show an Out/In token ratio (green ≥ 0.3, amber ≥ 0.15, muted otherwise) and cost-per-session for agents with more than one session.
+
+---
+
 ## [0.16.0] — 2026-06-28
 
 ### Added
