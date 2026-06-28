@@ -13,10 +13,11 @@
  * DELETE /api/projects/:id     → delete a stored project
  */
 import { Router, Request, Response } from 'express'
-import { existsSync, readdirSync, readFileSync, writeFileSync, statSync, mkdirSync } from 'fs'
+import { existsSync, readdirSync, readFileSync, statSync, mkdirSync } from 'fs'
 import { homedir } from 'os'
 import { join, basename } from 'path'
 import { createHash } from 'crypto'
+import { saveJson } from '../lib/jsonStore.js'
 
 export const projectsRouter = Router()
 
@@ -177,7 +178,7 @@ function readStore(): Record<string, StoredProject> {
 
 function writeStore(store: Record<string, StoredProject>) {
   try {
-    writeFileSync(storeFile(), JSON.stringify(store, null, 2), 'utf8')
+    saveJson(storeFile(), store)
   } catch (e) {
     console.error('[projects] write store error', e)
   }

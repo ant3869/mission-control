@@ -21,9 +21,10 @@
  * DELETE /api/notes/pages/:id              → delete page
  */
 import { Router, Request, Response } from 'express'
-import { existsSync, readFileSync, writeFileSync } from 'fs'
+import { existsSync, readFileSync } from 'fs'
 import { join } from 'path'
 import { createHash } from 'crypto'
+import { saveJson } from '../lib/jsonStore.js'
 
 export const notesRouter = Router()
 
@@ -85,7 +86,7 @@ function readStore(): NotesStore {
 
 function writeStore(store: NotesStore) {
   try {
-    writeFileSync(storeFile(), JSON.stringify(store, null, 2), 'utf8')
+    saveJson(storeFile(), store)
   } catch (e) {
     console.error('[notes] write error', e)
   }

@@ -1,6 +1,7 @@
 import { Router } from 'express'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
+import { existsSync, mkdirSync, readFileSync } from 'fs'
 import { join } from 'path'
+import { saveJson } from '../lib/jsonStore.js'
 
 export const inboxRouter = Router()
 
@@ -89,7 +90,7 @@ function readOverlay(): InboxOverlay[] {
 }
 
 function writeOverlay(entries: InboxOverlay[]): void {
-  writeFileSync(inboxPath(), JSON.stringify(entries, null, 2), 'utf8')
+  saveJson(inboxPath(), entries)
 }
 
 function todosPath(): string {

@@ -6,12 +6,13 @@
 //          links to each item. Mirrors routes/todos.ts.
 
 import { Router } from 'express'
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs'
+import { readFileSync, existsSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { researchBuyItem, type BuyResearchResult } from '../lib/research.js'
 import { discordNotifier } from '../lib/discordNotifier.js'
 import { emitDataChanged } from '../lib/dataEvents.js'
+import { saveJson } from '../lib/jsonStore.js'
 
 export const toBuyRouter = Router()
 
@@ -68,7 +69,7 @@ function loadItems(): BuyItem[] {
 }
 
 function saveItems(items: BuyItem[]): void {
-  writeFileSync(buyPath(), JSON.stringify(items, null, 2), 'utf8')
+  saveJson(buyPath(), items)
 }
 
 // Research marked 'pending' from a previous server run is orphaned. Reset it.

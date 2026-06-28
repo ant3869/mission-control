@@ -12,6 +12,7 @@ import { existsSync, readdirSync, readFileSync, statSync } from 'fs'
 import { homedir } from 'os'
 import { join, basename } from 'path'
 import { deriveEventStats } from '../lib/agentEvents.js'
+import { setSpendSnapshot } from '../lib/spendCache.js'
 
 export const radarRouter = Router()
 
@@ -243,6 +244,17 @@ radarRouter.get('/usage', async (req, res) => {
   const totalTokens = dailyUsage.reduce((s, d) => s + d.tokens, 0)
   const totalCost   = dailyUsage.reduce((s, d) => s + d.cost, 0)
   const totalRuns   = dailyUsage.reduce((s, d) => s + d.runs, 0)
+
+  const todayIso    = fmt(now)
+  const todayEntry  = dailyUsage.find(d => d.dateIso === todayIso)
+  const weekEntries = dailyUsage.slice(-7)
+  setSpendSnapshot({
+    dailyCost:    todayEntry?.cost   ?? 0,
+    weeklyCost:   weekEntries.reduce((s, d) => s + d.cost, 0),
+    dailyTokens:  todayEntry?.tokens ?? 0,
+    weeklyTokens: weekEntries.reduce((s, d) => s + d.tokens, 0),
+    updatedAt:    new Date().toISOString(),
+  })
 
   res.json({
     days,

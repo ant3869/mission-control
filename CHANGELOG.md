@@ -6,6 +6,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.15.0] — 2026-06-27
+
+### Added
+
+- **`/api/office/integrations` endpoint.** The Settings → Integrations panel now returns live status for Google Calendar, Anthropic API, OpenClaw, Hermes, Discord, and GitHub instead of 404ing.
+- **`/api/search` global search endpoint.** Ctrl+K palette now fans out to tasks, to-dos, saved links, and projects simultaneously via a single backend query, surfacing results across all four categories.
+- **Ctrl+1–9 view shortcuts.** Keyboard shortcuts jump directly to the Nth view (mapped in sidebar order: 1=Home, 2=To-Do, 3=To-Buy, 4=Financials, 5=Chats, 6=Scheduled Tasks, 7=Docs, 8=News, 9=Memory). Ignored when focus is in an input or textarea.
+- **Budget threshold alerts.** When spend data is available, the `/api/alerts/active` endpoint now synthesises real-time alerts for daily and weekly cost and token limits against the configured budgets — no manual rule creation required.
+- **Atomic JSON writes (`jsonStore.ts`).** All 11 flat-file data stores now write to a `.tmp` file first and rename into place, eliminating partial-write corruption on crash.
+- **In-memory spend cache (`spendCache.ts`).** Radar route populates a shared snapshot on each fetch; the alerts route reads it without re-parsing JSONL, decoupling spend tracking from alert polling.
+
+### Changed
+
+- **Ctrl+K palette expanded.** Global search now includes To-Do, Project, and Link result sections with navigable rows, not just Tasks, Notes, and Views.
+- **SSE reconnect uses exponential backoff.** Reconnect delay starts at 5 s and doubles on each failure up to 60 s, reducing pointless connection spam when the API is down.
+- **Critical alert toast persists across navigation.** Previously-seen alert IDs are stored in `sessionStorage` so the toast does not re-fire on view switches within the same browser session.
+- **Discord bot is lazy-loaded.** The bot module is imported conditionally at startup only when `DISCORD_BOT_TOKEN` is set, preventing a startup crash in environments without the token.
+- **Test glob covers all server test files.** The `npm test` script now picks up route-level test files (`server/**/*.test.ts`) in addition to lib tests, increasing test count from 155 to 176.
+
+---
+
 ## [0.14.0] — 2026-06-27
 
 ### Added

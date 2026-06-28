@@ -7,7 +7,7 @@ import { ErrorBoundary } from './components/ErrorBoundary'
 import { Home } from './views/Home'                       // eager — default landing view
 import type { View } from './types'
 import { NAVIGATE_EVENT, openHubTab } from './lib/quickActions'
-import { startDataRefresh } from './lib/dataRefresh'
+import { startDataRefresh, DATA_REFRESH_EVENT } from './lib/dataRefresh'
 
 // Lazy views: each becomes its own chunk, fetched on first navigation, so the
 // initial bundle is just the shell + landing page instead of all ~25 views.
@@ -82,9 +82,13 @@ function initialView(): View {
 
 interface FiredAlert { ruleId: string; ruleName: string; severity: string; message: string; firedAt: string }
 
+const SEEN_ALERTS_KEY = 'mc:seen-alerts'
+
 function CriticalAlertToast({ activeView, onNavigate }: { activeView: View; onNavigate: (v: View) => void }) {
   const [toast, setToast]       = useState<FiredAlert | null>(null)
-  const seenRef                 = useRef<Set<string>>(new Set())
+  const seenRef                 = useRef<Set<string>>(new Set(
+    (() => { try { return JSON.parse(sessionStorage.getItem(SEEN_ALERTS_KEY) ?? '[]') } catch { return [] } })()
+  ))
   const timerRef                = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
@@ -97,15 +101,21 @@ function CriticalAlertToast({ activeView, onNavigate }: { activeView: View; onNa
         const unseen = critical.find(a => !seenRef.current.has(`${a.ruleId}-${a.firedAt}`))
         if (unseen) {
           seenRef.current.add(`${unseen.ruleId}-${unseen.firedAt}`)
+          try { sessionStorage.setItem(SEEN_ALERTS_KEY, JSON.stringify([...seenRef.current])) } catch { /* ignore */ }
           setToast(unseen)
           if (timerRef.current) clearTimeout(timerRef.current)
           timerRef.current = setTimeout(() => setToast(null), 10_000)
         }
       } catch { /* ignore */ }
     }
+    const handleRefresh = (ev: Event) => {
+      const detail = (ev as CustomEvent<{ domain: string }>).detail
+      if (detail?.domain === 'alerts' || detail?.domain === 'all') poll()
+    }
     poll()
     const t = setInterval(poll, 45_000)
-    return () => { clearInterval(t); if (timerRef.current) clearTimeout(timerRef.current) }
+    window.addEventListener(DATA_REFRESH_EVENT, handleRefresh as EventListener)
+    return () => { clearInterval(t); window.removeEventListener(DATA_REFRESH_EVENT, handleRefresh as EventListener); if (timerRef.current) clearTimeout(timerRef.current) }
   }, [activeView])
 
   const dismiss = () => { setToast(null); if (timerRef.current) clearTimeout(timerRef.current) }
@@ -142,6 +152,25 @@ export default function App() {
 
   // Start the SSE data-refresh connection once for the lifetime of the app.
   useEffect(() => startDataRefresh(), [])
+
+  // Ctrl+1–9: jump directly to the Nth view (ordered as in VIEW_TITLES).
+  useEffect(() => {
+    const VIEW_ORDER = Object.keys(VIEW_TITLES) as View[]
+    const handler = (e: KeyboardEvent) => {
+      if (!e.ctrlKey || e.shiftKey || e.altKey || e.metaKey) return
+      const n = parseInt(e.key, 10)
+      if (Number.isNaN(n) || n < 1 || n > 9) return
+      const target = VIEW_ORDER[n - 1]
+      if (!target) return
+      // Don't steal Ctrl+1-9 when typing in a form field
+      const tag = (e.target as HTMLElement)?.tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || (e.target as HTMLElement)?.isContentEditable) return
+      e.preventDefault()
+      navigate(target)
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [])
 
   // Reflect the active view in the browser tab title (history + tab identification).
   useEffect(() => { document.title = `${VIEW_TITLES[activeView]} · Mission Control` }, [activeView])

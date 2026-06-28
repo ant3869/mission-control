@@ -4,9 +4,11 @@
 //          against live agent event data to surface actionable notifications.
 
 import { Router } from 'express'
-import { readFileSync, writeFileSync, existsSync } from 'node:fs'
+import { readFileSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { getRawEvents } from '../lib/agentEvents.js'
+import { getSpendSnapshot } from '../lib/spendCache.js'
+import { saveJson } from '../lib/jsonStore.js'
 
 export const alertsRouter = Router()
 
@@ -39,7 +41,7 @@ function readRules(): AlertRule[] {
 }
 
 function writeRules(rules: AlertRule[]): void {
-  writeFileSync(ALERTS_FILE, JSON.stringify(rules, null, 2))
+  saveJson(ALERTS_FILE, rules)
 }
 
 function evaluateRules(rules: AlertRule[]): ActiveAlert[] {
@@ -172,5 +174,57 @@ alertsRouter.delete('/rules/:id', (req, res) => {
 alertsRouter.get('/active', (_req, res) => {
   const rules  = readRules()
   const alerts = evaluateRules(rules)
+
+  // ── Budget threshold checks (synthetic alerts) ───────────────────────────
+  // Only fire when spend data has been loaded (radar/usage fetched at least once).
+  try {
+    const BUDGETS_FILE = join(process.cwd(), 'data', 'budgets.json')
+    if (existsSync(BUDGETS_FILE)) {
+      const budgets = JSON.parse(readFileSync(BUDGETS_FILE, 'utf8')) as {
+        daily:  { cost: number | null; tokens: number | null }
+        weekly: { cost: number | null; tokens: number | null }
+      }
+      const spend = getSpendSnapshot()
+      if (spend) {
+        if (budgets.daily.cost && spend.dailyCost >= budgets.daily.cost) {
+          alerts.push({
+            ruleId:   'budget:daily:cost',
+            ruleName: 'Daily cost budget',
+            severity: 'critical',
+            message:  `Daily spend $${spend.dailyCost.toFixed(4)} has reached the $${budgets.daily.cost.toFixed(2)} limit`,
+            firedAt:  spend.updatedAt,
+          })
+        }
+        if (budgets.daily.tokens && spend.dailyTokens >= budgets.daily.tokens) {
+          alerts.push({
+            ruleId:   'budget:daily:tokens',
+            ruleName: 'Daily token budget',
+            severity: 'warning',
+            message:  `Daily tokens ${spend.dailyTokens.toLocaleString()} has reached the ${budgets.daily.tokens.toLocaleString()} limit`,
+            firedAt:  spend.updatedAt,
+          })
+        }
+        if (budgets.weekly.cost && spend.weeklyCost >= budgets.weekly.cost) {
+          alerts.push({
+            ruleId:   'budget:weekly:cost',
+            ruleName: 'Weekly cost budget',
+            severity: 'critical',
+            message:  `Weekly spend $${spend.weeklyCost.toFixed(4)} has reached the $${budgets.weekly.cost.toFixed(2)} limit`,
+            firedAt:  spend.updatedAt,
+          })
+        }
+        if (budgets.weekly.tokens && spend.weeklyTokens >= budgets.weekly.tokens) {
+          alerts.push({
+            ruleId:   'budget:weekly:tokens',
+            ruleName: 'Weekly token budget',
+            severity: 'warning',
+            message:  `Weekly tokens ${spend.weeklyTokens.toLocaleString()} has reached the ${budgets.weekly.tokens.toLocaleString()} limit`,
+            firedAt:  spend.updatedAt,
+          })
+        }
+      }
+    }
+  } catch { /* budgets unavailable — skip */ }
+
   res.json({ alerts, total: alerts.length, fetchedAt: new Date().toISOString() })
 })

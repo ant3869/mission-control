@@ -4,8 +4,9 @@
 //          Stored in data/budgets.json. Used by the health dashboard gauge.
 
 import { Router } from 'express'
-import { readFileSync, writeFileSync, existsSync } from 'node:fs'
+import { readFileSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
+import { saveJson } from '../lib/jsonStore.js'
 
 export const budgetsRouter = Router()
 
@@ -24,7 +25,7 @@ function load(): BudgetLimits {
 }
 
 function save(b: BudgetLimits) {
-  writeFileSync(FILE, JSON.stringify(b, null, 2))
+  saveJson(FILE, b)
 }
 
 function clampNull(v: unknown): number | null {

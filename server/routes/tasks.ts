@@ -1,8 +1,9 @@
 import { Router } from 'express'
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs'
+import { readFileSync, existsSync, mkdirSync } from 'fs'
 import { join } from 'path'
 import { randomUUID } from 'crypto'
 import { emitDataChanged } from '../lib/dataEvents.js'
+import { saveJson } from '../lib/jsonStore.js'
 
 export const tasksRouter = Router()
 
@@ -68,7 +69,7 @@ function loadTasks(): StoredTask[] {
   const path = tasksPath()
   if (!existsSync(path)) {
     const seeded = SEED_TASKS.map(t => ({ ...t, id: randomUUID() }))
-    writeFileSync(path, JSON.stringify(seeded, null, 2), 'utf8')
+    saveJson(path, seeded)
     return seeded
   }
   try {
@@ -79,7 +80,7 @@ function loadTasks(): StoredTask[] {
 }
 
 function saveTasks(tasks: StoredTask[]): void {
-  writeFileSync(tasksPath(), JSON.stringify(tasks, null, 2), 'utf8')
+  saveJson(tasksPath(), tasks)
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────

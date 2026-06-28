@@ -8,7 +8,7 @@
  * GET /api/memory/index           → raw MEMORY.md index content
  */
 import { Router } from 'express'
-import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'fs'
+import { existsSync, readdirSync, readFileSync, statSync } from 'fs'
 import { homedir } from 'os'
 import { join, extname } from 'path'
 import { getMemory } from '../lib/agentSources.js'

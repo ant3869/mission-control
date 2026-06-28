@@ -1,7 +1,8 @@
 import { Router } from 'express'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
+import { existsSync, mkdirSync, readFileSync } from 'fs'
 import { join } from 'path'
 import { randomUUID } from 'crypto'
+import { saveJson } from '../lib/jsonStore.js'
 
 export const linksRouter = Router()
 
@@ -37,7 +38,7 @@ function readLinks(): StoredLink[] {
 }
 
 function writeLinks(links: StoredLink[]): void {
-  writeFileSync(linksPath(), JSON.stringify(links, null, 2), 'utf8')
+  saveJson(linksPath(), links)
 }
 
 function timeAgo(iso: string): string {

@@ -38,7 +38,8 @@ import { linksRouter }    from './routes/links.js'
 import { inboxRouter }    from './routes/inbox.js'
 import { newsRouter }     from './routes/news.js'
 import { financeRouter }  from './routes/finance.js'
-import { startDiscordBot } from './lib/discordBot.js'
+import { officeRouter }  from './routes/office.js'
+import { searchRouter }  from './routes/search.js'
 
 const app = express()
 const PORT = process.env.API_PORT ?? 3001
@@ -90,6 +91,8 @@ app.use('/api/links',    linksRouter)
 app.use('/api/inbox',    inboxRouter)
 app.use('/api/news',     newsRouter)
 app.use('/api/finance',  financeRouter)
+app.use('/api/office',  officeRouter)
+app.use('/api/search',  searchRouter)
 
 app.get('/api/health', (_req, res) => res.json({ ok: true, ts: new Date().toISOString() }))
 
@@ -105,5 +108,7 @@ app.use((err: unknown, _req: import('express').Request, res: import('express').R
 app.listen(PORT, () => {
   console.log(`Mission Control API → http://localhost:${PORT}`)
   startMemoryCollector()
-  startDiscordBot(PORT)
+  if (process.env.DISCORD_BOT_TOKEN) {
+    import('./lib/discordBot.js').then(({ startDiscordBot }) => startDiscordBot(PORT))
+  }
 })

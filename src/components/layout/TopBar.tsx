@@ -9,7 +9,7 @@ import { clsx } from 'clsx'
 import {
   Search, Loader2, X, FileText, BookOpen, CheckSquare, CornerDownLeft,
   ArrowRight, Pause, Play, Inbox as InboxIcon, Link2, ListTodo, NotebookPen,
-  ShieldCheck, Plus, Check,
+  ShieldCheck, Plus, Check, FolderOpen,
 } from 'lucide-react'
 import type { View } from '../../types'
 import { approvals, inbox, links, tasks as tasksApi, todosApi, system, type ConnectivityIndicator } from '../../lib/api'
@@ -27,7 +27,7 @@ interface TopBarProps {
 }
 
 type Row = {
-  kind: 'action' | 'view' | 'note' | 'doc' | 'task' | 'approval' | 'inbox'
+  kind: 'action' | 'view' | 'note' | 'doc' | 'task' | 'approval' | 'inbox' | 'todo' | 'project' | 'link'
   id: string
   label: string
   sub?: string
@@ -42,6 +42,9 @@ function GlobalSearch({ onClose, onNavigate, views }: { onClose: () => void; onN
   const [taskRows, setTaskRows] = useState<Row[]>([])
   const [approvalRows, setApprovalRows] = useState<Row[]>([])
   const [inboxRows, setInboxRows] = useState<Row[]>([])
+  const [todoRows, setTodoRows] = useState<Row[]>([])
+  const [projectRows, setProjectRows] = useState<Row[]>([])
+  const [linkRows, setLinkRows] = useState<Row[]>([])
   const [loading, setLoading] = useState(false)
   const [actioning, setActioning] = useState<string | null>(null)
   const [error, setError]     = useState<string | null>(null)
@@ -55,17 +58,18 @@ function GlobalSearch({ onClose, onNavigate, views }: { onClose: () => void; onN
   // Notes (server search) + docs/tasks (fetch once, filter client-side).
   useEffect(() => {
     if (debounce.current) clearTimeout(debounce.current)
-    if (!qTrimmed) { setNotes([]); setDocs([]); setTaskRows([]); setApprovalRows([]); setInboxRows([]); return }
+    if (!qTrimmed) { setNotes([]); setDocs([]); setTaskRows([]); setApprovalRows([]); setInboxRows([]); setTodoRows([]); setProjectRows([]); setLinkRows([]); return }
     debounce.current = setTimeout(async () => {
       setLoading(true)
       const term = qTrimmed.toLowerCase()
       try {
-        const [n, d, t, a, i] = await Promise.allSettled([
+        const [n, d, t, a, i, s] = await Promise.allSettled([
           fetch(`/api/notes/pages?search=${encodeURIComponent(qTrimmed)}`).then(r => r.json()),
           fetch('/api/docs/files').then(r => r.json()),
           fetch('/api/tasks').then(r => r.json()),
           approvals.list(),
           inbox.list(),
+          fetch(`/api/search?q=${encodeURIComponent(qTrimmed)}`).then(r => r.json()),
         ])
         setNotes(n.status === 'fulfilled'
           ? (n.value.pages ?? []).slice(0, 5).map((p: any): Row => ({
@@ -127,7 +131,23 @@ function GlobalSearch({ onClose, onNavigate, views }: { onClose: () => void; onN
                 onSelect: () => { openInboxItem(entry.id); openTasksTab('inbox') },
               }))
           : [])
-      } catch { setNotes([]); setDocs([]); setTaskRows([]); setApprovalRows([]); setInboxRows([]) }
+        const sr = s.status === 'fulfilled' ? s.value.results ?? {} : {}
+        setTodoRows((sr.todos ?? []).map((x: any): Row => ({
+          kind: 'todo', id: x.id, label: x.label, sub: x.sub ?? 'todo',
+          icon: <ListTodo size={13} />,
+          onSelect: () => { openTasksTab('tasks'); onNavigate('todos') },
+        })))
+        setProjectRows((sr.projects ?? []).map((x: any): Row => ({
+          kind: 'project' as any, id: x.id, label: x.label, sub: x.sub ?? 'project',
+          icon: <FolderOpen size={13} />,
+          onSelect: () => onNavigate('projects'),
+        })))
+        setLinkRows((sr.links ?? []).map((x: any): Row => ({
+          kind: 'link' as any, id: x.id, label: x.label, sub: x.sub ?? 'link',
+          icon: <Link2 size={13} />,
+          onSelect: () => { openDocsTab('links'); onNavigate('docs') },
+        })))
+      } catch { setNotes([]); setDocs([]); setTaskRows([]); setApprovalRows([]); setInboxRows([]); setTodoRows([]); setProjectRows([]); setLinkRows([]) }
       finally { setLoading(false) }
     }, 240)
     return () => { if (debounce.current) clearTimeout(debounce.current) }
@@ -251,14 +271,14 @@ function GlobalSearch({ onClose, onNavigate, views }: { onClose: () => void; onN
   }, [onNavigate, qTrimmed, views])
 
   // Flat ordered list for keyboard nav.
-  const rows: Row[] = useMemo(() => [...actionRows, ...viewRows, ...notes, ...docs, ...taskRows, ...approvalRows, ...inboxRows], [actionRows, viewRows, notes, docs, taskRows, approvalRows, inboxRows])
+  const rows: Row[] = useMemo(() => [...actionRows, ...viewRows, ...notes, ...docs, ...taskRows, ...todoRows, ...approvalRows, ...inboxRows, ...projectRows, ...linkRows], [actionRows, viewRows, notes, docs, taskRows, todoRows, approvalRows, inboxRows, projectRows, linkRows])
   useEffect(() => { setSel(0); setError(null) }, [q])
 
   const emptyMessage = qTrimmed
     ? looksLikeUrl(qTrimmed)
       ? 'No direct matches. Press Enter to save this link or convert it into work.'
       : `No results for "${qTrimmed}"`
-    : 'Run an action, jump to a page, or search notes, docs, and tasks.'
+    : 'Run an action, jump to a page, or search notes, docs, tasks, todos, projects, and links.'
 
   const activate = async (row?: Row) => {
     const r = row ?? rows[sel]
@@ -314,8 +334,11 @@ function GlobalSearch({ onClose, onNavigate, views }: { onClose: () => void; onN
   const oNotes = oViews + viewRows.length
   const oDocs = oNotes + notes.length
   const oTasks = oDocs + docs.length
-  const oApprovals = oTasks + taskRows.length
+  const oTodos = oTasks + taskRows.length
+  const oApprovals = oTodos + todoRows.length
   const oInbox = oApprovals + approvalRows.length
+  const oProjects = oInbox + inboxRows.length
+  const oLinks = oProjects + projectRows.length
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center pt-[15vh] bg-black/60 backdrop-blur-sm" onClick={onClose}>
@@ -323,7 +346,7 @@ function GlobalSearch({ onClose, onNavigate, views }: { onClose: () => void; onN
         <div className="flex items-center gap-3 px-4 py-3 border-b border-border">
           <Search size={14} className="text-text-muted shrink-0" />
           <input ref={inputRef} value={q} onChange={e => setQ(e.target.value)}
-            placeholder="Run an action, jump to a page, or search notes, docs, tasks…"
+            placeholder="Run an action, jump to a page, or search notes, docs, tasks, todos, projects, links…"
             className="flex-1 bg-transparent text-sm text-text-primary outline-none placeholder:text-text-muted" />
           {loading
             ? <Loader2 size={13} className="animate-spin text-text-muted shrink-0" />
@@ -347,8 +370,11 @@ function GlobalSearch({ onClose, onNavigate, views }: { onClose: () => void; onN
               {section('Notes', notes, oNotes)}
               {section('Docs',  docs,  oDocs)}
               {section('Tasks', taskRows, oTasks)}
+              {section('To-Dos', todoRows, oTodos)}
               {section('Approvals', approvalRows, oApprovals)}
               {section('Inbox', inboxRows, oInbox)}
+              {section('Projects', projectRows, oProjects)}
+              {section('Links', linkRows, oLinks)}
             </>
           )}
         </div>

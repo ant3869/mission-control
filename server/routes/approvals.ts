@@ -15,11 +15,12 @@
  * POST   /api/approvals/:id/reject   → convenience shorthand
  */
 import { Router, Request, Response } from 'express'
-import { existsSync, readFileSync, writeFileSync } from 'fs'
+import { existsSync, readFileSync } from 'fs'
 import { join } from 'path'
 import { createHash } from 'crypto'
 import { discordNotifier } from '../lib/discordNotifier.js'
 import { emitDataChanged } from '../lib/dataEvents.js'
+import { saveJson } from '../lib/jsonStore.js'
 
 export const approvalsRouter = Router()
 
@@ -63,7 +64,7 @@ function readStore(): LiveApproval[] {
 
 function writeStore(items: LiveApproval[]) {
   try {
-    writeFileSync(storeFile(), JSON.stringify(items, null, 2), 'utf8')
+    saveJson(storeFile(), items)
   } catch (e) {
     console.error('[approvals] write error', e)
   }

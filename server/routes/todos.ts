@@ -5,12 +5,13 @@
 //          attaches links, steps, and key facts to a task.
 
 import { Router } from 'express'
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs'
+import { readFileSync, existsSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { researchTodo, type TodoResearchResult } from '../lib/research.js'
 import { discordNotifier } from '../lib/discordNotifier.js'
 import { emitDataChanged } from '../lib/dataEvents.js'
+import { saveJson } from '../lib/jsonStore.js'
 import {
   syncTodoCalendar, removeTodoFromCalendar, defaultSyncFields,
   type TodoCalendarSyncStatus,
@@ -119,7 +120,7 @@ function parseDueDate(v: unknown): string {
 }
 
 function saveTodos(todos: Todo[]): void {
-  writeFileSync(todosPath(), JSON.stringify(todos, null, 2), 'utf8')
+  saveJson(todosPath(), todos)
 }
 
 // Research marked 'pending' from a previous server run is orphaned (its promise

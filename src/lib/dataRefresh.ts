@@ -7,7 +7,9 @@
 
 import { API_BASE } from './api.js'
 
-export const DATA_REFRESH_EVENT = 'mc:data'
+export const DATA_REFRESH_EVENT    = 'mc:data'
+export const DATA_CONNECT_EVENT    = 'mc:data:connect'
+export const DATA_DISCONNECT_EVENT = 'mc:data:disconnect'
 
 export interface DataRefreshDetail {
   domain: string
@@ -23,10 +25,17 @@ export function startDataRefresh(): () => void {
   let es: EventSource | null = null
   let retryTimer: ReturnType<typeof setTimeout> | null = null
   let dead = false
+  let retryDelay = 5_000
+  const MAX_DELAY = 60_000
 
   function connect() {
     if (dead) return
     es = new EventSource(`${API_BASE}/api/watch/stream`)
+
+    es.onopen = () => {
+      retryDelay = 5_000
+      window.dispatchEvent(new CustomEvent(DATA_CONNECT_EVENT))
+    }
 
     es.onmessage = (ev) => {
       try {
@@ -44,7 +53,13 @@ export function startDataRefresh(): () => void {
     es.onerror = () => {
       es?.close()
       es = null
-      if (!dead) retryTimer = setTimeout(connect, 5000)
+      if (!dead) {
+        window.dispatchEvent(new CustomEvent(DATA_DISCONNECT_EVENT))
+        retryTimer = setTimeout(() => {
+          retryDelay = Math.min(retryDelay * 2, MAX_DELAY)
+          connect()
+        }, retryDelay)
+      }
     }
   }
 
