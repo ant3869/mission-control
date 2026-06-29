@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef, lazy, Suspense } from 'react'
-import { clsx } from 'clsx'
 import { Loader2, ShieldAlert, X } from 'lucide-react'
 import { Sidebar } from './components/layout/Sidebar'
 import { TopBar } from './components/layout/TopBar'
@@ -8,6 +7,7 @@ import { Home } from './views/Home'                       // eager — default l
 import type { View } from './types'
 import { NAVIGATE_EVENT, openHubTab } from './lib/quickActions'
 import { startDataRefresh, DATA_REFRESH_EVENT } from './lib/dataRefresh'
+import { shouldRenderView } from './viewLifecycle'
 
 // Lazy views: each becomes its own chunk, fetched on first navigation, so the
 // initial bundle is just the shell + landing page instead of all ~25 views.
@@ -53,16 +53,15 @@ const VIEW_TITLES: Record<View, string> = {
   settings:    'Settings',
 }
 
-// Render each view once (on first visit) and keep it mounted — hidden via CSS.
-// This preserves all local state (scroll position, forms, filters) across navigation.
+// Render only the active view so background polling and subscriptions are torn down.
 function ViewPane({
-  view, active, mounted, children,
+  view, active, children,
 }: {
-  view: View; active: View; mounted: Set<View>; children: React.ReactNode
+  view: View; active: View; children: React.ReactNode
 }) {
-  if (!mounted.has(view)) return null
+  if (!shouldRenderView(active, view)) return null
   return (
-    <div className={clsx('absolute inset-0 overflow-hidden', active !== view && 'hidden')}>
+    <div className="absolute inset-0 overflow-hidden">
       <ErrorBoundary label={VIEW_TITLES[view]}>
         <Suspense fallback={<div className="flex items-center justify-center h-full"><Loader2 size={20} className="animate-spin text-text-muted" /></div>}>
           {children}
@@ -144,10 +143,8 @@ function CriticalAlertToast({ activeView, onNavigate }: { activeView: View; onNa
 
 export default function App() {
   const [activeView, setActiveView] = useState<View>(initialView)
-  const [mounted, setMounted]       = useState<Set<View>>(() => new Set([activeView]))
 
   const navigate = (view: View) => {
-    setMounted(prev => new Set([...prev, view]))
     setActiveView(view)
     try { localStorage.setItem(VIEW_STORAGE_KEY, view) } catch { /* ignore */ }
   }
@@ -182,7 +179,6 @@ export default function App() {
       const custom = event as CustomEvent<{ view?: View }>
       const view = custom.detail?.view
       if (!view) return
-      setMounted(prev => new Set([...prev, view]))
       setActiveView(view)
       try { localStorage.setItem(VIEW_STORAGE_KEY, view) } catch { /* ignore */ }
     }
@@ -202,25 +198,25 @@ export default function App() {
         />
         <main className="flex-1 overflow-hidden bg-base relative">
 
-          <ViewPane view="home"        active={activeView} mounted={mounted}><Home onNavigate={navigate} /></ViewPane>
-          <ViewPane view="todos"       active={activeView} mounted={mounted}><TodoTasks /></ViewPane>
-          <ViewPane view="tobuy"       active={activeView} mounted={mounted}><ToBuy /></ViewPane>
-          <ViewPane view="spend"       active={activeView} mounted={mounted}><Spend /></ViewPane>
-          <ViewPane view="council"     active={activeView} mounted={mounted}><Chats /></ViewPane>
-          <ViewPane view="calendar"    active={activeView} mounted={mounted}><ScheduledTasks /></ViewPane>
-          <ViewPane view="docs"        active={activeView} mounted={mounted}><DocsNotes /></ViewPane>
-          <ViewPane view="links"       active={activeView} mounted={mounted}><Links /></ViewPane>
-          <ViewPane view="news"        active={activeView} mounted={mounted}><News /></ViewPane>
-          <ViewPane view="memory"      active={activeView} mounted={mounted}><Memory /></ViewPane>
-          <ViewPane view="projects"    active={activeView} mounted={mounted}><ProjectsPipeline /></ViewPane>
-          <ViewPane view="inventory"   active={activeView} mounted={mounted}><Inventory /></ViewPane>
-          <ViewPane view="factory"     active={activeView} mounted={mounted}><Factory /></ViewPane>
-          <ViewPane view="activity"    active={activeView} mounted={mounted}><Activity /></ViewPane>
-          <ViewPane view="usage"       active={activeView} mounted={mounted}><Usage /></ViewPane>
-          <ViewPane view="harness"     active={activeView} mounted={mounted}><HarnessBenchmarks /></ViewPane>
-          <ViewPane view="evaluations" active={activeView} mounted={mounted}><Evaluations /></ViewPane>
-          <ViewPane view="health"      active={activeView} mounted={mounted}><Health /></ViewPane>
-          <ViewPane view="settings"    active={activeView} mounted={mounted}><Settings /></ViewPane>
+          <ViewPane view="home"        active={activeView}><Home onNavigate={navigate} /></ViewPane>
+          <ViewPane view="todos"       active={activeView}><TodoTasks /></ViewPane>
+          <ViewPane view="tobuy"       active={activeView}><ToBuy /></ViewPane>
+          <ViewPane view="spend"       active={activeView}><Spend /></ViewPane>
+          <ViewPane view="council"     active={activeView}><Chats /></ViewPane>
+          <ViewPane view="calendar"    active={activeView}><ScheduledTasks /></ViewPane>
+          <ViewPane view="docs"        active={activeView}><DocsNotes /></ViewPane>
+          <ViewPane view="links"       active={activeView}><Links /></ViewPane>
+          <ViewPane view="news"        active={activeView}><News /></ViewPane>
+          <ViewPane view="memory"      active={activeView}><Memory /></ViewPane>
+          <ViewPane view="projects"    active={activeView}><ProjectsPipeline /></ViewPane>
+          <ViewPane view="inventory"   active={activeView}><Inventory /></ViewPane>
+          <ViewPane view="factory"     active={activeView}><Factory /></ViewPane>
+          <ViewPane view="activity"    active={activeView}><Activity /></ViewPane>
+          <ViewPane view="usage"       active={activeView}><Usage /></ViewPane>
+          <ViewPane view="harness"     active={activeView}><HarnessBenchmarks /></ViewPane>
+          <ViewPane view="evaluations" active={activeView}><Evaluations /></ViewPane>
+          <ViewPane view="health"      active={activeView}><Health /></ViewPane>
+          <ViewPane view="settings"    active={activeView}><Settings /></ViewPane>
 
         </main>
       </div>
