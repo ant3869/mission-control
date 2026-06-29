@@ -2153,3 +2153,21 @@ export const finance = {
   create: (body: Omit<LedgerEntry, 'id' | 'createdAt'>) => post<{ entry: LedgerEntry }>('/finance', body),
   remove: (id: string)                                 => del<{ ok: boolean }>(`/finance/${id}`),
 }
+
+// ─── Operations journal ──────────────────────────────────────────────────────
+
+export interface OperationJournalEntry {
+  id: string
+  createdAt: string
+  method: string
+  path: string
+  status: number
+  undoable: boolean
+  undoneAt: string | null
+  changes: Array<{ path: string; existed: boolean; before: unknown; after: unknown }>
+}
+
+export const journal = {
+  list: () => get<{ entries: OperationJournalEntry[] }>('/journal'),
+  undo: (id: string) => post<{ ok: boolean }>(`/journal/${encodeURIComponent(id)}/undo`, {}),
+}

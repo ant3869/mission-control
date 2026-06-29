@@ -51,11 +51,14 @@ import {
   resolveApiHost,
 } from './lib/dashboardAuth.js'
 import { createSessionRouter } from './routes/session.js'
+import { createJournalMiddleware, getJournalStore } from './lib/journal.js'
+import { journalRouter } from './routes/journal.js'
 
 const app = express()
 const PORT = Number(process.env.API_PORT ?? 3001)
 const HOST = resolveApiHost(process.env.API_HOST)
 const dashboardAuth = new DashboardAuth(process.env.DASHBOARD_TOKEN ?? '')
+const journalStore = getJournalStore()
 assertSafeBinding(HOST, process.env.DASHBOARD_TOKEN ?? '')
 
 // General API rate limit: 300 req/min (protects against runaway loops)
@@ -77,6 +80,7 @@ app.use(express.json())
 app.use('/api/session', createSessionRouter(dashboardAuth))
 app.use('/api', createDashboardAuthMiddleware(dashboardAuth))
 app.use('/api', generalLimit)
+app.use('/api', createJournalMiddleware(journalStore))
 
 app.use('/api/auth',     authRouter)
 app.use('/api/calendar', calendarRouter)
@@ -117,6 +121,7 @@ app.use('/api/finance',  financeRouter)
 app.use('/api/office',  officeRouter)
 app.use('/api/search',  searchRouter)
 app.use('/api/export',  exportRouter)
+app.use('/api/journal', journalRouter)
 
 app.get('/api/health', (_req, res) => res.json({ ok: true, ts: new Date().toISOString() }))
 

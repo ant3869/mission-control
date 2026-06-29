@@ -4,7 +4,7 @@
 //          Watch, Flow, Brain, Agents and Flow Map views (all derived from the
 //          same OpenClaw/Hermes/Claude event wells) into tabs.
 
-import { Radio, GitBranch, BrainCircuit, Bot, Workflow, Zap, Clock } from 'lucide-react'
+import { Radio, GitBranch, BrainCircuit, Bot, Workflow, Zap, Clock, FileClock } from 'lucide-react'
 import { TabHub } from '../components/layout/TabHub'
 import { Watch } from './Watch'
 import { Agents } from './Agents'
@@ -13,6 +13,7 @@ import Brain from './Brain'
 import Flow from './Flow'
 import { ThoughtFlow } from '../components/ThoughtFlow'
 import { CronJobs } from './CronJobs'
+import { Journal } from './Journal'
 
 export function Activity() {
   return (
@@ -26,6 +27,7 @@ export function Activity() {
         { id: 'agents',   label: 'Agents',      icon: <Bot          size={13} />, render: () => <Agents /> },
         { id: 'map',      label: 'Map',         icon: <Workflow     size={13} />, render: () => <FlowMap /> },
         { id: 'cron',     label: 'Cron',        icon: <Clock        size={13} />, render: () => <CronJobs /> },
+        { id: 'journal',  label: 'Journal',     icon: <FileClock    size={13} />, render: () => <Journal /> },
       ]}
     />
   )
