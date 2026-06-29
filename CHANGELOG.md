@@ -6,6 +6,41 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [Unreleased]
+
+### Added
+
+- **Authenticated dashboard sessions and device pairing.** Private API routes now require a session token, the server binds to loopback by default, and remote clients can use a short-lived pairing flow instead of sharing long-lived credentials.
+- **Operations journal with undo.** Mutating requests are recorded with redacted metadata and reversible JSON snapshots, giving operators an audit trail and one-click recovery for supported changes.
+- **Unified activity controls.** Cron jobs and active sessions can be paused, resumed, triggered, cancelled, or retried from a consistent control surface with clear action feedback.
+- **Persistent incidents and replay context.** Operational failures can be promoted to durable incidents, annotated through their lifecycle, and replayed with the relevant request and journal context.
+- **Offline quick capture.** Mobile captures queue locally while disconnected and sync safely after reconnection using idempotency keys to prevent duplicate records.
+- **Daily operations briefing.** A new briefing view summarizes current incidents, scheduled work, recent changes, and system health with links back to the underlying operational records.
+- **Production container workflow.** A Node 22 multi-stage image builds the frontend, checks both TypeScript projects, runs the test suite, and serves the production bundle from the API process.
+
+### Changed
+
+- **Shared request and storage infrastructure.** Frontend API calls now use one authenticated request path, while JSON stores share atomic writes, request context, journaling, and snapshot behavior.
+- **Inactive views now unmount.** Navigating away tears down view-specific polling, streams, and effects instead of leaving hidden dashboards running in the background.
+- **Visual contract tightened.** Core navigation and operational views use the restrained Mission Control token system, interaction states, and layout rules consistently.
+- **Dependency baseline refreshed.** Vite and its React plugin were upgraded, and the Discord transport is pinned to a patched Undici release.
+
+### Fixed
+
+- **Trace failures are truthful.** Failed trace requests now show an actionable error state rather than substituting a fabricated demo trace.
+- **Server code is strictly typechecked.** SQLite casts, optional-default merging, parameter normalization, and an unawaited flow-map memory load were corrected while bringing the backend into the standard project check.
+
+### Security
+
+- Private routes reject unauthenticated requests, dashboard credentials stay out of URLs, remote access requires explicit configuration, and pairing tokens are short-lived and single-use.
+- Dependency remediation reduces the audited production and development dependency tree to zero known vulnerabilities.
+
+### Tests
+
+- Expanded route, authentication, journaling, incident, offline-sync, briefing, container, and regression coverage to 229 passing tests, alongside frontend/server typechecks and a production build smoke test.
+
+---
+
 ## [0.17.0] — 2026-06-28
 
 ### Added
