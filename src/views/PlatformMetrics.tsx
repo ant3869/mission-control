@@ -192,8 +192,8 @@ function TranscriptBubble({ msg, badge }: { msg: LiveChatMessage; badge: string 
   const isUser = msg.role === 'user'
   return (
     <div className={clsx('flex gap-2 mb-3', isUser ? 'flex-row-reverse' : 'flex-row')}>
-      <div className={clsx('w-5 h-5 rounded-full shrink-0 flex items-center justify-center text-[9px] font-bold text-white mt-0.5',
-        isUser ? 'bg-gradient-to-br from-violet-500 to-indigo-600' : 'bg-gradient-to-br from-blue-600 to-cyan-700')}>
+      <div className={clsx('w-5 h-5 rounded-full shrink-0 flex items-center justify-center text-[9px] font-semibold text-white mt-0.5',
+        isUser ? 'bg-violet-600' : 'bg-blue-700')}>
         {isUser ? 'U' : badge}
       </div>
       <div className={clsx('flex flex-col gap-0.5 max-w-[82%]', isUser && 'items-end')}>

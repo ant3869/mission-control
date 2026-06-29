@@ -264,7 +264,7 @@ function Tooltip({ x, y, node, edge, placed, nodes }: {
 
   return (
     <div
-      className="pointer-events-none absolute z-20 min-w-[150px] max-w-[240px] rounded-lg border border-border bg-surface/95 backdrop-blur px-3 py-2 shadow-xl"
+      className="pointer-events-none absolute z-20 min-w-[150px] max-w-[240px] rounded-lg border border-border bg-surface/95  px-3 py-2 "
       style={{ left: Math.min(px + 12, 9999), top: py + 12 }}
     >
       {node && (

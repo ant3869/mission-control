@@ -71,8 +71,8 @@ function renderMd(src: string): React.ReactNode[] {
     const h3 = line.match(/^### (.+)/)
     const h2 = line.match(/^## (.+)/)
     const h1 = line.match(/^# (.+)/)
-    if (h1) { flushList(); out.push(<h1 key={out.length} className="text-xl font-bold text-text-primary mt-6 mb-3 pb-2 border-b border-border">{inlineFmt(h1[1])}</h1>); continue }
-    if (h2) { flushList(); out.push(<h2 key={out.length} className="text-base font-bold text-text-primary mt-5 mb-2">{inlineFmt(h2[1])}</h2>); continue }
+    if (h1) { flushList(); out.push(<h1 key={out.length} className="text-xl font-semibold text-text-primary mt-6 mb-3 pb-2 border-b border-border">{inlineFmt(h1[1])}</h1>); continue }
+    if (h2) { flushList(); out.push(<h2 key={out.length} className="text-base font-semibold text-text-primary mt-5 mb-2">{inlineFmt(h2[1])}</h2>); continue }
     if (h3) { flushList(); out.push(<h3 key={out.length} className="text-sm font-semibold text-text-primary mt-4 mb-1.5">{inlineFmt(h3[1])}</h3>); continue }
 
     // Blockquote
@@ -244,8 +244,8 @@ function NotebookModal({ onClose, onSave }: {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={onClose}>
-      <div className="w-full max-w-sm rounded-xl border border-border bg-card shadow-2xl" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 " onClick={onClose}>
+      <div className="w-full max-w-sm rounded-xl border border-border bg-card " onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between px-5 py-4 border-b border-border">
           <h2 className="text-sm font-semibold text-text-primary">New Notebook</h2>
           <button aria-label="Close" onClick={onClose}><X size={16} className="text-text-muted hover:text-text-secondary" /></button>
@@ -751,7 +751,7 @@ export function Notes() {
       <div className="flex-1 flex flex-col overflow-hidden bg-base">
         {!activePage ? (
           <div className="flex flex-col items-center justify-center h-full gap-4 text-center">
-            <div className="w-16 h-16 rounded-2xl bg-card border border-border flex items-center justify-center text-3xl">📝</div>
+            <div className="w-16 h-16 rounded-xl bg-card border border-border flex items-center justify-center text-3xl">📝</div>
             <div>
               <p className="text-sm font-medium text-text-secondary">No page selected</p>
               <p className="text-xs text-text-muted mt-1">Pick a page from the list or create a new one</p>
@@ -808,12 +808,12 @@ export function Notes() {
                   onBlur={() => setEditingTitle(false)}
                   onKeyDown={e => { if (e.key === 'Enter') { setEditingTitle(false); editorRef.current?.focus() } if (e.key === 'Escape') setEditingTitle(false) }}
                   placeholder="Page title…"
-                  className="w-full text-2xl font-bold text-text-primary bg-transparent outline-none placeholder:text-text-muted"
+                  className="w-full text-2xl font-semibold text-text-primary bg-transparent outline-none placeholder:text-text-muted"
                 />
               ) : (
                 <h1
                   onClick={() => setEditingTitle(true)}
-                  className="text-2xl font-bold text-text-primary cursor-text hover:opacity-80 transition-opacity leading-tight"
+                  className="text-2xl font-semibold text-text-primary cursor-text hover:opacity-80 transition-opacity leading-tight"
                 >
                   {activePage.title || <span className="text-text-muted font-normal text-xl">Untitled</span>}
                 </h1>
@@ -852,7 +852,7 @@ export function Notes() {
       {nbContextMenu && (
         <>
           <div className="fixed inset-0 z-40" onClick={() => setNbContextMenu(null)} />
-          <div className="fixed z-50 w-40 rounded-lg border border-border bg-card shadow-xl overflow-hidden"
+          <div className="fixed z-50 w-40 rounded-lg border border-border bg-card  overflow-hidden"
             style={{ left: nbContextMenu.x, top: nbContextMenu.y }}>
             <button onClick={() => createSection(nbContextMenu.id)}
               className="flex items-center gap-2 w-full px-3 py-2 text-xs text-text-secondary hover:bg-card-hover transition-colors">
@@ -869,7 +869,7 @@ export function Notes() {
       {secContextMenu && (
         <>
           <div className="fixed inset-0 z-40" onClick={() => setSecContextMenu(null)} />
-          <div className="fixed z-50 w-44 rounded-lg border border-border bg-card shadow-xl overflow-hidden"
+          <div className="fixed z-50 w-44 rounded-lg border border-border bg-card  overflow-hidden"
             style={{ left: secContextMenu.x, top: secContextMenu.y }}>
             <button onClick={() => { setRenamingSecId(secContextMenu.id); setSecContextMenu(null) }}
               className="flex items-center gap-2 w-full px-3 py-2 text-xs text-text-secondary hover:bg-card-hover transition-colors">

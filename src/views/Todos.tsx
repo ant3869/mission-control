@@ -599,9 +599,9 @@ function TodoDrawer({ todo, onClose, onToggle, onSave, onDelete, onResearch }: {
     <div className={clsx(
       'animate-drawer-in flex flex-col h-full border-l border-border bg-surface overflow-y-auto',
       // Narrow (half-screen): overlay the list instead of crushing it.
-      'absolute inset-y-0 right-0 z-30 w-full max-w-[440px] shadow-2xl shadow-black/40',
+      'absolute inset-y-0 right-0 z-30 w-full max-w-[440px]  ',
       // Wide: sit side-by-side as a static panel.
-      'lg:static lg:w-[380px] lg:min-w-[380px] lg:max-w-none lg:shadow-none lg:z-auto',
+      'lg:static lg:w-[380px] lg:min-w-[380px] lg:max-w-none lg: lg:z-auto',
     )}>
 
       {/* Header */}
@@ -777,7 +777,7 @@ function TodoDrawer({ todo, onClose, onToggle, onSave, onDelete, onResearch }: {
                   className={clsx('relative w-9 h-5 rounded-full transition-colors shrink-0 disabled:opacity-40',
                     enabled ? 'bg-emerald-500/70' : 'bg-card border border-border')}
                 >
-                  <span className={clsx('absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform', enabled && 'translate-x-4')} />
+                  <span className={clsx('absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white  transition-transform', enabled && 'translate-x-4')} />
                 </button>
               </div>
               <p className={clsx('text-[11px] mt-2 leading-snug',

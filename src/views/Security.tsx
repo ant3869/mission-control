@@ -155,15 +155,15 @@ function SecurityOverview({ posture }: { posture: PostureResponse }) {
           <Gauge value={score} label={posture.riskLevel === 'ok' ? 'healthy' : posture.riskLevel} />
           <div className="grid grid-cols-3 gap-2 w-full mt-3 text-center">
             <div>
-              <p className="text-lg font-bold text-emerald-400 tabular-nums leading-none">{posture.summary.ok}</p>
+              <p className="text-lg font-semibold text-emerald-400 tabular-nums leading-none">{posture.summary.ok}</p>
               <p className="text-[10px] text-text-muted mt-0.5">OK</p>
             </div>
             <div>
-              <p className="text-lg font-bold text-amber-400 tabular-nums leading-none">{posture.summary.warning}</p>
+              <p className="text-lg font-semibold text-amber-400 tabular-nums leading-none">{posture.summary.warning}</p>
               <p className="text-[10px] text-text-muted mt-0.5">Warning</p>
             </div>
             <div>
-              <p className="text-lg font-bold text-red-400 tabular-nums leading-none">{posture.summary.critical}</p>
+              <p className="text-lg font-semibold text-red-400 tabular-nums leading-none">{posture.summary.critical}</p>
               <p className="text-[10px] text-text-muted mt-0.5">Critical</p>
             </div>
           </div>

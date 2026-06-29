@@ -59,8 +59,8 @@ function RejectModal({
 }: { idea: ProjectIdea; onConfirm: (reason: string) => void; onCancel: () => void }) {
   const [reason, setReason] = useState('')
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={onCancel}>
-      <div className="bg-surface border border-border rounded-xl p-5 w-full max-w-sm mx-4 shadow-2xl" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 " onClick={onCancel}>
+      <div className="bg-surface border border-border rounded-xl p-5 w-full max-w-sm mx-4 " onClick={e => e.stopPropagation()}>
         <div className="flex items-start justify-between mb-3">
           <h3 className="text-sm font-semibold text-text-primary">Reject idea?</h3>
           <button onClick={onCancel} className="text-text-muted hover:text-text-secondary transition-colors">

@@ -460,7 +460,7 @@ export default function Brain() {
                     <p className="text-sm text-amber-300 font-mono">{sig.tool}</p>
                     {sig.sessionKey && <p className="text-xs text-text-muted font-mono mt-0.5">session: {sig.sessionKey}</p>}
                   </div>
-                  <span className="text-lg font-bold text-amber-400">{sig.count}×</span>
+                  <span className="text-lg font-semibold text-amber-400">{sig.count}×</span>
                 </div>
               ))
             )}

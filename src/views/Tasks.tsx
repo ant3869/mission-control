@@ -27,12 +27,12 @@ const statusConfig: Record<TaskStatus, { label: string; col: string; headerColor
 
 function agentColor(name?: string) {
   const map: Record<string, string> = {
-    Claude: 'from-violet-500 to-indigo-600',
-    Scout:  'from-teal-500 to-cyan-600',
-    Quill:  'from-blue-500 to-sky-600',
-    Forge:  'from-emerald-500 to-green-600',
+    Claude: 'bg-violet-600',
+    Scout:  'bg-teal-600',
+    Quill:  'bg-blue-600',
+    Forge:  'bg-emerald-600',
   }
-  return name ? (map[name] ?? 'from-slate-600 to-slate-700') : 'from-slate-700 to-slate-800'
+  return name ? (map[name] ?? 'bg-slate-600') : 'bg-slate-700'
 }
 
 // ─── Add Task modal ───────────────────────────────────────────────────────────
@@ -75,8 +75,8 @@ function AddTaskModal({ onClose, onSave }: AddTaskModalProps) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={onClose}>
-      <div className="w-full max-w-md rounded-xl border border-border bg-card shadow-2xl" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 " onClick={onClose}>
+      <div className="w-full max-w-md rounded-xl border border-border bg-card " onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between px-5 py-4 border-b border-border">
           <h2 className="text-sm font-semibold text-text-primary">New Task</h2>
           <button aria-label="Close" onClick={onClose} className="text-text-muted hover:text-text-secondary transition-colors"><X size={16} /></button>
@@ -243,7 +243,7 @@ function TaskCard({
         <div className="flex items-center gap-1.5 min-w-0">
           {task.agentName ? (
             <>
-              <div className={clsx('w-4 h-4 rounded-full shrink-0 flex items-center justify-center text-white text-xxs font-bold bg-gradient-to-br', agentColor(task.agentName))}>
+              <div className={clsx('w-4 h-4 rounded-full shrink-0 flex items-center justify-center text-white text-xxs font-semibold', agentColor(task.agentName))}>
                 {task.agentName[0]}
               </div>
               <span className="text-xxs text-text-muted truncate">{task.agentName}</span>

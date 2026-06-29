@@ -71,7 +71,7 @@ function StatCard({ label, value, sub, icon, color }: {
         {icon}
         <span className="text-xxs font-semibold uppercase tracking-wider">{label}</span>
       </div>
-      <p className="text-2xl font-bold text-text-primary tabular-nums">{value}</p>
+      <p className="text-2xl font-semibold text-text-primary tabular-nums">{value}</p>
       <p className="text-xxs text-text-muted">{sub}</p>
     </div>
   )
@@ -311,7 +311,7 @@ function RunRate({ data }: { data: RadarInsightsResponse['runRate'] }) {
         <div className="grid grid-cols-3 gap-3 mb-4">
           <div className="flex flex-col gap-1 min-w-0">
             <span className="text-xxs text-text-muted uppercase tracking-wider">Daily avg</span>
-            <span className="text-xl font-bold text-text-primary tabular-nums">{money(avgDailyCost)}</span>
+            <span className="text-xl font-semibold text-text-primary tabular-nums">{money(avgDailyCost)}</span>
             {showTrend && (
               <span className={clsx('text-xxs font-medium', trendUp ? 'text-red-400' : trendDown ? 'text-green-400' : 'text-text-muted')}>
                 {trendUp ? '↑' : trendDown ? '↓' : '→'} {Math.abs(trendPct)}% vs prior period
@@ -320,12 +320,12 @@ function RunRate({ data }: { data: RadarInsightsResponse['runRate'] }) {
           </div>
           <div className="flex flex-col gap-1 min-w-0">
             <span className="text-xxs text-text-muted uppercase tracking-wider">Weekly proj.</span>
-            <span className="text-xl font-bold text-text-primary tabular-nums">{money(projectedWeeklyCost)}</span>
+            <span className="text-xl font-semibold text-text-primary tabular-nums">{money(projectedWeeklyCost)}</span>
             <span className="text-xxs text-text-muted">7-day forecast</span>
           </div>
           <div className="flex flex-col gap-1 min-w-0">
             <span className="text-xxs text-text-muted uppercase tracking-wider">Monthly proj.</span>
-            <span className="text-xl font-bold text-text-primary tabular-nums">{money(projectedMonthlyCost)}</span>
+            <span className="text-xl font-semibold text-text-primary tabular-nums">{money(projectedMonthlyCost)}</span>
             <span className="text-xxs text-text-muted">30-day forecast</span>
           </div>
         </div>

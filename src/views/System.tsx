@@ -31,7 +31,7 @@ function StatCard({ label, value, color }: { label: string; value: number; color
   return (
     <div className="flex flex-col gap-1 px-4 py-3 rounded-lg bg-card border border-border">
       <span className="text-xxs text-text-muted uppercase tracking-wider">{label}</span>
-      <span className={clsx('text-2xl font-bold tabular-nums', color)}>{value}</span>
+      <span className={clsx('text-2xl font-semibold tabular-nums', color)}>{value}</span>
     </div>
   )
 }

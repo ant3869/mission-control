@@ -30,7 +30,7 @@ export function MiniStat({ label, value, sub, accent = 'text-text-primary', icon
         {icon}
         <span className="text-[10px] font-semibold uppercase tracking-wider">{label}</span>
       </div>
-      <p className={clsx('text-2xl font-bold tabular-nums leading-none', accent)}>{value}</p>
+      <p className={clsx('text-2xl font-semibold tabular-nums leading-none', accent)}>{value}</p>
       {sub && <p className="text-[10px] text-text-muted truncate">{sub}</p>}
     </div>
   )
@@ -172,7 +172,7 @@ export function Donut({ segments, size = 92, thickness = 12, centerTop, centerBo
       </svg>
       {(centerTop || centerBottom) && (
         <div className="absolute inset-0 flex flex-col items-center justify-center">
-          {centerTop && <span className="text-base font-bold text-text-primary leading-none tabular-nums">{centerTop}</span>}
+          {centerTop && <span className="text-base font-semibold text-text-primary leading-none tabular-nums">{centerTop}</span>}
           {centerBottom && <span className="text-[10px] text-text-muted mt-0.5">{centerBottom}</span>}
         </div>
       )}
@@ -215,7 +215,7 @@ export function Gauge({ value, label, size = 150, color }: {
         />
       </svg>
       <div className="-mt-7 flex flex-col items-center">
-        <span className="text-3xl font-bold tabular-nums" style={{ color: stroke2 }}>{Math.round(v * 100)}</span>
+        <span className="text-3xl font-semibold tabular-nums" style={{ color: stroke2 }}>{Math.round(v * 100)}</span>
         {label && <span className="text-[10px] text-text-muted uppercase tracking-wider mt-0.5">{label}</span>}
       </div>
     </div>

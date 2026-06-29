@@ -386,7 +386,7 @@ function BreakdownPanel({
             <div className="rounded-lg border border-blue-900/30 bg-blue-950/10 p-3">
               <div className="flex items-baseline justify-between">
                 <p className="text-xxs font-semibold uppercase tracking-wide text-blue-300">Actual spend / mo</p>
-                <p className="text-lg font-bold tabular-nums text-blue-300">{money(actualAi)}</p>
+                <p className="text-lg font-semibold tabular-nums text-blue-300">{money(actualAi)}</p>
               </div>
               <p className="text-xxs text-text-muted mt-0.5">flat subscriptions + sporadic API — real money</p>
             </div>
@@ -427,7 +427,7 @@ function BreakdownPanel({
             <div className="rounded-lg border border-border bg-base p-3">
               <div className="flex items-baseline justify-between">
                 <p className="text-xxs font-semibold uppercase tracking-wide text-text-muted">Token-equivalent value</p>
-                <p className="text-base font-bold tabular-nums text-text-secondary">{money(claudeCost)}</p>
+                <p className="text-base font-semibold tabular-nums text-text-secondary">{money(claudeCost)}</p>
               </div>
               <p className="text-xxs text-text-muted mt-1 leading-relaxed">
                 What your Claude Code usage <span className="italic">would</span> cost at API token rates — covered by the flat subscription, so it is <span className="text-text-secondary">not money spent</span>.
@@ -499,7 +499,7 @@ function BreakdownPanel({
         {card === 'tobuy' && (
           <>
             <div className="rounded-lg border border-border bg-base p-4 text-center">
-              <p className="text-3xl font-bold tabular-nums text-amber-400">{money(buyTotal)}</p>
+              <p className="text-3xl font-semibold tabular-nums text-amber-400">{money(buyTotal)}</p>
               <p className="text-xxs text-text-muted mt-1">{buyCount > 0 ? `${buyCount} open item${buyCount !== 1 ? 's' : ''} on your list` : 'nothing on the list'}</p>
             </div>
             <p className="text-xs text-text-muted leading-relaxed">Estimated cost of everything still open on your To-Buy list. Manage items on the To-Buy page; this figure updates automatically.</p>
@@ -585,7 +585,7 @@ function BudgetSection({ dailyUsage, limits, onSave }: {
   }
 
   return (
-    <section className="rounded-2xl border border-border bg-card overflow-hidden">
+    <section className="rounded-xl border border-border bg-card overflow-hidden">
       <div className="px-5 pt-4 pb-3 border-b border-border-subtle">
         <span className="text-xs font-semibold uppercase tracking-[0.15em] text-text-muted">Agent spend budgets</span>
         <p className="text-xxs text-text-muted mt-0.5">Claude Code token-equivalent · click the pencil to set a limit</p>
@@ -783,7 +783,7 @@ export function Spend() {
           />
 
           {/* ── Expense ledger (Discord !spend + manual) ── */}
-          <section className="rounded-2xl border border-border bg-card overflow-hidden">
+          <section className="rounded-xl border border-border bg-card overflow-hidden">
             <div className="px-5 pt-4 pb-3 flex items-center justify-between border-b border-border-subtle">
               <div className="flex items-baseline gap-2">
                 <span className="text-xs font-semibold uppercase tracking-[0.15em] text-text-muted">Transactions</span>
@@ -869,13 +869,13 @@ export function Spend() {
           </section>
 
           {/* ── HERO · manual holdings ── */}
-          <section className="rounded-2xl border border-border bg-card overflow-hidden">
+          <section className="rounded-xl border border-border bg-card overflow-hidden">
             <div className="px-5 pt-5 pb-4">
               <div className="flex items-baseline justify-between gap-2">
                 <span className="text-xs font-semibold uppercase tracking-[0.15em] text-text-muted">On hand</span>
                 <span className="text-xxs text-text-muted">stocks · bank · savings · cash</span>
               </div>
-              <p className="text-5xl font-bold tabular-nums leading-none mt-3 text-text-primary">{money(onHand)}</p>
+              <p className="text-5xl font-semibold tabular-nums leading-none mt-3 text-text-primary">{money(onHand)}</p>
               <div className="flex items-center gap-2 mt-3 flex-wrap">
                 <span className="rounded-full px-2.5 py-1 text-xxs font-medium tabular-nums"
                   style={{ color: netWorth >= 0 ? ACCENT.green : ACCENT.red, backgroundColor: `${netWorth >= 0 ? ACCENT.green : ACCENT.red}14` }}>

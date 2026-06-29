@@ -112,7 +112,7 @@ function SourceBreakdown({ rows }: { rows: ModelOpsSourceRow[] }) {
               <>
                 <div className="flex items-end gap-4">
                   <div>
-                    <p className="text-xl font-bold text-emerald-400 tabular-nums leading-none">{money(r.cost)}</p>
+                    <p className="text-xl font-semibold text-emerald-400 tabular-nums leading-none">{money(r.cost)}</p>
                     <p className="text-[10px] text-text-muted mt-1">{r.models} model{r.models !== 1 ? 's' : ''} · {fmtNum(r.runs)} runs</p>
                   </div>
                   <div className="ml-auto text-right">

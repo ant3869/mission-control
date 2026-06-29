@@ -42,13 +42,13 @@ const TABS: { id: FilterTab; label: string }[] = [
 
 function avatarColor(name: string): string {
   const palette = [
-    'from-violet-500 to-indigo-600',
-    'from-blue-500   to-cyan-600',
-    'from-emerald-500 to-teal-600',
-    'from-rose-500   to-pink-600',
-    'from-amber-500  to-orange-600',
-    'from-sky-500    to-blue-600',
-    'from-fuchsia-500 to-purple-600',
+    'bg-violet-600',
+    'bg-blue-600',
+    'bg-emerald-600',
+    'bg-rose-600',
+    'bg-amber-600',
+    'bg-sky-600',
+    'bg-fuchsia-600',
   ]
   let h = 0
   for (const c of name) h = (h * 31 + c.charCodeAt(0)) & 0xffff
@@ -95,8 +95,8 @@ function NewProjectModal({ onClose, onSave }: NewProjectModalProps) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={onClose}>
-      <div className="w-full max-w-md rounded-xl border border-border bg-card shadow-2xl" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 " onClick={onClose}>
+      <div className="w-full max-w-md rounded-xl border border-border bg-card " onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between px-5 py-4 border-b border-border">
           <h2 className="text-sm font-semibold text-text-primary">New Project</h2>
           <button aria-label="Close" onClick={onClose} className="text-text-muted hover:text-text-secondary"><X size={16} /></button>
@@ -207,7 +207,7 @@ function CardMenu({ project, onStatusChange }: CardMenuProps) {
       {open && (
         <>
           <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 top-full mt-1 z-20 w-36 rounded-lg border border-border bg-card shadow-xl overflow-hidden">
+          <div className="absolute right-0 top-full mt-1 z-20 w-36 rounded-lg border border-border bg-card  overflow-hidden">
             <p className="px-3 py-1.5 text-xxs text-text-muted font-semibold uppercase tracking-wide border-b border-border">Set Status</p>
             {statuses.filter(s => s !== project.status).map(s => (
               <button
@@ -243,7 +243,7 @@ function ProjectCard({
       {/* Top row */}
       <div className="flex items-start justify-between gap-2 mb-3">
         <div className="flex items-center gap-2 min-w-0">
-          <div className={clsx('flex items-center justify-center w-7 h-7 rounded shrink-0 text-xs font-bold text-white bg-gradient-to-br', avatarColor(project.name))}>
+          <div className={clsx('flex items-center justify-center w-7 h-7 rounded shrink-0 text-xs font-semibold text-white', avatarColor(project.name))}>
             {project.name.charAt(0).toUpperCase()}
           </div>
           <span className="text-sm font-semibold text-text-primary truncate leading-tight">{project.name}</span>
@@ -290,7 +290,7 @@ function ProjectCard({
               <User size={9} className="text-text-muted" />
             </div>
           ) : (
-            <div className={clsx('w-5 h-5 rounded-full shrink-0 flex items-center justify-center text-white text-xxs font-bold bg-gradient-to-br', avatarColor(project.assignee))}>
+            <div className={clsx('w-5 h-5 rounded-full shrink-0 flex items-center justify-center text-white text-xxs font-semibold', avatarColor(project.assignee))}>
               {project.assignee.charAt(0).toUpperCase()}
             </div>
           )}

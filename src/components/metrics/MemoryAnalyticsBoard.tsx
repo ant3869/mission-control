@@ -138,7 +138,7 @@ export function MemoryAnalyticsBoard({ files, source }: { files: MetricMemoryFil
               <div key={label} className="flex flex-col gap-2 rounded-lg border border-border bg-surface/50 px-4 py-3">
                 <div className="flex items-center justify-between">
                   <span className="text-xs text-text-muted">{label} context used</span>
-                  <span className={clsx('text-xs font-bold tabular-nums', warn ? 'text-amber-300' : 'text-accent')}>
+                  <span className={clsx('text-xs font-semibold tabular-nums', warn ? 'text-amber-300' : 'text-accent')}>
                     {pct.toFixed(1)}%
                   </span>
                 </div>

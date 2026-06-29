@@ -196,7 +196,7 @@ function EventComposer({ state, onClose, onSaved }: {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/50" onClick={onClose} aria-hidden />
-      <div className="animate-rise-in relative w-full max-w-md rounded-xl border border-border bg-surface shadow-2xl shadow-black/40 max-h-[90vh] overflow-y-auto">
+      <div className="animate-rise-in relative w-full max-w-md rounded-xl border border-border bg-surface   max-h-[90vh] overflow-y-auto">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-3.5 border-b border-border">
           <div className="flex items-center gap-2">
@@ -232,7 +232,7 @@ function EventComposer({ state, onClose, onSaved }: {
               onClick={() => setAllDay(v => !v)}
               className={clsx('relative w-9 h-5 rounded-full transition-colors shrink-0 disabled:opacity-40',
                 allDay ? 'bg-accent-blue/70' : 'bg-card border border-border')}>
-              <span className={clsx('absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform', allDay && 'translate-x-4')} />
+              <span className={clsx('absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white  transition-transform', allDay && 'translate-x-4')} />
             </button>
           </div>
 
@@ -570,7 +570,7 @@ export function ScheduledTasks() {
                 onClick={() => setViewMode(mode)}
                 className={clsx(
                   'px-2.5 py-1 rounded text-xs font-medium capitalize transition-all',
-                  viewMode === mode ? 'bg-card-hover text-text-primary shadow-sm' : 'text-text-muted hover:text-text-secondary',
+                  viewMode === mode ? 'bg-card-hover text-text-primary ' : 'text-text-muted hover:text-text-secondary',
                 )}
               >
                 {mode}

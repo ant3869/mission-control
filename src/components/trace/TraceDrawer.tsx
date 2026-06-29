@@ -38,8 +38,8 @@ export function TraceDrawer({ runRef, onClose }: { runRef: TraceRunRef; onClose:
 
   return (
     <div className="absolute inset-0 z-30 flex justify-end">
-      <div className="absolute inset-0 bg-black/50 backdrop-blur-[1px]" onClick={onClose} />
-      <div className="relative flex flex-col h-full w-full max-w-[920px] bg-base border-l border-border shadow-2xl">
+      <div className="absolute inset-0 bg-black/50 " onClick={onClose} />
+      <div className="relative flex flex-col h-full w-full max-w-[920px] bg-base border-l border-border ">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-3.5 border-b border-border shrink-0">
           <div className="flex items-center gap-2.5 min-w-0">

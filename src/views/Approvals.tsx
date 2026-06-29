@@ -39,12 +39,12 @@ const statusConfig: Record<ApprovalStatus, { label: string; badge: string }> = {
 
 function agentColor(name: string): string {
   const palette = [
-    'from-violet-500 to-indigo-600',
-    'from-teal-500   to-cyan-600',
-    'from-blue-500   to-sky-600',
-    'from-emerald-500 to-green-600',
-    'from-amber-500  to-orange-600',
-    'from-rose-500   to-pink-600',
+    'bg-violet-600',
+    'bg-teal-600',
+    'bg-blue-600',
+    'bg-emerald-600',
+    'bg-amber-600',
+    'bg-rose-600',
   ]
   let h = 0
   for (const c of name) h = (h * 31 + c.charCodeAt(0)) & 0xffff
@@ -67,8 +67,8 @@ function NoteModal({ action, onClose, onConfirm, loading }: NoteModalProps) {
   useEffect(() => { ref.current?.focus() }, [])
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={onClose}>
-      <div className="w-full max-w-sm rounded-xl border border-border bg-card shadow-2xl" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 " onClick={onClose}>
+      <div className="w-full max-w-sm rounded-xl border border-border bg-card " onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between px-5 py-4 border-b border-border">
           <h2 className={clsx('text-sm font-semibold', action === 'approve' ? 'text-green-400' : 'text-red-400')}>
             {action === 'approve' ? 'Approve Request' : 'Reject Request'}
@@ -140,8 +140,8 @@ function NewRequestModal({ onClose, onSave }: NewRequestModalProps) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={onClose}>
-      <div className="w-full max-w-lg rounded-xl border border-border bg-card shadow-2xl" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 " onClick={onClose}>
+      <div className="w-full max-w-lg rounded-xl border border-border bg-card " onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between px-5 py-4 border-b border-border">
           <h2 className="text-sm font-semibold text-text-primary">New Approval Request</h2>
           <button aria-label="Close" onClick={onClose} className="text-text-muted hover:text-text-secondary"><X size={16} /></button>
@@ -392,7 +392,7 @@ function ApprovalCard({
       {/* Footer */}
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0">
-          <div className={clsx('w-5 h-5 rounded-full shrink-0 flex items-center justify-center text-white text-xxs font-bold bg-gradient-to-br', agentColor(item.agentName))}>
+          <div className={clsx('w-5 h-5 rounded-full shrink-0 flex items-center justify-center text-white text-xxs font-semibold', agentColor(item.agentName))}>
             {item.agentName.charAt(0).toUpperCase()}
           </div>
           <span className="text-xxs text-text-muted truncate">

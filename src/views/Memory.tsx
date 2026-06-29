@@ -68,8 +68,8 @@ function fmtBytes(n: number): string {
 function renderContent(content: string) {
   return content.split('\n').map((line, i) => {
     if (line === '') return <div key={i} className="h-2" />
-    if (line.startsWith('# '))  return <p key={i} className="text-sm font-bold text-text-primary mt-4 mb-2">{line.slice(2)}</p>
-    if (line.startsWith('## ')) return <p key={i} className="text-xs font-bold text-text-primary mt-3 mb-1.5">{line.slice(3)}</p>
+    if (line.startsWith('# '))  return <p key={i} className="text-sm font-semibold text-text-primary mt-4 mb-2">{line.slice(2)}</p>
+    if (line.startsWith('## ')) return <p key={i} className="text-xs font-semibold text-text-primary mt-3 mb-1.5">{line.slice(3)}</p>
     if (line.startsWith('### ')) return <p key={i} className="text-xs font-semibold text-text-secondary mt-2 mb-1">{line.slice(4)}</p>
     if (line.startsWith('- ') || line.startsWith('* '))
       return (

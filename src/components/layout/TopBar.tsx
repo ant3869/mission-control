@@ -355,8 +355,8 @@ function GlobalSearch({ onClose, onNavigate, views }: { onClose: () => void; onN
   const oInventory = oTobuy + tobuyRows.length
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center pt-[15vh] bg-black/60 backdrop-blur-sm" onClick={onClose}>
-      <div className="w-full max-w-lg rounded-xl border border-border bg-card shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex items-start justify-center pt-[15vh] bg-black/60 " onClick={onClose}>
+      <div className="w-full max-w-lg rounded-xl border border-border bg-card  overflow-hidden" onClick={e => e.stopPropagation()}>
         <div className="flex items-center gap-3 px-4 py-3 border-b border-border">
           <Search size={14} className="text-text-muted shrink-0" />
           <input ref={inputRef} value={q} onChange={e => setQ(e.target.value)}
@@ -471,7 +471,7 @@ function ConnectivityStrip() {
         ))}
       </button>
       {open && (
-        <div className="absolute right-0 top-full mt-1.5 z-50 w-64 rounded-lg border border-border bg-card shadow-2xl p-2">
+        <div className="absolute right-0 top-full mt-1.5 z-50 w-64 rounded-lg border border-border bg-card  p-2">
           <p className="text-[10px] uppercase tracking-wider text-text-muted font-semibold px-1.5 pb-1.5">Connectivity</p>
           {dots.map(d => (
             <div key={d.id} className="flex items-start gap-2 px-1.5 py-1.5 rounded hover:bg-card-hover">
@@ -522,8 +522,8 @@ function QuickTodoCapture({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center pt-[15vh] bg-black/60 backdrop-blur-sm" onClick={onClose}>
-      <div className="w-full max-w-sm rounded-xl border border-border bg-card shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex items-start justify-center pt-[15vh] bg-black/60 " onClick={onClose}>
+      <div className="w-full max-w-sm rounded-xl border border-border bg-card  overflow-hidden" onClick={e => e.stopPropagation()}>
         <div className="flex items-center gap-3 px-4 py-3">
           {done
             ? <Check size={14} className="text-accent-green shrink-0" />

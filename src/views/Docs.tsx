@@ -41,7 +41,7 @@ function renderMarkdown(content: string) {
   return content.split('\n').map((line, i) => {
     if (line === '') return <div key={i} className="h-3" />
     if (line === '---') return <hr key={i} className="border-border my-4" />
-    if (line.startsWith('# '))   return <h1 key={i} className="text-base font-bold text-text-primary mb-1 mt-4 first:mt-0">{line.slice(2)}</h1>
+    if (line.startsWith('# '))   return <h1 key={i} className="text-base font-semibold text-text-primary mb-1 mt-4 first:mt-0">{line.slice(2)}</h1>
     if (line.startsWith('## '))  return <h2 key={i} className="text-sm font-semibold text-text-primary mt-4 mb-1">{line.slice(3)}</h2>
     if (line.startsWith('### ')) return <h3 key={i} className="text-xs font-semibold text-text-secondary mt-3 mb-1 uppercase tracking-wide">{line.slice(4)}</h3>
     if (line.startsWith('> '))   return <blockquote key={i} className="border-l-2 border-border pl-3 my-1 text-xs text-text-muted italic">{inlineFmt(line.slice(2))}</blockquote>

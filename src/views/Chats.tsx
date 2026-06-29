@@ -53,19 +53,19 @@ function sourceBadge(source: SessionSource) {
 function sourceAvatar(source: SessionSource, id: string) {
   const palettes: Record<SessionSource, string[]> = {
     claude: [
-      'from-violet-500 to-indigo-600',
-      'from-blue-500 to-cyan-600',
-      'from-teal-500 to-green-600',
+      'bg-violet-600',
+      'bg-blue-600',
+      'bg-teal-600',
     ],
     openclaw: [
-      'from-amber-500 to-orange-600',
-      'from-rose-500 to-red-600',
-      'from-fuchsia-500 to-pink-600',
+      'bg-amber-600',
+      'bg-rose-600',
+      'bg-fuchsia-600',
     ],
     hermes: [
-      'from-violet-500 to-purple-700',
-      'from-purple-500 to-fuchsia-700',
-      'from-indigo-500 to-violet-700',
+      'bg-violet-700',
+      'bg-purple-700',
+      'bg-indigo-700',
     ],
   }
   const palette = palettes[source]
@@ -103,7 +103,7 @@ function SessionItem({ session, isActive, onClick }: {
     >
       <div className="flex items-start gap-2.5">
         <div className={clsx(
-          'w-6 h-6 rounded-full shrink-0 flex items-center justify-center text-white text-xxs font-bold mt-0.5 bg-gradient-to-br',
+          'w-6 h-6 rounded-full shrink-0 flex items-center justify-center text-white text-xxs font-semibold mt-0.5',
           sourceAvatar(session.source, session.id),
         )}>
           {sourceBadge(session.source)}
@@ -247,7 +247,7 @@ function ToolCard({ tc }: { tc: ToolContent }) {
   return (
     <div className="rounded-lg border border-teal-900/40 bg-teal-950/15 overflow-hidden text-[11px]">
       <div className="flex items-center gap-2 px-3 py-2 bg-teal-950/30 border-b border-teal-900/30">
-        <span className="text-teal-400 font-bold">⚙</span>
+        <span className="text-teal-400 font-semibold">⚙</span>
         <span className="text-teal-300 font-semibold">{tc.name}</span>
         {(tc.status || tc.exitCode != null) && (
           <span className={clsx(
@@ -310,7 +310,7 @@ function renderLine(line: string, key: string): React.ReactElement {
   }
   if (line.startsWith('### ')) return <p key={key} className="font-semibold text-text-primary mt-1">{renderInline(line.slice(4), key)}</p>
   if (line.startsWith('## '))  return <p key={key} className="font-semibold text-text-primary mt-1">{renderInline(line.slice(3), key)}</p>
-  if (line.startsWith('# '))   return <p key={key} className="font-bold text-text-primary mt-1">{renderInline(line.slice(2), key)}</p>
+  if (line.startsWith('# '))   return <p key={key} className="font-semibold text-text-primary mt-1">{renderInline(line.slice(2), key)}</p>
   if (line.startsWith('**') && line.endsWith('**'))
     return <p key={key} className="font-semibold text-text-primary">{renderInline(line.slice(2, -2), key)}</p>
   if (line.startsWith('- ') || line.startsWith('* '))
@@ -370,8 +370,8 @@ function MessageBubble({ msg, assistantBadge }: {
   return (
     <div className={clsx('flex gap-2.5 mb-4', isUser ? 'flex-row-reverse' : 'flex-row')}>
       <div className={clsx(
-        'w-6 h-6 rounded-full shrink-0 flex items-center justify-center text-xxs font-bold text-white mt-0.5',
-        isUser ? 'bg-gradient-to-br from-violet-500 to-indigo-600' : 'bg-gradient-to-br from-blue-600 to-cyan-700',
+        'w-6 h-6 rounded-full shrink-0 flex items-center justify-center text-xxs font-semibold text-white mt-0.5',
+        isUser ? 'bg-violet-600' : 'bg-blue-700',
       )}>
         {isUser ? 'A' : assistantBadge}
       </div>

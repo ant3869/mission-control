@@ -64,7 +64,7 @@ export function ProjectIdeaPanel({ idea, onClose, onSave, onReject, onSnooze, on
   };
 
   return (
-    <div className="fixed inset-y-0 right-0 w-[480px] bg-gray-900 border-l border-gray-700 flex flex-col z-50 shadow-2xl overflow-hidden">
+    <div className="fixed inset-y-0 right-0 w-[480px] bg-gray-900 border-l border-gray-700 flex flex-col z-50  overflow-hidden">
       {/* Header */}
       <div className="flex items-start justify-between p-4 border-b border-gray-700 flex-shrink-0">
         <div className="flex-1 min-w-0 pr-3">

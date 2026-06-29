@@ -119,7 +119,7 @@ export function MiniSummaryStat({ label, value, sub }: { label: string; value: s
   return (
     <div className="flex flex-col gap-1 px-4 py-3 bg-bg-secondary border border-white/10 rounded-xl">
       <span className="text-[10px] uppercase tracking-wider text-text-muted">{label}</span>
-      <span className="text-xl font-bold tabular-nums text-text-primary leading-none">{value}</span>
+      <span className="text-xl font-semibold tabular-nums text-text-primary leading-none">{value}</span>
       {sub && <span className="text-[10px] text-text-muted truncate">{sub}</span>}
     </div>
   )

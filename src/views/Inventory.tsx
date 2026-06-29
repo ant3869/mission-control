@@ -68,7 +68,7 @@ function MutationToast({ toast }: { toast: ToastState }) {
   if (!toast) return null
   return (
     <div className={clsx(
-      'fixed bottom-5 right-5 z-50 flex items-center gap-2 px-3.5 py-2 rounded-lg border text-xs shadow-xl transition-all animate-in fade-in slide-in-from-bottom-2',
+      'fixed bottom-5 right-5 z-50 flex items-center gap-2 px-3.5 py-2 rounded-lg border text-xs  transition-all animate-in fade-in slide-in-from-bottom-2',
       toast.type === 'saving' ? 'border-border bg-surface text-text-secondary' :
       toast.type === 'saved'  ? 'border-green-900/50 bg-green-950/50 text-green-300' :
                                 'border-red-900/50 bg-red-950/50 text-red-300',

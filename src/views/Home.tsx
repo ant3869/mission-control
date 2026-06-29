@@ -278,7 +278,7 @@ function StatTile({ icon, label, sub, value, accent, delay, onClick }: {
         <span className="text-[10px] font-semibold uppercase tracking-wider">{label}</span>
         <ArrowUpRight size={12} className="ml-auto opacity-0 group-hover:opacity-100 transition-opacity" />
       </div>
-      <span className="text-3xl font-bold tabular-nums leading-none" style={{ color: accent }}>{Math.round(n)}</span>
+      <span className="text-3xl font-semibold tabular-nums leading-none" style={{ color: accent }}>{Math.round(n)}</span>
       <span className="text-[10px] text-text-muted truncate">{sub}</span>
     </button>
   )
@@ -420,7 +420,7 @@ function HeartbeatWidget({ job, now, onOpen }: { job: AgentCronJob | null; now: 
       ) : (
         <>
           <div className="flex items-baseline gap-2">
-            <span className="text-2xl font-bold tabular-nums leading-none" style={{ color: accent }}>
+            <span className="text-2xl font-semibold tabular-nums leading-none" style={{ color: accent }}>
               {nextMs ? fmtCountdown(countdownMs) : '—'}
             </span>
             <span className="text-[10px] text-text-muted">{nextMs ? 'to next tick' : 'cadence unknown'}</span>
@@ -614,7 +614,7 @@ export function Home({ onNavigate }: { onNavigate: (view: View) => void }) {
 
             {/* Left: greeting + status */}
             <div className="min-w-0 home-rise">
-              <h1 className="text-3xl lg:text-4xl font-bold tracking-tight text-text-primary">
+              <h1 className="text-3xl lg:text-4xl font-semibold tracking-tight text-text-primary">
                 {greeting()}, Ant.
               </h1>
               <p className="mt-2 text-sm text-text-secondary">
@@ -644,7 +644,7 @@ export function Home({ onNavigate }: { onNavigate: (view: View) => void }) {
                     <TrendingUp size={10} /> Claude Code value · 7d
                     <ArrowUpRight size={10} className="opacity-0 group-hover:opacity-100 transition-opacity" />
                   </p>
-                  <p className="text-3xl font-bold tabular-nums leading-none mt-1 text-accent-green">
+                  <p className="text-3xl font-semibold tabular-nums leading-none mt-1 text-accent-green">
                     {usage ? `$${spend.toFixed(2)}` : '—'}
                   </p>
                   <p className="text-[10px] text-text-muted tabular-nums mt-1">
@@ -858,7 +858,7 @@ export function Home({ onNavigate }: { onNavigate: (view: View) => void }) {
                 ].map(stat => (
                   <div key={stat.label} className="rounded-lg border border-border-subtle bg-base px-3 py-2">
                     <p className="text-[10px] font-semibold uppercase tracking-wider text-text-muted">{stat.label}</p>
-                    <p className="mt-1 text-lg font-bold tabular-nums leading-none" style={{ color: stat.color }}>{stat.value}</p>
+                    <p className="mt-1 text-lg font-semibold tabular-nums leading-none" style={{ color: stat.color }}>{stat.value}</p>
                   </div>
                 ))}
               </div>
@@ -913,7 +913,7 @@ export function Home({ onNavigate }: { onNavigate: (view: View) => void }) {
                 ].map(stat => (
                   <div key={stat.label} className="rounded-lg border border-border-subtle bg-base px-3 py-2">
                     <p className="text-[10px] font-semibold uppercase tracking-wider text-text-muted">{stat.label}</p>
-                    <p className="mt-1 text-lg font-bold tabular-nums leading-none" style={{ color: stat.color }}>{stat.value}</p>
+                    <p className="mt-1 text-lg font-semibold tabular-nums leading-none" style={{ color: stat.color }}>{stat.value}</p>
                   </div>
                 ))}
               </div>
@@ -1062,7 +1062,7 @@ export function Home({ onNavigate }: { onNavigate: (view: View) => void }) {
                   ].map(s => (
                     <div key={s.label} className="px-3 py-2.5 rounded-lg bg-base border border-border-subtle">
                       <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-text-muted">{s.icon}{s.label}</div>
-                      <p className="mt-1 text-xl font-bold tabular-nums leading-none" style={{ color: s.color }}>{s.value}</p>
+                      <p className="mt-1 text-xl font-semibold tabular-nums leading-none" style={{ color: s.color }}>{s.value}</p>
                     </div>
                   ))}
                 </div>

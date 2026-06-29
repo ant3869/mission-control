@@ -340,9 +340,9 @@ function BuyDrawer({ item, onClose, onToggle, onSave, onDelete, onResearch }: {
     <div className={clsx(
       'animate-drawer-in flex flex-col h-full border-l border-border bg-surface overflow-y-auto',
       // Narrow (half-screen): overlay the list instead of crushing it.
-      'absolute inset-y-0 right-0 z-30 w-full max-w-[440px] shadow-2xl shadow-black/40',
+      'absolute inset-y-0 right-0 z-30 w-full max-w-[440px]  ',
       // Wide: sit side-by-side as a static panel.
-      'lg:static lg:w-[380px] lg:min-w-[380px] lg:max-w-none lg:shadow-none lg:z-auto',
+      'lg:static lg:w-[380px] lg:min-w-[380px] lg:max-w-none lg: lg:z-auto',
     )}>
 
       {/* Header */}

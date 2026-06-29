@@ -96,7 +96,7 @@ function TopStrip({ picks }: { picks: TopPick[] }) {
           <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-accent-green opacity-60" />
           <span className="relative inline-flex h-2 w-2 rounded-full bg-accent-green" />
         </span>
-        <span className="text-xs font-bold uppercase tracking-[0.14em] text-text-secondary">Top right now</span>
+        <span className="text-xs font-semibold uppercase tracking-[0.14em] text-text-secondary">Top right now</span>
         <span className="text-xxs text-text-muted">· across all sources</span>
       </div>
       <div className="flex gap-3 overflow-x-auto pb-2 [scrollbar-width:thin]">
@@ -104,13 +104,13 @@ function TopStrip({ picks }: { picks: TopPick[] }) {
           <a key={pick.id} href={pick.url} target="_blank" rel="noopener noreferrer"
             className="group relative flex h-[150px] w-[210px] shrink-0 flex-col justify-end overflow-hidden rounded-xl border border-border bg-card transition-transform hover:-translate-y-0.5">
             <Thumb image={pick.image} logo={pick.logo} color={pick.color} icon={pick.icon} className="absolute inset-0 h-full w-full" />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/45 to-black/10" />
-            <span className="absolute left-2.5 top-2.5 flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide backdrop-blur-sm"
+            <div className="absolute inset-0 bg-black/65" />
+            <span className="absolute left-2.5 top-2.5 flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide "
               style={{ color: pick.color, background: `${pick.color}26` }}>
               {pick.badge}
             </span>
             <div className="relative p-3">
-              <h4 className="line-clamp-2 text-[13px] font-bold leading-snug text-white">{pick.title}</h4>
+              <h4 className="line-clamp-2 text-[13px] font-semibold leading-snug text-white">{pick.title}</h4>
               <p className="mt-1 text-[10px] font-medium" style={{ color: pick.color }}>{pick.metric}</p>
             </div>
           </a>
@@ -124,9 +124,9 @@ function TopStrip({ picks }: { picks: TopPick[] }) {
 
 function LaneHeader({ color, label, count }: { color: string; label: string; count: number }) {
   return (
-    <div className="sticky top-0 z-10 -mx-1 mb-2 mt-8 flex items-center gap-2 bg-base/95 px-1 py-1.5 backdrop-blur-sm">
+    <div className="sticky top-0 z-10 -mx-1 mb-2 mt-8 flex items-center gap-2 bg-base/95 px-1 py-1.5 ">
       <span className="h-3.5 w-1 rounded-full" style={{ background: color }} />
-      <span className="text-xs font-bold uppercase tracking-[0.14em]" style={{ color }}>{label}</span>
+      <span className="text-xs font-semibold uppercase tracking-[0.14em]" style={{ color }}>{label}</span>
       <span className="rounded-full bg-card px-1.5 text-xxs tabular-nums text-text-muted">{count}</span>
       <span className="ml-1 h-px flex-1 bg-border" />
     </div>
@@ -197,17 +197,17 @@ function BuzzRow({ item }: { item: BuzzItem }) {
       {item.image
         ? <div className="relative h-[68px] w-[104px] shrink-0">
             <Thumb image={item.image} color={accent} icon={<Flame size={18} />} className="h-full w-full rounded-lg" />
-            <span className="absolute bottom-1 left-1 rounded bg-black/70 px-1.5 py-0.5 text-[10px] font-bold tabular-nums text-white">▲ {compactNumber(item.score)}</span>
+            <span className="absolute bottom-1 left-1 rounded bg-black/70 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-white">▲ {compactNumber(item.score)}</span>
           </div>
         : <div className="grid h-[68px] w-[104px] shrink-0 place-items-center rounded-lg" style={{ background: `linear-gradient(135deg, ${accent}2e, ${accent}0a)` }}>
             <div className="text-center">
-              <p className="text-xl font-extrabold leading-none tabular-nums" style={{ color: accent }}>{compactNumber(item.score)}</p>
-              <p className="mt-0.5 text-[9px] font-bold uppercase tracking-wide text-text-muted">points</p>
+              <p className="text-xl font-semibold leading-none tabular-nums" style={{ color: accent }}>{compactNumber(item.score)}</p>
+              <p className="mt-0.5 text-[9px] font-semibold uppercase tracking-wide text-text-muted">points</p>
             </div>
           </div>}
       <div className="min-w-0 flex-1">
         <div className="mb-1 flex items-center gap-2 text-xxs">
-          <span className="font-bold" style={{ color: accent }}>{item.origin}</span>
+          <span className="font-semibold" style={{ color: accent }}>{item.origin}</span>
           {item.domain && <span className="truncate text-text-muted">· {item.domain}</span>}
           <span className="text-text-muted">· {item.postedAgo}</span>
         </div>

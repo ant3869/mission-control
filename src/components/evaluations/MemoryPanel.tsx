@@ -227,7 +227,7 @@ function Stat({ label, value, sub, color }: { label: string; value: string; sub?
   return (
     <div className="flex flex-col gap-1 px-3 py-2.5 bg-bg-secondary border border-white/10 rounded-xl">
       <span className="text-[10px] uppercase tracking-wider text-text-muted">{label}</span>
-      <span className={clsx('text-lg font-bold tabular-nums leading-none truncate', color ?? 'text-text-primary')}>{value}</span>
+      <span className={clsx('text-lg font-semibold tabular-nums leading-none truncate', color ?? 'text-text-primary')}>{value}</span>
       {sub && <span className="text-[10px] text-text-muted truncate">{sub}</span>}
     </div>
   )

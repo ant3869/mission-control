@@ -126,7 +126,7 @@ function CriticalAlertToast({ activeView, onNavigate }: { activeView: View; onNa
   if (!toast) return null
 
   return (
-    <div className="fixed bottom-4 right-4 z-50 flex items-start gap-3 max-w-sm w-full rounded-xl border border-red-800/60 bg-red-950/90 shadow-2xl px-4 py-3 backdrop-blur-sm animate-in slide-in-from-bottom-2 duration-200">
+    <div className="fixed bottom-4 right-4 z-50 flex items-start gap-3 max-w-sm w-full rounded-xl border border-red-800/60 bg-red-950/90  px-4 py-3  animate-in slide-in-from-bottom-2 duration-200">
       <ShieldAlert size={16} className="text-red-400 shrink-0 mt-0.5" />
       <div className="flex-1 min-w-0">
         <p className="text-xs font-semibold text-red-300 uppercase tracking-wider">Critical alert</p>

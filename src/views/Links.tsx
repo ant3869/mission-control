@@ -71,8 +71,8 @@ function LinkModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm" onClick={onClose}>
-      <div className="w-full max-w-lg rounded-xl border border-border bg-card shadow-2xl" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 " onClick={onClose}>
+      <div className="w-full max-w-lg rounded-xl border border-border bg-card " onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between border-b border-border px-5 py-4">
           <h2 className="text-sm font-semibold text-text-primary">{initial ? 'Edit Link' : 'Save Link'}</h2>
           <button onClick={onClose} className="text-text-muted hover:text-text-secondary"><X size={16} /></button>

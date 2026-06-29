@@ -138,7 +138,7 @@ function LaneCard({ meta, results, active, onClick }: {
     >
       <div className="flex items-center justify-between gap-2">
         <span className="text-xs font-medium text-text-secondary truncate">{meta.short}</span>
-        <span className={clsx('text-sm font-bold tabular-nums', scoreColor)}>{score == null ? '—' : `${score}%`}</span>
+        <span className={clsx('text-sm font-semibold tabular-nums', scoreColor)}>{score == null ? '—' : `${score}%`}</span>
       </div>
       <div className="h-1 rounded-full bg-base overflow-hidden">
         <div className={clsx('h-full rounded-full', score == null ? 'bg-text-muted' : score >= 80 ? 'bg-green-500' : score >= 50 ? 'bg-amber-400' : 'bg-red-500')}
@@ -166,7 +166,7 @@ function DetailDrawer({ result, laneLabel, onClose }: {
   const isMulti = ro && typeof ro === 'object' && ro.multiTurn === true
   const turn1Answer = isMulti ? String(ro.turn1?.answer ?? '') : ''
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-black/50 backdrop-blur-sm" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex justify-end bg-black/50 " onClick={onClose}>
       <div className="w-full max-w-xl h-full bg-surface border-l border-border overflow-y-auto" onClick={e => e.stopPropagation()}>
         <div className="sticky top-0 bg-surface border-b border-border px-5 py-3 flex items-center justify-between z-10">
           <div className="flex items-center gap-2 min-w-0">
@@ -840,7 +840,7 @@ function ComparisonTab({ rows, lanes, mode, onMode, groupBy, onGroupBy }: {
                       )}
                     </td>
                     <td className="px-3 py-2 text-text-muted">{r.taskPackName}</td>
-                    <td className={clsx('px-3 py-2 text-right font-bold tabular-nums', (r.overallPct ?? 0) >= 80 ? 'text-green-400' : (r.overallPct ?? 0) >= 50 ? 'text-amber-400' : 'text-red-400')}>{r.overallPct == null ? '—' : `${r.overallPct}%`}</td>
+                    <td className={clsx('px-3 py-2 text-right font-semibold tabular-nums', (r.overallPct ?? 0) >= 80 ? 'text-green-400' : (r.overallPct ?? 0) >= 50 ? 'text-amber-400' : 'text-red-400')}>{r.overallPct == null ? '—' : `${r.overallPct}%`}</td>
                     <td className="px-3 py-2 text-right tabular-nums text-text-secondary">{r.passRate == null ? '—' : `${r.passRate}%`}</td>
                     <td className={clsx('px-3 py-2 text-right tabular-nums', r.reliabilityPct == null ? 'text-text-muted' : r.reliabilityPct >= 90 ? 'text-green-400' : r.reliabilityPct >= 60 ? 'text-amber-400' : 'text-red-400')}
                         title={r.maxSamples > 1 ? `${r.maxSamples} samples/task` : '1 sample/task — equals pass rate; run 3×/5× for a real reliability signal'}>
@@ -911,7 +911,7 @@ function RunChip({ run, selected, onOpen, onDelete }: {
           <span className={clsx('w-1.5 h-1.5 rounded-full shrink-0', dot)} />
           <span className="text-xs font-semibold text-text-primary truncate flex-1">{run.modelName}</span>
           {scorePct != null && (
-            <span className={clsx('text-xs font-bold tabular-nums', scorePct >= 80 ? 'text-green-400' : scorePct >= 50 ? 'text-amber-400' : 'text-red-400')}>{scorePct}%</span>
+            <span className={clsx('text-xs font-semibold tabular-nums', scorePct >= 80 ? 'text-green-400' : scorePct >= 50 ? 'text-amber-400' : 'text-red-400')}>{scorePct}%</span>
           )}
         </div>
         <div className="text-xxs text-text-muted truncate mb-1">{run.taskPackName}</div>

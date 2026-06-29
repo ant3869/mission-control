@@ -127,13 +127,13 @@ export function Thumb({ image, logo, color, icon, className = '' }: { image?: st
 
 // ─── Glass widgets ────────────────────────────────────────────────────────────
 
-const glass = 'rounded-xl border border-white/10 bg-white/[0.07] p-3.5 backdrop-blur-md shadow-lg'
+const glass = 'rounded-xl border border-white/10 bg-white/[0.07] p-3.5  '
 
 function StatWidget({ icon, label, value, sub }: { icon: React.ReactNode; label: string; value: string; sub: string }) {
   return (
     <div className={glass}>
-      <p className="mb-1 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.14em] text-white/55">{icon}{label}</p>
-      <p className="text-2xl font-extrabold tabular-nums leading-none text-white">{value}</p>
+      <p className="mb-1 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-white/55">{icon}{label}</p>
+      <p className="text-2xl font-semibold tabular-nums leading-none text-white">{value}</p>
       <p className="mt-1.5 text-xxs text-white/60">{sub}</p>
     </div>
   )
@@ -143,7 +143,7 @@ function BarsWidget({ title, bars, accent }: { title: string; bars: Array<{ labe
   const max = Math.max(...bars.map(b => b.value), 1)
   return (
     <div className={glass}>
-      <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.14em] text-white/55">{title}</p>
+      <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-white/55">{title}</p>
       <div className="flex h-14 items-end gap-1.5">
         {bars.map((bar, i) => (
           <div key={i} className="flex h-full min-w-0 flex-1 flex-col justify-end gap-1">
@@ -160,11 +160,11 @@ function BarsWidget({ title, bars, accent }: { title: string; bars: Array<{ labe
 function SourceWidget({ favicon, name, accent, sub }: { favicon: string; name: string; accent: string; sub: string }) {
   return (
     <div className={glass}>
-      <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.14em] text-white/55">Source</p>
+      <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-white/55">Source</p>
       <div className="flex items-center gap-2">
         <Favicon src={favicon} color={accent} size={20} />
         <div className="min-w-0">
-          <p className="truncate text-sm font-bold leading-tight text-white">{name}</p>
+          <p className="truncate text-sm font-semibold leading-tight text-white">{name}</p>
           <p className="text-xxs text-white/60">{sub}</p>
         </div>
       </div>
@@ -211,7 +211,7 @@ function BrandedBackground({ wordmark, Glyph, theme }: { wordmark: string; Glyph
       <div className="pointer-events-none absolute -left-24 top-1/3 h-80 w-80 rounded-full blur-3xl" style={{ background: `${theme.accent}26` }} />
       {/* giant glyph + wordmark watermark (clipped by the rounded container) */}
       <Glyph aria-hidden className="pointer-events-none absolute -right-10 -top-12" size={300} style={{ color: theme.accent, opacity: 0.08 }} />
-      <span aria-hidden className="pointer-events-none absolute bottom-0 right-4 select-none text-[6rem] font-black leading-[0.75] tracking-tighter sm:text-[9rem]"
+      <span aria-hidden className="pointer-events-none absolute bottom-0 right-4 select-none text-[6rem] font-semibold leading-[0.75] tracking-tighter sm:text-[9rem]"
         style={{ color: theme.accent, opacity: 0.09 }}>{wordmark}</span>
     </>
   )
@@ -290,7 +290,7 @@ export function HeroShowcase({ story, sample }: { story: HeroStory; sample?: boo
   return (
     <section className="mb-2">
       {/* ── Image block — bleeds and dissolves into the page (no card/puck chrome) ── */}
-      <div className="relative h-[340px] overflow-hidden rounded-2xl md:h-[400px]">
+      <div className="relative h-[340px] overflow-hidden rounded-xl md:h-[400px]">
         {/* background: real image or themed gradient */}
         {showImage
           ? <img src={image} alt="" loading="eager" onError={() => setImgFailed(true)}
@@ -299,18 +299,18 @@ export function HeroShowcase({ story, sample }: { story: HeroStory; sample?: boo
         {/* theme tint for legibility over real images */}
         {showImage && <div className="absolute inset-0" style={{ background: theme.tint }} />}
         {/* directional scrim keeps the headline readable */}
-        <div className="absolute inset-0 bg-gradient-to-r from-black/80 via-black/30 to-transparent" />
+        <div className="absolute inset-0 bg-black/55" />
         {/* dissolve the bottom into the page background — no hard edge, no wave */}
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-base via-base/75 to-transparent" />
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-1/2 bg-base/80" />
 
         {/* kicker — top-left */}
         <div className="absolute left-6 top-5 flex flex-wrap items-center gap-2">
-          <span className="flex items-center gap-1.5 rounded-full border border-white/15 bg-white/10 px-3 py-1.5 backdrop-blur-md">
+          <span className="flex items-center gap-1.5 rounded-full border border-white/15 bg-white/10 px-3 py-1.5 ">
             {story.kind === 'buzz' ? <Flame size={12} style={{ color: theme.accent }} /> : <Sparkles size={12} style={{ color: theme.accent }} />}
-            <span className="text-[10px] font-bold uppercase tracking-[0.16em] text-white">{theme.kicker}</span>
+            <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-white">{theme.kicker}</span>
           </span>
-          {timeAgo && <span className="rounded-full border border-white/10 bg-black/30 px-2.5 py-1 text-[10px] font-semibold text-white/70 backdrop-blur-md">{timeAgo}</span>}
-          {sample && <span className="rounded-full border border-amber-400/40 bg-amber-500/20 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-amber-300 backdrop-blur-md">Sample data</span>}
+          {timeAgo && <span className="rounded-full border border-white/10 bg-black/30 px-2.5 py-1 text-[10px] font-semibold text-white/70 ">{timeAgo}</span>}
+          {sample && <span className="rounded-full border border-amber-400/40 bg-amber-500/20 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-amber-300 ">Sample data</span>}
         </div>
 
         {/* glass widgets — layered right */}
@@ -321,12 +321,12 @@ export function HeroShowcase({ story, sample }: { story: HeroStory; sample?: boo
         {/* massive headline — bottom-left, above the wave */}
         <a href={primary.href} target="_blank" rel="noopener noreferrer"
           className="group absolute bottom-7 left-6 right-6 block md:right-[270px]">
-          {avatar && <img src={avatar} alt="" className="mb-3 h-12 w-12 rounded-xl border border-white/25 object-cover shadow-lg" />}
-          <h2 className="text-[1.7rem] font-extrabold leading-[1.08] tracking-tight text-white drop-shadow-[0_2px_12px_rgba(0,0,0,0.7)] transition-colors group-hover:text-white/85 sm:text-[2.4rem]"
+          {avatar && <img src={avatar} alt="" className="mb-3 h-12 w-12 rounded-xl border border-white/25 object-cover " />}
+          <h2 className="text-[1.7rem] font-semibold leading-[1.08] tracking-tight text-white drop-shadow-[0_2px_12px_rgba(0,0,0,0.7)] transition-colors group-hover:text-white/85 sm:text-[2.4rem]"
             style={{ display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
             {titleNode}
           </h2>
-          <span className="mt-2 inline-flex items-center gap-1 text-xs font-bold uppercase tracking-[0.14em] opacity-90" style={{ color: theme.accent }}>
+          <span className="mt-2 inline-flex items-center gap-1 text-xs font-semibold uppercase tracking-[0.14em] opacity-90" style={{ color: theme.accent }}>
             {primary.label} <ArrowUpRight size={13} />
           </span>
         </a>
@@ -337,19 +337,19 @@ export function HeroShowcase({ story, sample }: { story: HeroStory; sample?: boo
       {quote && (
         <blockquote className="mt-5 border-l-4 pl-4" style={{ borderColor: theme.accent }}>
           <p className="max-w-2xl text-[15px] leading-relaxed text-text-secondary">
-            <strong className="font-bold text-text-primary">{focal}</strong>{rest ? ` ${rest}` : ''}
+            <strong className="font-semibold text-text-primary">{focal}</strong>{rest ? ` ${rest}` : ''}
           </p>
         </blockquote>
       )}
       <div className="mt-5 flex flex-wrap items-center gap-2.5">
         <a href={primary.href} target="_blank" rel="noopener noreferrer"
-          className="rounded-lg px-4 py-2 text-xs font-bold text-[#0b0b0d] transition-opacity hover:opacity-85"
+          className="rounded-lg px-4 py-2 text-xs font-semibold text-[#0b0b0d] transition-opacity hover:opacity-85"
           style={{ background: theme.accent }}>
           {primary.label}
         </a>
         {secondary && (
           <a href={secondary.href} target="_blank" rel="noopener noreferrer"
-            className="rounded-lg border border-white/15 bg-white/5 px-4 py-2 text-xs font-semibold text-text-primary backdrop-blur-sm transition-colors hover:bg-white/10">
+            className="rounded-lg border border-white/15 bg-white/5 px-4 py-2 text-xs font-semibold text-text-primary  transition-colors hover:bg-white/10">
             {secondary.label}
           </a>
         )}
