@@ -14,6 +14,11 @@ describe('project verification workflow', () => {
     assert.match(pkg.scripts.check, /typecheck:server/)
   })
 
+  it('waits for the API with the public GET health check', () => {
+    const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'))
+    assert.match(pkg.scripts.dev, /wait-on http-get:\/\/localhost:3001\/api\/health/)
+  })
+
   it('includes every server TypeScript file in a server config', () => {
     const path = join(root, 'tsconfig.server.json')
     assert.equal(existsSync(path), true)

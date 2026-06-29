@@ -27,6 +27,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **Authenticated development startup completes.** The Vite launcher now waits with a public GET health check instead of an authenticated HEAD request that could stall `npm run dev` indefinitely.
 - **Trace failures are truthful.** Failed trace requests now show an actionable error state rather than substituting a fabricated demo trace.
 - **Server code is strictly typechecked.** SQLite casts, optional-default merging, parameter normalization, and an unawaited flow-map memory load were corrected while bringing the backend into the standard project check.
 
@@ -37,7 +38,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Tests
 
-- Expanded route, authentication, journaling, incident, offline-sync, briefing, container, and regression coverage to 229 passing tests, alongside frontend/server typechecks and a production build smoke test.
+- Expanded route, authentication, journaling, incident, offline-sync, briefing, container, and regression coverage to 230 passing tests, alongside frontend/server typechecks and a production build smoke test.
 
 ---
 

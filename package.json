@@ -4,7 +4,7 @@
   "version": "0.17.0",
   "type": "module",
   "scripts": {
-    "dev": "concurrently -n \"api,vite\" -c \"cyan,magenta\" \"npm run server\" \"wait-on http://localhost:3001/api/health && vite\"",
+    "dev": "concurrently -n \"api,vite\" -c \"cyan,magenta\" \"npm run server\" \"wait-on http-get://localhost:3001/api/health && vite\"",
     "server": "tsx watch --ignore data/ server/index.ts",
     "build": "vite build --emptyOutDir false",
     "preview": "vite preview",
