@@ -18,6 +18,7 @@ import {
   openDocFile, openDocsTab, openInboxItem, openNotePage, openTasksTab,
 } from '../../lib/quickActions'
 import { usePaused, toggleRefreshPaused, isRefreshPaused } from '../../lib/refreshBus'
+import { listOffline, OFFLINE_QUEUE_EVENT } from '../../lib/offlineQueue'
 
 interface NavView { id: View; label: string }
 interface TopBarProps {
@@ -194,6 +195,7 @@ function GlobalSearch({ onClose, onNavigate, views }: { onClose: () => void; onN
         icon: <NotebookPen size={13} />,
         onSelect: async () => {
           const created = await createQuickNotePage({ title: 'Untitled', content: '' })
+          if ('queued' in created) return
           openNotePage(created.page.id)
           openDocsTab('notes')
           onNavigate('docs')
@@ -233,6 +235,7 @@ function GlobalSearch({ onClose, onNavigate, views }: { onClose: () => void; onN
         icon: <NotebookPen size={13} />,
         onSelect: async () => {
           const created = await createQuickNotePage({ title: qTrimmed.slice(0, 80), content: qTrimmed })
+          if ('queued' in created) return
           openNotePage(created.page.id)
           openDocsTab('notes')
           onNavigate('docs')
@@ -437,6 +440,8 @@ const DOT_LABEL: Record<ConnectivityIndicator['status'], string> = {
 function ConnectivityStrip() {
   const [indicators, setIndicators] = useState<ConnectivityIndicator[] | null>(null)
   const [open, setOpen] = useState(false)
+  const [deviceOnline, setDeviceOnline] = useState(() => navigator.onLine)
+  const [queued, setQueued] = useState(() => listOffline(localStorage).length)
 
   useEffect(() => {
     let on = true
@@ -449,11 +454,17 @@ function ConnectivityStrip() {
     return () => { on = false; clearInterval(t) }
   }, [])
 
-  const dots = indicators ?? [
+  useEffect(() => {
+    const update = () => { setDeviceOnline(navigator.onLine); setQueued(listOffline(localStorage).length) }
+    window.addEventListener('online', update); window.addEventListener('offline', update); window.addEventListener(OFFLINE_QUEUE_EVENT, update)
+    return () => { window.removeEventListener('online', update); window.removeEventListener('offline', update); window.removeEventListener(OFFLINE_QUEUE_EVENT, update) }
+  }, [])
+
+  const dots: ConnectivityIndicator[] = [{ id: 'device', label: 'This device', status: deviceOnline ? (queued ? 'degraded' : 'ok') : 'down', detail: deviceOnline ? (queued ? `${queued} capture${queued === 1 ? '' : 's'} waiting to sync` : 'Online · offline queue clear') : `${queued} capture${queued === 1 ? '' : 's'} queued offline` }, ...(indicators ?? [
     { id: 'tailscale', label: 'Tailscale Node', status: 'down' as const, detail: 'checking…' },
     { id: 'gateway',   label: 'Gateway WS',     status: 'down' as const, detail: 'checking…' },
     { id: 'lancedb',   label: 'LanceDB',        status: 'down' as const, detail: 'checking…' },
-  ]
+  ])]
   const worst: ConnectivityIndicator['status'] =
     dots.some(d => d.status === 'down') ? 'down' : dots.some(d => d.status === 'degraded') ? 'degraded' : 'ok'
 

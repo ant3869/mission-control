@@ -8,6 +8,8 @@ import type { View } from './types'
 import { NAVIGATE_EVENT, openHubTab } from './lib/quickActions'
 import { startDataRefresh, DATA_REFRESH_EVENT } from './lib/dataRefresh'
 import { shouldRenderView } from './viewLifecycle'
+import { API_BASE } from './lib/api'
+import { startOfflineSync } from './lib/offlineQueue'
 
 // Lazy views: each becomes its own chunk, fetched on first navigation, so the
 // initial bundle is just the shell + landing page instead of all ~25 views.
@@ -151,6 +153,7 @@ export default function App() {
 
   // Start the SSE data-refresh connection once for the lifetime of the app.
   useEffect(() => startDataRefresh(), [])
+  useEffect(() => startOfflineSync(API_BASE || window.location.origin), [])
 
   // Ctrl+1–9: jump directly to the Nth view (ordered as in VIEW_TITLES).
   useEffect(() => {

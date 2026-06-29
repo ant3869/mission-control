@@ -223,6 +223,7 @@ export function Links() {
         content: buildNoteContent(item),
         tags: [...new Set(['link', ...item.tags])],
       })
+      if ('queued' in created) return
       openNotePage(created.page.id)
       requestNavigate('docs')
       openDocsTab('notes')

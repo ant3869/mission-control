@@ -16,6 +16,7 @@ import {
 import { useEscapeKey } from '../hooks/useEscapeKey'
 import { isRefreshPaused } from '../lib/refreshBus'
 import { friendlyError } from '../lib/friendlyError'
+import { todosApi } from '../lib/api'
 
 // ─── Types (mirror server/routes/todos.ts) ────────────────────────────────────
 
@@ -91,10 +92,8 @@ async function fetchTodos(): Promise<{ todos: Todo[] }> {
   return res.json()
 }
 
-async function createTodo(body: { title: string; severity: Severity; horizon: Horizon; dueDate?: string; details?: TodoDetails; rawInput?: string }): Promise<{ todo: Todo }> {
-  const res = await fetch('/api/todos', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
-  if (!res.ok) throw new Error(await res.text())
-  return res.json()
+async function createTodo(body: { title: string; severity: Severity; horizon: Horizon; dueDate?: string; details?: TodoDetails; rawInput?: string }): Promise<{ todo?: Todo; queued?: boolean }> {
+  return todosApi.create(body) as Promise<{ todo?: Todo; queued?: boolean }>
 }
 
 async function patchTodo(id: string, body: TodoPatch): Promise<{ todo: Todo }> {
@@ -970,7 +969,7 @@ export default function Todos() {
         details,
         rawInput: title.trim(),
       })
-      setTodos(ts => [r.todo, ...ts])
+      if (r.todo) setTodos(ts => [r.todo!, ...ts])
       setTitle('')
       setQuickDetails(emptyDetails())
       setShowDetails(false)

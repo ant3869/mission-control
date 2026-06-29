@@ -533,6 +533,7 @@ export function Notes() {
 
     if (!sectionId || !notebookId) return
     const res = await notesApi.createPage({ sectionId, notebookId, title: 'Untitled', content: '', tags: [] })
+    if ('queued' in res) return
     setPages(prev => [res.page, ...prev])
     setActivePage(res.page)
     setPreviewMode(false)

@@ -54,6 +54,7 @@ import { createSessionRouter } from './routes/session.js'
 import { createJournalMiddleware, getJournalStore } from './lib/journal.js'
 import { journalRouter } from './routes/journal.js'
 import { incidentsRouter } from './routes/incidents.js'
+import { createIdempotencyMiddleware, getIdempotencyStore } from './lib/idempotency.js'
 
 const app = express()
 const PORT = Number(process.env.API_PORT ?? 3001)
@@ -81,6 +82,7 @@ app.use(express.json())
 app.use('/api/session', createSessionRouter(dashboardAuth))
 app.use('/api', createDashboardAuthMiddleware(dashboardAuth))
 app.use('/api', generalLimit)
+app.use('/api', createIdempotencyMiddleware(getIdempotencyStore()))
 app.use('/api', createJournalMiddleware(journalStore))
 
 app.use('/api/auth',     authRouter)

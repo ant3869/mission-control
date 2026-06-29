@@ -15,6 +15,7 @@ import {
 import { useEscapeKey } from '../hooks/useEscapeKey'
 import { isRefreshPaused } from '../lib/refreshBus'
 import { friendlyError } from '../lib/friendlyError'
+import { toBuy } from '../lib/api'
 
 // ─── Types (mirror server/routes/tobuy.ts) ────────────────────────────────────
 
@@ -58,10 +59,8 @@ async function fetchItems(): Promise<{ items: BuyItem[] }> {
   return res.json()
 }
 
-async function createItem(body: { title: string; priority: Priority; quantity?: number; estimatedPrice?: number }): Promise<{ item: BuyItem }> {
-  const res = await fetch('/api/tobuy', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
-  if (!res.ok) throw new Error(await res.text())
-  return res.json()
+async function createItem(body: { title: string; priority: Priority; quantity?: number; estimatedPrice?: number }): Promise<{ item?: BuyItem; queued?: boolean }> {
+  return toBuy.create(body) as Promise<{ item?: BuyItem; queued?: boolean }>
 }
 
 async function patchItem(id: string, body: BuyPatch): Promise<{ item: BuyItem }> {
@@ -622,7 +621,7 @@ export default function ToBuy() {
     setAdding(true); setError(null)
     try {
       const r = await createItem(parsed)
-      setItems(is => [r.item, ...is])
+      if (r.item) setItems(is => [r.item!, ...is])
       setTitle('')
       inputRef.current?.focus()
     } catch (e: any) { setError(e.message) }

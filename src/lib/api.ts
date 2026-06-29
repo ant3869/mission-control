@@ -1378,7 +1378,7 @@ export interface LiveTodo {
 export const todosApi = {
   list: () => get<{ todos: LiveTodo[]; fetchedAt: string }>('/todos'),
   create: (body: { title: string; severity?: TodoSeverity; horizon?: TodoHorizon; dueDate?: string; calendarSyncEnabled?: boolean }) =>
-    post<{ todo: LiveTodo }>('/todos', body),
+    post<{ todo?: LiveTodo; queued?: boolean; offline?: boolean }>('/todos', body),
   update: (id: string, body: Partial<Pick<LiveTodo, 'title' | 'notes' | 'severity' | 'horizon' | 'dueDate' | 'done' | 'calendarSyncEnabled'>>) =>
     patch<{ todo: LiveTodo }>(`/todos/${id}`, body),
 }
@@ -1441,6 +1441,7 @@ export interface BuyItem {
 
 export const toBuy = {
   list: () => get<{ items: BuyItem[] }>('/tobuy'),
+  create: (body: { title: string; priority: BuyPriority; quantity?: number; estimatedPrice?: number }) => post<{ item?: BuyItem; queued?: boolean; offline?: boolean }>('/tobuy', body),
 }
 
 // ─── Inbox ────────────────────────────────────────────────────────────────────
@@ -1606,7 +1607,7 @@ export const notes = {
                      get<PagesResponse>('/notes/pages', params as any),
   getPage:         (id: string)                                   => get<PageResponse>(`/notes/pages/${id}`),
   createPage:      (body: Pick<NotePage, 'sectionId' | 'notebookId' | 'title'> & { content?: string; tags?: string[]; pinned?: boolean }) =>
-                     post<PageResponse>('/notes/pages', body),
+                     post<PageResponse | { queued: true; offline: true }>('/notes/pages', body),
   updatePage:      (id: string, body: Partial<Pick<NotePage, 'title' | 'content' | 'tags' | 'pinned'>>) =>
                      patch<PageResponse>(`/notes/pages/${id}`, body),
   deletePage:      (id: string)                                   => del<{ ok: boolean }>(`/notes/pages/${id}`),
