@@ -21,7 +21,6 @@
     "@capacitor/cli": "^8.4.1",
     "@capacitor/core": "^8.4.1",
     "@capacitor/ios": "^8.4.1",
-    "@google/design.md": "^0.3.0",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
     "clsx": "^2.1.1",
@@ -34,7 +33,6 @@
     "lucide-react": "0.489.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "supermemory": "^4.24.12",
     "tsx": "^4.22.4"
   },
   "devDependencies": {

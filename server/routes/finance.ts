@@ -4,11 +4,11 @@
 //          (!spend) and optionally from the UI. Read by GET /api/finance.
 
 import { Router } from 'express'
-import { readFileSync, existsSync, mkdirSync } from 'node:fs'
+import { existsSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { emitDataChanged } from '../lib/dataEvents.js'
-import { saveJson } from '../lib/jsonStore.js'
+import { loadJson, saveJson } from '../lib/jsonStore.js'
 
 export const financeRouter = Router()
 
@@ -28,10 +28,7 @@ function financePath(): string {
 }
 
 function loadEntries(): FinanceEntry[] {
-  const path = financePath()
-  if (!existsSync(path)) return []
-  try { return JSON.parse(readFileSync(path, 'utf8')) as FinanceEntry[] }
-  catch { return [] }
+  return loadJson<FinanceEntry[]>(financePath(), [])
 }
 
 function saveEntries(entries: FinanceEntry[]): void {

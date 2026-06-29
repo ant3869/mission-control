@@ -6,58 +6,31 @@
  */
 
 import type { TraceRun } from '../components/trace/types'
+import { request } from './request'
 export type { TraceRun, TraceSpan, SpanKind, SpanStatus } from '../components/trace/types'
+export { ApiError } from './request'
 
 // Empty string → use relative paths (web/dev). Absolute URL → mobile/remote.
 export const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '')
 
-export class ApiError extends Error {
-  constructor(public status: number, message: string) {
-    super(message)
-    this.name = 'ApiError'
-  }
-}
-
 async function get<T>(path: string, params?: Record<string, string | number>): Promise<T> {
-  const origin = API_BASE || window.location.origin
-  const url = new URL(`/api${path}`, origin)
-  if (params) {
-    for (const [k, v] of Object.entries(params)) {
-      url.searchParams.set(k, String(v))
-    }
-  }
-  const res  = await fetch(url.toString(), { credentials: 'include' })
-  const json = await res.json().catch(() => ({ error: res.statusText }))
-  if (!res.ok) throw new ApiError(res.status, json.error ?? res.statusText)
-  return json as T
+  return request<T>({ baseUrl: API_BASE || window.location.origin, path: `/api${path}`, params })
 }
 
 async function post<T>(path: string, body: unknown): Promise<T> {
-  const res  = await fetch(`${API_BASE}/api${path}`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
-  const json = await res.json().catch(() => ({ error: res.statusText }))
-  if (!res.ok) throw new ApiError(res.status, json.error ?? res.statusText)
-  return json as T
+  return request<T>({ baseUrl: API_BASE || window.location.origin, path: `/api${path}`, method: 'POST', body })
 }
 
 async function patch<T>(path: string, body: unknown): Promise<T> {
-  const res  = await fetch(`${API_BASE}/api${path}`, { method: 'PATCH', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
-  const json = await res.json().catch(() => ({ error: res.statusText }))
-  if (!res.ok) throw new ApiError(res.status, json.error ?? res.statusText)
-  return json as T
+  return request<T>({ baseUrl: API_BASE || window.location.origin, path: `/api${path}`, method: 'PATCH', body })
 }
 
 async function put<T>(path: string, body: unknown): Promise<T> {
-  const res  = await fetch(`${API_BASE}/api${path}`, { method: 'PUT', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
-  const json = await res.json().catch(() => ({ error: res.statusText }))
-  if (!res.ok) throw new ApiError(res.status, json.error ?? res.statusText)
-  return json as T
+  return request<T>({ baseUrl: API_BASE || window.location.origin, path: `/api${path}`, method: 'PUT', body })
 }
 
 async function del<T>(path: string): Promise<T> {
-  const res  = await fetch(`${API_BASE}/api${path}`, { method: 'DELETE', credentials: 'include' })
-  const json = await res.json().catch(() => ({ error: res.statusText }))
-  if (!res.ok) throw new ApiError(res.status, json.error ?? res.statusText)
-  return json as T
+  return request<T>({ baseUrl: API_BASE || window.location.origin, path: `/api${path}`, method: 'DELETE' })
 }
 
 export interface DashboardSessionStatus { required: boolean; authenticated: boolean }

@@ -6,11 +6,11 @@
 //          To-Buy, Inventory) to show a live net-worth picture. Mirrors routes/tobuy.ts.
 
 import { Router } from 'express'
-import { readFileSync, existsSync, mkdirSync } from 'node:fs'
+import { existsSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { emitDataChanged } from '../lib/dataEvents.js'
-import { saveJson } from '../lib/jsonStore.js'
+import { loadJson, saveJson } from '../lib/jsonStore.js'
 
 export const financialsRouter = Router()
 
@@ -50,12 +50,8 @@ function dataPath(): string {
 }
 
 function loadEntries(): FinanceEntry[] {
-  const path = dataPath()
-  if (!existsSync(path)) return []
-  try {
-    const parsed = JSON.parse(readFileSync(path, 'utf8')) as FinanceEntry[]
-    return Array.isArray(parsed) ? parsed : []
-  } catch { return [] }
+  const parsed = loadJson<FinanceEntry[]>(dataPath(), [])
+  return Array.isArray(parsed) ? parsed : []
 }
 
 function saveEntries(entries: FinanceEntry[]): void {

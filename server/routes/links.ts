@@ -1,8 +1,8 @@
 import { Router } from 'express'
-import { existsSync, mkdirSync, readFileSync } from 'fs'
+import { existsSync, mkdirSync } from 'fs'
 import { join } from 'path'
 import { randomUUID } from 'crypto'
-import { saveJson } from '../lib/jsonStore.js'
+import { loadJson, saveJson } from '../lib/jsonStore.js'
 
 export const linksRouter = Router()
 
@@ -28,13 +28,7 @@ function linksPath(): string {
 }
 
 function readLinks(): StoredLink[] {
-  const path = linksPath()
-  if (!existsSync(path)) return []
-  try {
-    return JSON.parse(readFileSync(path, 'utf8')) as StoredLink[]
-  } catch {
-    return []
-  }
+  return loadJson<StoredLink[]>(linksPath(), [])
 }
 
 function writeLinks(links: StoredLink[]): void {
