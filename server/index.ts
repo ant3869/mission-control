@@ -55,6 +55,8 @@ import { createJournalMiddleware, getJournalStore } from './lib/journal.js'
 import { journalRouter } from './routes/journal.js'
 import { incidentsRouter } from './routes/incidents.js'
 import { createIdempotencyMiddleware, getIdempotencyStore } from './lib/idempotency.js'
+import { briefingRouter } from './routes/briefing.js'
+import { startBriefingScheduler } from './lib/briefing.js'
 
 const app = express()
 const PORT = Number(process.env.API_PORT ?? 3001)
@@ -126,6 +128,7 @@ app.use('/api/search',  searchRouter)
 app.use('/api/export',  exportRouter)
 app.use('/api/journal', journalRouter)
 app.use('/api/incidents', incidentsRouter)
+app.use('/api/briefing', briefingRouter)
 
 app.get('/api/health', (_req, res) => res.json({ ok: true, ts: new Date().toISOString() }))
 
@@ -150,6 +153,7 @@ app.use((err: unknown, _req: import('express').Request, res: import('express').R
 app.listen(PORT, HOST, () => {
   console.log(`Mission Control API → http://${HOST}:${PORT}`)
   startMemoryCollector()
+  startBriefingScheduler()
   if (process.env.DISCORD_BOT_TOKEN) {
     import('./lib/discordBot.js').then(({ startDiscordBot }) => startDiscordBot(PORT))
   }

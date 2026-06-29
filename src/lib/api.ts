@@ -2185,3 +2185,14 @@ export const incidents = {
   resolve: (id: string) => post<{ ok: boolean }>(`/incidents/${encodeURIComponent(id)}/resolve`, {}),
   replay: (id: string) => get<{ incident: Incident; timeline: Array<{ kind: 'event' | 'operation'; ts: string; data: unknown }> }>(`/incidents/${encodeURIComponent(id)}/replay`),
 }
+
+export interface DailyBriefing {
+  date: string; generatedAt: string; summary: string; attention: string[]
+  metrics: { openIncidents: number; criticalIncidents: number; overdueTodos: number; dueToday: number; activeProjects: number; recentOperations: number }
+}
+export interface BriefingPreferences { enabled: boolean; time: string; discord: boolean; browser: boolean; lastSentDate: string }
+export const briefingApi = {
+  get: () => get<{ briefing: DailyBriefing; preferences: BriefingPreferences }>('/briefing'),
+  generate: () => post<{ briefing: DailyBriefing }>('/briefing/generate', {}),
+  preferences: (body: Partial<BriefingPreferences>) => put<{ preferences: BriefingPreferences }>('/briefing/preferences', body),
+}

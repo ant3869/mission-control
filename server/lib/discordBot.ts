@@ -26,7 +26,7 @@ import {
   extractSeverity, extractDue, extractPrice, extractPriority, extractFlag, extractFlagInt,
   parseSpend, formatDueDate, fmtList, fmtMoney,
 } from './discordParsers.js'
-import { discordNotifier, type ApprovalEvent, type ResearchDoneEvent, type AlertFiredEvent } from './discordNotifier.js'
+import { discordNotifier, type ApprovalEvent, type ResearchDoneEvent, type AlertFiredEvent, type BriefingEvent } from './discordNotifier.js'
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
@@ -998,6 +998,12 @@ function setupNotifierListeners(): void {
       notifiedAlerts.add(fingerprint)
       const sevEmoji = e.severity === 'critical' ? '🔴' : e.severity === 'warning' ? '🟠' : 'ℹ️'
       await sendNotification(`${sevEmoji}  **Alert: ${e.ruleName}**\n${e.message}`)
+      return
+    }
+
+    if (event.kind === 'briefing') {
+      const e = event as BriefingEvent
+      await sendNotification(`☀️  **${e.title}**\n${e.message}`)
     }
   })
 }

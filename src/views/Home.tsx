@@ -22,6 +22,7 @@ import {
   type InboxItem, type LinkItem, type AgentCronJob, type CalendarEvent,
 } from '../lib/api'
 import { Histogram, SegmentBar, Donut, fmtNum } from '../components/charts'
+import { BriefingCard } from '../components/BriefingCard'
 import { isRefreshPaused } from '../lib/refreshBus'
 import { openInboxItem as focusInboxItem, openTasksTab, openHubTab } from '../lib/quickActions'
 import type { View } from '../types'
@@ -673,6 +674,8 @@ export function Home({ onNavigate }: { onNavigate: (view: View) => void }) {
           </div>
         </div>
       </header>
+
+      <BriefingCard />
 
       <div className="max-w-[1400px] mx-auto p-4 lg:p-6 space-y-4">
 

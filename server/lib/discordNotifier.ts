@@ -39,7 +39,9 @@ export interface AlertFiredEvent {
   firedAt:  string
 }
 
-export type DiscordNotifierEvent = ApprovalEvent | ResearchDoneEvent | AlertFiredEvent
+export interface BriefingEvent { kind: 'briefing'; title: string; message: string }
+
+export type DiscordNotifierEvent = ApprovalEvent | ResearchDoneEvent | AlertFiredEvent | BriefingEvent
 
 // ─── Singleton ────────────────────────────────────────────────────────────────
 
