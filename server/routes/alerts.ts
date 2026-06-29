@@ -9,6 +9,7 @@ import { join } from 'node:path'
 import { getRawEvents } from '../lib/agentEvents.js'
 import { getSpendSnapshot } from '../lib/spendCache.js'
 import { saveJson } from '../lib/jsonStore.js'
+import { getIncidentStore } from '../lib/incidentStore.js'
 
 export const alertsRouter = Router()
 
@@ -226,5 +227,6 @@ alertsRouter.get('/active', (_req, res) => {
     }
   } catch { /* budgets unavailable — skip */ }
 
+  getIncidentStore().sync(alerts)
   res.json({ alerts, total: alerts.length, fetchedAt: new Date().toISOString() })
 })

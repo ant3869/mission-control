@@ -2171,3 +2171,16 @@ export const journal = {
   list: () => get<{ entries: OperationJournalEntry[] }>('/journal'),
   undo: (id: string) => post<{ ok: boolean }>(`/journal/${encodeURIComponent(id)}/undo`, {}),
 }
+
+export interface Incident {
+  id: string; ruleId: string; title: string; severity: string; message: string
+  status: 'open' | 'resolved'; firstSeenAt: string; lastSeenAt: string
+  occurrences: number; resolvedAt: string | null
+}
+
+export const incidents = {
+  list: () => get<{ incidents: Incident[]; open: number; resolved: number }>('/incidents'),
+  refresh: async () => { await get('/alerts/active'); return get<{ incidents: Incident[]; open: number; resolved: number }>('/incidents') },
+  resolve: (id: string) => post<{ ok: boolean }>(`/incidents/${encodeURIComponent(id)}/resolve`, {}),
+  replay: (id: string) => get<{ incident: Incident; timeline: Array<{ kind: 'event' | 'operation'; ts: string; data: unknown }> }>(`/incidents/${encodeURIComponent(id)}/replay`),
+}

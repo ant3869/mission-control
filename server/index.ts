@@ -53,6 +53,7 @@ import {
 import { createSessionRouter } from './routes/session.js'
 import { createJournalMiddleware, getJournalStore } from './lib/journal.js'
 import { journalRouter } from './routes/journal.js'
+import { incidentsRouter } from './routes/incidents.js'
 
 const app = express()
 const PORT = Number(process.env.API_PORT ?? 3001)
@@ -122,6 +123,7 @@ app.use('/api/office',  officeRouter)
 app.use('/api/search',  searchRouter)
 app.use('/api/export',  exportRouter)
 app.use('/api/journal', journalRouter)
+app.use('/api/incidents', incidentsRouter)
 
 app.get('/api/health', (_req, res) => res.json({ ok: true, ts: new Date().toISOString() }))
 
