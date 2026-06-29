@@ -13,8 +13,9 @@ function idea(title: string, description = '', category = 'raspberry-pi-build'):
   return {
     title, description, category,
     whyFit: '', haveParts: [], missingParts: [], difficulty: 'medium',
-    timeEstimate: '', costEstimate: '', confidence: 70, coolness: 70,
+    timeEstimate: '', costEstimate: '', confidence: 70, coolness: 70, usefulnessScore: 70,
     requiredTools: [], relatedItemIds: [], nextStep: '',
+    influenceMetadata: { inventoryFactors: [], matchedCategories: [], priorLikedInfluence: [], priorRejectedInfluence: [], rejectionNotes: [], preferenceSignals: [], contextualFactors: [] },
   }
 }
 

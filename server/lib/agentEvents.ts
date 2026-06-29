@@ -203,7 +203,7 @@ function allRows(source: AgentSource): StoredRow[] {
     SELECT id, source, event_type, session_key, agent_id, ts, payload_json
     FROM openclaw_events WHERE source = ?
     ORDER BY ts ASC, id ASC
-  `).all(source) as StoredRow[]
+  `).all(source) as unknown as StoredRow[]
 }
 
 // Raw event feed — redacted on read because rows captured before redaction was
@@ -213,7 +213,7 @@ export function getRawEvents(source: AgentSource, limit = 500) {
     SELECT id, source, event_type, session_key, agent_id, ts, payload_json
     FROM openclaw_events WHERE source = ?
     ORDER BY ts DESC, id DESC LIMIT ?
-  `).all(source, limit) as StoredRow[]
+  `).all(source, limit) as unknown as StoredRow[]
 
   return rows.map(row => ({
     id: row.id,

@@ -301,11 +301,18 @@ function runToRow(run: BenchmarkRun): Record<string, any> {
   }
 }
 
-export function createBenchmarkRun(input: Omit<BenchmarkRun, 'id' | 'ts'> & { id?: string; ts?: string }): BenchmarkRun {
+type BenchmarkRunDefaults = 'answer' | 'toolSequence' | 'repeatedToolCalls' | 'oscillations' | 'noProgressTools'
+type BenchmarkRunInput = Omit<BenchmarkRun, 'id' | 'ts' | BenchmarkRunDefaults>
+  & Partial<Pick<BenchmarkRun, BenchmarkRunDefaults>>
+  & { id?: string; ts?: string }
+
+export function createBenchmarkRun(input: BenchmarkRunInput): BenchmarkRun {
   const run: BenchmarkRun = {
-    id: input.id ?? randomUUID(), ts: input.ts ?? new Date().toISOString(),
-    answer: '', toolSequence: [], repeatedToolCalls: 0, oscillations: 0, noProgressTools: 0,
     ...input,
+    id: input.id ?? randomUUID(), ts: input.ts ?? new Date().toISOString(),
+    answer: input.answer ?? '', toolSequence: input.toolSequence ?? [],
+    repeatedToolCalls: input.repeatedToolCalls ?? 0, oscillations: input.oscillations ?? 0,
+    noProgressTools: input.noProgressTools ?? 0,
   } as BenchmarkRun
   db.prepare(`INSERT INTO benchmark_runs
     (id,taskId,platform,agent,model,status,outcome,toolCalls,wastedToolCalls,retries,durationMs,tokens,cost,rubricScore,notes,

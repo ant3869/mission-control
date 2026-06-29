@@ -8,7 +8,10 @@
     "server": "tsx watch --ignore data/ server/index.ts",
     "build": "vite build --emptyOutDir false",
     "preview": "vite preview",
-    "test": "node --import tsx --test \"server/**/*.test.ts\"",
+    "test": "node --import tsx --test \"server/**/*.test.ts\" \"src/**/*.test.ts\"",
+    "typecheck:web": "tsc --noEmit -p tsconfig.json --pretty false",
+    "typecheck:server": "tsc --noEmit -p tsconfig.server.json --pretty false",
+    "check": "npm run typecheck:web && npm run typecheck:server",
     "cap:sync": "npm run build && npx cap sync",
     "cap:android": "npm run build && npx cap sync android && npx cap open android",
     "cap:ios": "npm run build && npx cap sync ios && npx cap open ios"

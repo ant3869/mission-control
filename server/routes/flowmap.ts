@@ -176,7 +176,7 @@ async function collect(source: AgentSource, since: number) {
   const msgs   = inWindow.reduce((n, s) => n + (s.messageCount ?? 0), 0)
   const tokens = inWindow.reduce((n, s) => n + (s.inputTokens ?? 0) + (s.outputTokens ?? 0), 0)
   const cronRuns = cron.reduce((n, j) => n + (j.runCount ?? 0), 0)
-  const mem    = getMemory(source).length
+  const mem    = (await getMemory(source)).length
 
   const sessionSamples: GSample[] = inWindow.slice(0, 5).map(s => ({
     ts: s.lastActiveAt ?? undefined,

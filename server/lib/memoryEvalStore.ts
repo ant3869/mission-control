@@ -319,13 +319,18 @@ export function listMemoryRuns(filter?: { platform?: EvalPlatform; taskId?: stri
   return rows
 }
 
-export function createMemoryRun(input: Omit<MemoryBenchmarkRun, 'id' | 'ts'> & { id?: string; ts?: string }): MemoryBenchmarkRun {
+type MemoryRunDefaults = 'denialDetected' | 'scoringNote'
+type MemoryRunInput = Omit<MemoryBenchmarkRun, 'id' | 'ts' | MemoryRunDefaults>
+  & Partial<Pick<MemoryBenchmarkRun, MemoryRunDefaults>>
+  & { id?: string; ts?: string }
+
+export function createMemoryRun(input: MemoryRunInput): MemoryBenchmarkRun {
   const run: MemoryBenchmarkRun = {
+    ...input,
     id: input.id ?? randomUUID(),
     ts: input.ts ?? new Date().toISOString(),
-    denialDetected: false,
-    scoringNote: '',
-    ...input,
+    denialDetected: input.denialDetected ?? false,
+    scoringNote: input.scoringNote ?? '',
   } as MemoryBenchmarkRun
   db.prepare(`INSERT INTO memory_benchmark_runs
     (id,taskId,platform,agent,model,status,providersUsed,hits,expectedFound,expectedTotal,forbiddenFound,irrelevantHits,

@@ -87,10 +87,10 @@ function loadTodos(): Todo[] {
     const parsed = JSON.parse(readFileSync(path, 'utf8')) as Todo[]
     // Backfill fields added after rows were first written (dueDate, details, rawInput).
     return parsed.map(t => ({
-      dueDate:  '',
-      rawInput: '',
       ...defaultSyncFields(),
       ...t,
+      dueDate: t.dueDate ?? '',
+      rawInput: t.rawInput ?? '',
       details: { ...emptyDetails(), ...(t.details ?? {}), customFields: { ...((t.details as any)?.customFields ?? {}) } },
     }))
   } catch { return [] }

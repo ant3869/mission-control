@@ -326,7 +326,7 @@ projectsRouter.post('/', (req: Request, res: Response) => {
 })
 
 projectsRouter.patch('/:id', (req: Request, res: Response) => {
-  const { id } = req.params
+  const id = String(req.params.id)
   const store  = readStore()
   const existing = store[id] ?? {}
   const merged: StoredProject = { ...existing, id, ...req.body }
@@ -344,7 +344,7 @@ projectsRouter.patch('/:id', (req: Request, res: Response) => {
 })
 
 projectsRouter.delete('/:id', (req: Request, res: Response) => {
-  const { id } = req.params
+  const id = String(req.params.id)
   const store  = readStore()
   delete store[id]
   writeStore(store)

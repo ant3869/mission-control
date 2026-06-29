@@ -25,6 +25,8 @@ interface InboxTodo {
   severity: 'low' | 'medium' | 'high' | 'critical'
   dueDate: string
   done: boolean
+  createdAt?: string
+  updatedAt?: string
 }
 
 interface InboxTask {
@@ -237,8 +239,8 @@ function aggregateItems(): InboxItem[] {
       sourceLabel: sourceLabel('local'),
       routeView: 'todos',
       routeTab: '',
-      eventAt: todo.updatedAt || todo.createdAt,
-      eventAgo: timeAgo(todo.updatedAt || todo.createdAt),
+      eventAt: todo.updatedAt || todo.createdAt || todo.dueDate,
+      eventAgo: timeAgo(todo.updatedAt || todo.createdAt || todo.dueDate),
       snoozedUntil: state?.snoozedUntil ?? '',
       reviewedAt: state?.reviewedAt ?? '',
       convertedTo: state?.convertedTo ?? null,

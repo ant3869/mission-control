@@ -459,7 +459,7 @@ function fromRunRow(r: any): StoredGenRun {
   }
 }
 function saveRun(r: StoredGenRun): void {
-  db.prepare('INSERT OR REPLACE INTO project_gen_runs (id,status,source,itemCount,newIdeas,error,startedAt,completedAt) VALUES (@id,@status,@source,@itemCount,@newIdeas,@error,@startedAt,@completedAt)').run(r)
+  db.prepare('INSERT OR REPLACE INTO project_gen_runs (id,status,source,itemCount,newIdeas,error,startedAt,completedAt) VALUES (@id,@status,@source,@itemCount,@newIdeas,@error,@startedAt,@completedAt)').run(r as any)
 }
 function latestRun(): StoredGenRun | null {
   const r = db.prepare('SELECT * FROM project_gen_runs ORDER BY startedAt DESC LIMIT 1').get() as any

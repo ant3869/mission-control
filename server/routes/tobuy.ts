@@ -64,7 +64,7 @@ function loadItems(): BuyItem[] {
   if (!existsSync(path)) return []
   try {
     const parsed = JSON.parse(readFileSync(path, 'utf8')) as BuyItem[]
-    return parsed.map(i => ({ quantity: 1, estimatedPrice: 0, ...i }))
+    return parsed.map(i => ({ ...i, quantity: i.quantity ?? 1, estimatedPrice: i.estimatedPrice ?? 0 }))
   } catch { return [] }
 }
 

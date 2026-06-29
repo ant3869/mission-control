@@ -378,5 +378,5 @@ export function clearRuns(scope: 'failed' | 'all'): number {
   const rows = db.prepare("SELECT id FROM bench_runs WHERE status IN ('failed','cancelled')").all() as any[]
   for (const r of rows) db.prepare('DELETE FROM bench_results WHERE run_id = ?').run(r.id)
   const res = db.prepare("DELETE FROM bench_runs WHERE status IN ('failed','cancelled')").run()
-  return res.changes ?? 0
+  return Number(res.changes ?? 0)
 }

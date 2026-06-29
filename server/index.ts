@@ -1,6 +1,8 @@
 import 'dotenv/config'
 import express from 'express'
 import cors from 'cors'
+import { existsSync } from 'node:fs'
+import { join } from 'node:path'
 import { calendarRouter } from './routes/calendar.js'
 import { systemRouter } from './routes/system.js'
 import { radarRouter } from './routes/radar.js'
@@ -51,7 +53,7 @@ import {
 import { createSessionRouter } from './routes/session.js'
 
 const app = express()
-const PORT = process.env.API_PORT ?? 3001
+const PORT = Number(process.env.API_PORT ?? 3001)
 const HOST = resolveApiHost(process.env.API_HOST)
 const dashboardAuth = new DashboardAuth(process.env.DASHBOARD_TOKEN ?? '')
 assertSafeBinding(HOST, process.env.DASHBOARD_TOKEN ?? '')
@@ -73,7 +75,7 @@ app.use(cors({
 }))
 app.use(express.json())
 app.use('/api/session', createSessionRouter(dashboardAuth))
-app.use(createDashboardAuthMiddleware(dashboardAuth))
+app.use('/api', createDashboardAuthMiddleware(dashboardAuth))
 app.use('/api', generalLimit)
 
 app.use('/api/auth',     authRouter)
@@ -117,6 +119,15 @@ app.use('/api/search',  searchRouter)
 app.use('/api/export',  exportRouter)
 
 app.get('/api/health', (_req, res) => res.json({ ok: true, ts: new Date().toISOString() }))
+
+const distDir = join(process.cwd(), 'dist')
+if (process.env.NODE_ENV === 'production' && existsSync(distDir)) {
+  app.use(express.static(distDir))
+  app.use((req, res, next) => {
+    if (req.method !== 'GET' || req.path.startsWith('/api/')) return next()
+    res.sendFile(join(distDir, 'index.html'))
+  })
+}
 
 // Global error handler — catches any unhandled throw from async route handlers.
 // Express 5 propagates async errors automatically; this ensures they're logged
