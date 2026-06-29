@@ -1,12 +1,11 @@
 // Slide-in overlay that fetches a run trace and renders the TraceViewer.
-// Falls back to a deterministic mock trace if the backend is unavailable.
+// Missing traces stay missing: operational telemetry must never be invented.
 
 import { useEffect, useState } from 'react'
 import { X, GitBranch, RefreshCw, AlertTriangle, Loader } from 'lucide-react'
 import { pipeline } from '../../lib/api'
 import { TraceViewer } from './TraceViewer'
-import { buildMockTrace } from './mockTrace'
-import type { TraceRun } from './types'
+import { failedTraceState, initialTraceState, loadedTraceState } from './traceLoadState'
 
 export interface TraceRunRef {
   id:      string
@@ -17,25 +16,19 @@ export interface TraceRunRef {
 }
 
 export function TraceDrawer({ runRef, onClose }: { runRef: TraceRunRef; onClose: () => void }) {
-  const [run, setRun] = useState<TraceRun | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [mocked, setMocked] = useState(false)
+  const [state, setState] = useState(initialTraceState)
+  const [attempt, setAttempt] = useState(0)
 
   useEffect(() => {
     let alive = true
-    setLoading(true); setMocked(false); setRun(null)
+    setState(initialTraceState())
     pipeline.trace(runRef.id, {
       name: runRef.name, model: runRef.model, status: runRef.status, source: runRef.source,
     })
-      .then(r => { if (alive) setRun(r.run) })
-      .catch(() => {
-        if (!alive) return
-        setRun(buildMockTrace({ id: runRef.id, name: runRef.name, model: runRef.model, source: runRef.source }))
-        setMocked(true)
-      })
-      .finally(() => { if (alive) setLoading(false) })
+      .then(r => { if (alive) setState(loadedTraceState(r.run)) })
+      .catch(reason => { if (alive) setState(failedTraceState(reason)) })
     return () => { alive = false }
-  }, [runRef.id, runRef.name, runRef.model, runRef.status, runRef.source])
+  }, [runRef.id, runRef.name, runRef.model, runRef.status, runRef.source, attempt])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
@@ -53,7 +46,7 @@ export function TraceDrawer({ runRef, onClose }: { runRef: TraceRunRef; onClose:
             <GitBranch size={15} className="text-emerald-400 shrink-0" />
             <div className="min-w-0">
               <p className="text-sm font-semibold text-text-primary truncate">{runRef.name || 'Run trace'}</p>
-              <p className="text-xxs text-text-muted truncate">{runRef.id}{mocked && ' · demo data'}</p>
+              <p className="text-xxs text-text-muted truncate">{runRef.id}</p>
             </div>
           </div>
           <button onClick={onClose} className="p-1.5 rounded hover:bg-card-hover text-text-muted hover:text-text-primary transition-colors shrink-0">
@@ -61,25 +54,22 @@ export function TraceDrawer({ runRef, onClose }: { runRef: TraceRunRef; onClose:
           </button>
         </div>
 
-        {mocked && (
-          <div className="flex items-center gap-2 mx-5 mt-3 px-3 py-2 rounded-lg border border-amber-900/40 bg-amber-950/20 text-amber-300 text-xxs shrink-0">
-            <AlertTriangle size={12} className="shrink-0" />
-            Showing demo trace — no live trace data wired for this run yet.
-          </div>
-        )}
-
         {/* Body */}
         <div className="flex-1 min-h-0 p-5">
-          {loading ? (
+          {state.loading ? (
             <div className="flex items-center justify-center h-full text-text-muted gap-2 text-sm">
               <Loader size={16} className="animate-spin" /> Loading trace…
             </div>
-          ) : run ? (
-            <TraceViewer run={run} className="h-full" />
+          ) : state.run ? (
+            <TraceViewer run={state.run} className="h-full" />
           ) : (
             <div className="flex flex-col items-center justify-center h-full text-text-muted gap-2">
-              <RefreshCw size={20} className="opacity-40" />
-              <p className="text-sm">No trace available</p>
+              <AlertTriangle size={20} className="text-amber-400" />
+              <p className="text-sm text-text-secondary">Trace unavailable</p>
+              <p className="max-w-md text-center text-xs">{state.error || 'The server returned no trace data.'}</p>
+              <button onClick={() => setAttempt(value => value + 1)} className="mt-2 flex items-center gap-1.5 rounded border border-border bg-card px-3 py-1.5 text-xs text-text-secondary hover:text-text-primary">
+                <RefreshCw size={12} /> Retry
+              </button>
             </div>
           )}
         </div>
