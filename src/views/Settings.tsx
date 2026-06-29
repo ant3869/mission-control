@@ -3,11 +3,44 @@ import { clsx } from 'clsx'
 import {
   Settings as SettingsIcon, RefreshCw, AlertCircle, CheckCircle2, XCircle,
   Loader, Plug, KeyRound, Save, Zap, CalendarDays, Unplug, Network, Download,
+  Copy, LogOut, Smartphone,
 } from 'lucide-react'
 import {
-  settings as settingsApi, auth as authApi, office as officeApi,
+  settings as settingsApi, auth as authApi, office as officeApi, sessionApi,
   type ConnectorInfo, type ConnectorId, type AuthStatus, type LiveIntegration,
 } from '../lib/api'
+
+function DashboardAccessCard() {
+  const [code, setCode] = useState('')
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  async function createCode() {
+    setBusy(true); setError('')
+    try { setCode((await sessionApi.pairingCode()).code) }
+    catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not create pairing code') }
+    finally { setBusy(false) }
+  }
+
+  async function logout() {
+    await sessionApi.logout()
+    window.location.reload()
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-3 rounded-lg border border-border bg-card p-4 max-w-2xl">
+      <Smartphone size={16} className="text-accent-blue" />
+      <div className="min-w-[180px] flex-1"><p className="text-sm text-text-primary">Pair another device</p><p className="text-xs text-text-muted">Codes work once and expire after five minutes.</p></div>
+      {code ? (
+        <button onClick={() => navigator.clipboard.writeText(code)} className="flex items-center gap-2 rounded border border-border bg-base px-3 py-2 font-mono text-sm tracking-[0.2em] text-text-primary" title="Copy pairing code">
+          {code}<Copy size={12} className="text-text-muted" />
+        </button>
+      ) : <button onClick={createCode} disabled={busy} className="rounded border border-border bg-base px-3 py-2 text-xs text-text-secondary disabled:opacity-40">{busy ? 'Creating…' : 'Create code'}</button>}
+      <button onClick={logout} className="flex items-center gap-1.5 rounded border border-border bg-base px-3 py-2 text-xs text-text-secondary hover:text-accent-red"><LogOut size={12} /> Log out</button>
+      {error && <p className="basis-full text-xs text-accent-red">{error}</p>}
+    </div>
+  )
+}
 
 // ─── Status pill ────────────────────────────────────────────────────────────
 
@@ -504,8 +537,13 @@ export function Settings() {
       )}
 
       <div className="flex-1 overflow-y-auto px-6 py-5">
-        {/* Agent connectors */}
         <p className="text-xxs font-semibold uppercase tracking-wider text-text-muted mb-3 flex items-center gap-1.5">
+          <KeyRound size={11} /> Dashboard access
+        </p>
+        <DashboardAccessCard />
+
+        {/* Agent connectors */}
+        <p className="text-xxs font-semibold uppercase tracking-wider text-text-muted mt-8 mb-3 flex items-center gap-1.5">
           <Plug size={11} /> Agent platforms
         </p>
         {loading ? (

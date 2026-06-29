@@ -26,38 +26,48 @@ async function get<T>(path: string, params?: Record<string, string | number>): P
       url.searchParams.set(k, String(v))
     }
   }
-  const res  = await fetch(url.toString())
+  const res  = await fetch(url.toString(), { credentials: 'include' })
   const json = await res.json().catch(() => ({ error: res.statusText }))
   if (!res.ok) throw new ApiError(res.status, json.error ?? res.statusText)
   return json as T
 }
 
 async function post<T>(path: string, body: unknown): Promise<T> {
-  const res  = await fetch(`${API_BASE}/api${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+  const res  = await fetch(`${API_BASE}/api${path}`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
   const json = await res.json().catch(() => ({ error: res.statusText }))
   if (!res.ok) throw new ApiError(res.status, json.error ?? res.statusText)
   return json as T
 }
 
 async function patch<T>(path: string, body: unknown): Promise<T> {
-  const res  = await fetch(`${API_BASE}/api${path}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+  const res  = await fetch(`${API_BASE}/api${path}`, { method: 'PATCH', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
   const json = await res.json().catch(() => ({ error: res.statusText }))
   if (!res.ok) throw new ApiError(res.status, json.error ?? res.statusText)
   return json as T
 }
 
 async function put<T>(path: string, body: unknown): Promise<T> {
-  const res  = await fetch(`${API_BASE}/api${path}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+  const res  = await fetch(`${API_BASE}/api${path}`, { method: 'PUT', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
   const json = await res.json().catch(() => ({ error: res.statusText }))
   if (!res.ok) throw new ApiError(res.status, json.error ?? res.statusText)
   return json as T
 }
 
 async function del<T>(path: string): Promise<T> {
-  const res  = await fetch(`${API_BASE}/api${path}`, { method: 'DELETE' })
+  const res  = await fetch(`${API_BASE}/api${path}`, { method: 'DELETE', credentials: 'include' })
   const json = await res.json().catch(() => ({ error: res.statusText }))
   if (!res.ok) throw new ApiError(res.status, json.error ?? res.statusText)
   return json as T
+}
+
+export interface DashboardSessionStatus { required: boolean; authenticated: boolean }
+
+export const sessionApi = {
+  status:      ()             => get<DashboardSessionStatus>('/session/status'),
+  login:       (token: string) => post<{ ok: true }>('/session/login', { token }),
+  pair:        (code: string)  => post<{ ok: true }>('/session/pair', { code }),
+  pairingCode: ()              => post<{ code: string; expiresInSeconds: number }>('/session/pairing-code', {}),
+  logout:      ()              => post<{ ok: true }>('/session/logout', {}),
 }
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────

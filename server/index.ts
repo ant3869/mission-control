@@ -42,9 +42,19 @@ import { officeRouter }  from './routes/office.js'
 import { searchRouter }  from './routes/search.js'
 import { exportRouter }  from './routes/export.js'
 import { rateLimit }    from './lib/rateLimit.js'
+import {
+  DashboardAuth,
+  assertSafeBinding,
+  createDashboardAuthMiddleware,
+  resolveApiHost,
+} from './lib/dashboardAuth.js'
+import { createSessionRouter } from './routes/session.js'
 
 const app = express()
 const PORT = process.env.API_PORT ?? 3001
+const HOST = resolveApiHost(process.env.API_HOST)
+const dashboardAuth = new DashboardAuth(process.env.DASHBOARD_TOKEN ?? '')
+assertSafeBinding(HOST, process.env.DASHBOARD_TOKEN ?? '')
 
 // General API rate limit: 300 req/min (protects against runaway loops)
 const generalLimit = rateLimit({ max: 300, windowMs: 60_000 })
@@ -54,13 +64,16 @@ const aiLimit = rateLimit({ max: 20, windowMs: 60_000, message: 'AI API rate lim
 app.use(cors({
   origin: [
     'http://localhost:5173',  // Vite dev server
+    process.env.APP_URL,
     'http://localhost',       // Android Capacitor WebView
     'capacitor://localhost',  // iOS Capacitor WebView
     'ionic://localhost',      // Ionic/Capacitor legacy scheme
-  ],
+  ].filter((origin): origin is string => Boolean(origin)),
   credentials: true,
 }))
 app.use(express.json())
+app.use('/api/session', createSessionRouter(dashboardAuth))
+app.use(createDashboardAuthMiddleware(dashboardAuth))
 app.use('/api', generalLimit)
 
 app.use('/api/auth',     authRouter)
@@ -114,8 +127,8 @@ app.use((err: unknown, _req: import('express').Request, res: import('express').R
   if (!res.headersSent) res.status(500).json({ error: message })
 })
 
-app.listen(PORT, () => {
-  console.log(`Mission Control API → http://localhost:${PORT}`)
+app.listen(PORT, HOST, () => {
+  console.log(`Mission Control API → http://${HOST}:${PORT}`)
   startMemoryCollector()
   if (process.env.DISCORD_BOT_TOKEN) {
     import('./lib/discordBot.js').then(({ startDiscordBot }) => startDiscordBot(PORT))

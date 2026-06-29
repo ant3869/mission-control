@@ -30,7 +30,7 @@ export function startDataRefresh(): () => void {
 
   function connect() {
     if (dead) return
-    es = new EventSource(`${API_BASE}/api/watch/stream`)
+    es = new EventSource(`${API_BASE}/api/watch/stream`, { withCredentials: true })
 
     es.onopen = () => {
       retryDelay = 5_000
