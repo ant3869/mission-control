@@ -20,7 +20,7 @@ The sidebar is grouped into four sections — **Work**, **Knowledge**, **Build**
 
 | View | What you can do |
 |------|----------------|
-| **Home** | Landing overview — mission-control hero, an "at a glance" priority queue (alerts, overdue to-dos, pending approvals, system errors), and quick-view cards for usage, to-dos, projects, alerts, and system health. Every card deep-links to the right hub and tab. |
+| **Home** | Landing overview — mission-control hero, an "at a glance" priority queue, and a daily operations briefing built from current incidents, overdue work, active projects, and recent mutations. Briefing delivery can be scheduled for Discord and permitted browser notifications. |
 | **To-Do** | Personal quick-capture list plus a built-in view switcher — **To-Do** (default), **Tasks** (kanban board), **Approvals**, and **Inbox** — so personal items and agent work live on one page. To-Do: natural-language quick add (`!crit @long tomorrow`), severity levels (low → critical), short/long horizon, due dates with overdue badges, inline editing, a one-click OpenClaw/Hermes research button (summary, action steps, links, key facts), an optional **Additional Details** sub-panel (date, time, location, phone, cost, URL, contact, category, custom fields) with smart auto-detection, and opt-in **Google Calendar sync** for dated items. **Tasks** is a status-column kanban (Active / Queue / Blocked / Completed); **Approvals** reviews agent output (approve / reject / request changes); **Inbox** is a unified priority-sorted feed of approvals, tasks, and to-dos with snooze. |
 | **To-Buy** | Personal shopping list with the same click-to-open drawer as To-Do. Quick add with priority/quantity/price tokens (`power drill !high x1 $89`), a running estimated total, and one-click OpenClaw/Hermes research that returns general info, a fair price + range, online buy links, local store options, and key specs — auto-filling the item's price estimate. |
 | **Spend** | Personal money command center. Separates **Claude Code** (a subscription — shown as token-equivalent *value*, not billed per-token) from **OpenClaw/Hermes agents** (real per-token API spend), plus a "things" lane (open To-Buy total + the value of hardware you already own), and an **Expense Ledger** lane fed by manual entries (log via `!spend` in Discord or the API). 30-day trend, projected monthly, and this-month category breakdown. |
@@ -51,11 +51,11 @@ Five consolidated hubs covering everything your agents do — built on local Cla
 
 | View | What you can do |
 |------|----------------|
-| **Activity** | Live cross-platform agent monitoring in one place: **Live** (real-time tool calls / file reads / commands streamed from OpenClaw + Hermes), **Sessions** (run history with token/message totals and full transcripts), **Brain** (raw event log with tool-loop detection and top tools), **Agents** (who's running and their current state), and **Map** (node-link traffic topology, 1 h / 24 h / 7 d / all). |
+| **Activity** | Live cross-platform monitoring plus **Journal** (redacted mutation history with one-click JSON rollback) and **Controls** (pause/resume/trigger schedules, cancel/retry benchmark runs, and escalate sessions to approvals). |
 | **Usage** | Cost & model analytics: a Claude Code token/cost view (daily trends, token mix, cost anomalies, per-model share, hour-of-day heatmap) plus a **Models** tab (Helicone-style spend, latency, volume, and failure rate per model with a cost-vs-latency scatter). |
 | **Benchmarks** | Benchmark how a model performs *through* OpenClaw/Hermes (App → harness → model → tools/context/routing → result), not raw model APIs. 9 behaviour lanes, 4 task packs, deterministic scoring with normalized failure types, multi-sample **reliability** scoring, a per-task detail drawer, and a model/provider **Compare** fingerprint (reliability, speed ± stdev, verbosity/tokens, est. cost, fences). Runs real dispatches via the Hermes API server, OpenClaw WS, or any OpenAI-compatible `/v1` endpoint (LM Studio / Ollama / vLLM). |
 | **Evals** | Agent performance evaluation hub. Model scorecard leaderboard, agent-model matrix, session trend chart, benchmark task runner (dispatched to the Hermes API server), memory benchmark panel (recall / multihop / temporal / conflict / applied / negative), and a scoring methodology reference. |
-| **Health** | Platform & connector health: **System** (Claude config / MCP / plugin health, uptime, memory file browser), **Security** (connector token health, reachability, auth-error counts, risk badge, live diagnostics probes), **Alerts** (rule builder — error rate / loop / stalled / token spike / no activity — plus fired alerts), and per-platform deep-dive dashboards for **OpenClaw** and **Hermes**. |
+| **Health** | Platform, connector, and security health. Alert rule hits are persisted as stable **Incidents** with open/resolved state and a replay timeline combining agent events with journaled operations. |
 
 ### Settings
 
@@ -133,14 +133,15 @@ When `DISCORD_NOTIFY_CHANNEL_ID` is set, the bot pushes messages to that channel
 | **Research complete** | Agent research on a todo, shopping item, or inventory item finishes (success or failure) |
 | **Due-date reminders** | Todos and tasks due today or overdue — checked every 5 minutes, once per item per day |
 | **Agent alerts** | Fired alert rules (token spike, loop detected, stalled session, etc.) — checked every 2 minutes |
+| **Daily briefing** | Once per configured day, when briefing delivery and Discord are enabled on Home |
 
 ---
 
 ## Tech Stack
 
 - **Frontend** — React 18, TypeScript, Tailwind CSS, Vite, Lucide icons
-- **Backend** — Express 5, tsx (TypeScript execution), dotenv, Node.js ≥ 18
-- **Database** — SQLite via Node's built-in `node:sqlite` (`DatabaseSync`) for inventory, agent-event, and benchmark stores; JSON files for lighter stores (notes, alerts, connectors)
+- **Backend** — Express 5, tsx (TypeScript execution), dotenv, Node.js 22
+- **Database** — SQLite via Node's built-in `node:sqlite` for inventory, events, benchmarks, incidents, idempotency keys, and the operations journal; atomic JSON files for lighter stores
 - **Integrations** — Google Calendar API (OAuth 2), Anthropic API, OpenClaw WebSocket, Hermes REST
 
 ---
@@ -149,7 +150,7 @@ When `DISCORD_NOTIFY_CHANNEL_ID` is set, the bot pushes messages to that channel
 
 ### Prerequisites
 
-- **Node.js** ≥ 18
+- **Node.js** ≥ 22.12
 - **npm** ≥ 9
 
 ### Install
@@ -171,6 +172,8 @@ Required variables (see `.env.example` for details):
 | Variable | Purpose |
 |----------|---------|
 | `API_PORT` | Express server port (default `3001`) |
+| `API_HOST` | Bind address (default `127.0.0.1`). Non-loopback binding requires `DASHBOARD_TOKEN`. |
+| `DASHBOARD_TOKEN` | Required secret for remote/LAN access; remote devices can instead use a five-minute pairing code from Settings. |
 | `GOOGLE_CLIENT_ID` | Google OAuth client ID (Calendar) |
 | `GOOGLE_CLIENT_SECRET` | Google OAuth client secret |
 | `ANTHROPIC_API_KEY` | Anthropic API key (Radar analytics) |
@@ -197,6 +200,15 @@ npm run dev
 ```bash
 npm run build
 ```
+
+Run the complete local verification gate with `npm run check && npm test && npm run build`. The production container runs the same gate while building:
+
+```bash
+docker build -t nexus-command .
+docker run --rm -p 3001:3001 -e DASHBOARD_TOKEN=change-me -e API_HOST=0.0.0.0 nexus-command
+```
+
+Remote/mobile clients set `VITE_API_BASE_URL` to the authenticated server. Additive to-do, shopping, and note captures queue locally while offline, replay FIFO on reconnect, and use idempotency keys to prevent duplicates.
 
 ---
 

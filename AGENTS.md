@@ -41,3 +41,9 @@ mcp_codebase-memo_get_architecture({ "project": "<display_name>" })
 - `search_code(pattern, project)` — Grep-like text search within indexed files
 - `manage_adr(action)` — CRUD for Architecture Decision Records
 - `ingest_traces(traces)` — Ingest runtime traces to validate HTTP edges
+
+## Container workflow
+
+- Build with `docker build -t nexus-command .`; the build stage runs typechecks, tests, and the Vite production build.
+- The runtime listens on `3001`; set `API_HOST=0.0.0.0` and a non-empty `DASHBOARD_TOKEN` when publishing the port.
+- Prefer `npm run check`, `npm test`, and `npm run build` inside the existing Node 22 container workflow; never install host system packages for this repository.
