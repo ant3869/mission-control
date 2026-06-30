@@ -25,6 +25,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Visual contract tightened.** Core navigation and operational views use the restrained Mission Control token system, interaction states, and layout rules consistently.
 - **Dependency baseline refreshed.** Vite and its React plugin were upgraded, and the Discord transport is pinned to a patched Undici release.
 
+### Removed
+
+- **Duplicate platform-metrics tabs and dead event code.** The OpenClaw/Hermes metrics view no longer carries its own Brain, Flow, Alerts, and Security tabs — those already live in the Activity and Health hubs — and three unused agent-event derivation helpers (people, publications, inbound feedback) were dropped.
+
 ### Fixed
 
 - **Authenticated development startup completes.** The Vite launcher now waits with a public GET health check instead of an authenticated HEAD request that could stall `npm run dev` indefinitely.
@@ -38,7 +42,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Tests
 
-- Expanded route, authentication, journaling, incident, offline-sync, briefing, container, and regression coverage to 230 passing tests, alongside frontend/server typechecks and a production build smoke test.
+- Expanded route, authentication, journaling, incident, offline-sync, briefing, container, and regression coverage to 255 passing tests, alongside frontend/server typechecks and a production build smoke test.
+- Added a full-app route smoke suite (every network-free `/api` route is guarded against 500s) and an end-to-end auth-gate check, enabled by extracting the Express app into a reusable `createApp()` factory.
 
 ---
 

@@ -33,8 +33,10 @@ describe('project verification workflow', () => {
   })
 
   it('serves the built frontend in production', () => {
-    const server = readFileSync(join(root, 'server/index.ts'), 'utf8')
-    assert.match(server, /express\.static\(distDir\)/)
-    assert.match(server, /NODE_ENV === 'production'/)
+    // Static serving lives in the createApp() factory (server/app.ts); index.ts
+    // owns only the process lifecycle (listen + background jobs).
+    const app = readFileSync(join(root, 'server/app.ts'), 'utf8')
+    assert.match(app, /express\.static\(distDir\)/)
+    assert.match(app, /NODE_ENV === 'production'/)
   })
 })

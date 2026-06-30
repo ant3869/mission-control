@@ -13,10 +13,6 @@ import {
   metrics as metricsApi, openclawChats, hermesChats, watchHeatmap, budgets as budgetsApi,
   type PlatformMetrics, type ConnectorId, type MetricBreakdown, type MetricSessionRow, type MetricSubAgent, type BudgetLimits, type LiveChatMessage,
 } from '../lib/api'
-import BrainView from './Brain'
-import FlowView from './Flow'
-import AlertsView from './Alerts'
-import SecurityView from './Security'
 import { MemoryAnalyticsBoard } from '../components/metrics/MemoryAnalyticsBoard'
 import { fmtTokens, fmtCost, fmtNum, fmtMs, relTime } from '../components/metrics/formatters'
 
@@ -25,7 +21,7 @@ const THEME: Record<ConnectorId, { label: string; icon: string; accent: string; 
   hermes:   { label: 'Hermes',   icon: '☤',  accent: 'text-purple-300', bar: 'bg-purple-500/70', dot: 'bg-purple-400' },
 }
 
-type TabId = 'overview' | 'activity' | 'autonomy' | 'sessions' | 'cron' | 'breakdowns' | 'tools' | 'heatmap' | 'spawntree' | 'budget' | 'system' | 'brain' | 'flow' | 'alerts' | 'security'
+type TabId = 'overview' | 'activity' | 'autonomy' | 'sessions' | 'cron' | 'breakdowns' | 'tools' | 'heatmap' | 'spawntree' | 'budget' | 'system'
 const TABS: Array<{ id: TabId; label: string; icon: React.ReactNode }> = [
   { id: 'overview',   label: 'Overview',   icon: <LayoutGrid size={13} /> },
   { id: 'activity',   label: 'Activity',   icon: <Activity size={13} /> },
@@ -38,10 +34,6 @@ const TABS: Array<{ id: TabId; label: string; icon: React.ReactNode }> = [
   { id: 'spawntree',  label: 'Spawns',     icon: <Bot size={13} /> },
   { id: 'budget',     label: 'Budget',     icon: <DollarSign size={13} /> },
   { id: 'system',     label: 'System',     icon: <Shield size={13} /> },
-  { id: 'brain',      label: 'Brain',      icon: <Brain size={13} /> },
-  { id: 'flow',       label: 'Flow',       icon: <GitBranch size={13} /> },
-  { id: 'alerts',     label: 'Alerts',     icon: <AlertTriangle size={13} /> },
-  { id: 'security',   label: 'Security',   icon: <Network size={13} /> },
 ]
 
 // ─── Building blocks ────────────────────────────────────────────────────────────
@@ -1139,14 +1131,6 @@ export function PlatformMetrics({ source, onNavigate }: { source: ConnectorId; o
         ))}
       </div>
 
-      {(['brain', 'flow', 'alerts', 'security'] as TabId[]).includes(tab) ? (
-        <div className="flex-1 min-h-0 overflow-hidden">
-          {tab === 'brain'    && <BrainView />}
-          {tab === 'flow'     && <FlowView />}
-          {tab === 'alerts'   && <AlertsView />}
-          {tab === 'security' && <SecurityView />}
-        </div>
-      ) : (
       <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-5">
         {tab === 'autonomy' && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
@@ -1432,7 +1416,6 @@ export function PlatformMetrics({ source, onNavigate }: { source: ConnectorId; o
         </Section>
         </>}
       </div>
-      )}
     </div>
 
       {selectedSession && (
