@@ -89,16 +89,16 @@ function EventCard({ event, onClick }: { event: CalendarEvent; onClick?: () => v
     >
       <div className="flex items-start justify-between gap-1">
         <span className="text-xs font-medium leading-tight truncate flex-1">{event.name}</span>
-        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+        <div className="flex items-center gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
           {event.meetLink && (
             <a href={event.meetLink} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()}
-              className="shrink-0" title="Join meeting">
+              className="flex min-h-6 min-w-6 shrink-0 items-center justify-center sm:min-h-0 sm:min-w-0" title="Join meeting">
               <Video size={9} className="opacity-70 hover:opacity-100" />
             </a>
           )}
           {event.htmlLink && (
             <a href={event.htmlLink} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()}
-              className="shrink-0" title="Open in Google Calendar">
+              className="flex min-h-6 min-w-6 shrink-0 items-center justify-center sm:min-h-0 sm:min-w-0" title="Open in Google Calendar">
               <ExternalLink size={9} className="opacity-70 hover:opacity-100" />
             </a>
           )}
@@ -192,24 +192,24 @@ function EventComposer({ state, onClose, onSaved }: {
     catch (e: any) { setErr(e.message) } finally { setBusy(false) }
   }
 
-  const inputCls = 'w-full px-2.5 py-1.5 rounded-lg bg-base border border-border text-xs text-text-primary placeholder:text-text-muted outline-none focus:border-accent-blue/50 disabled:opacity-60'
+  const inputCls = 'w-full min-h-11 px-3 py-2 rounded-lg bg-base border border-border text-base sm:text-xs text-text-primary placeholder:text-text-muted outline-none focus:border-accent-blue/50 disabled:opacity-60 sm:min-h-0 sm:px-2.5 sm:py-1.5'
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-50 flex items-stretch justify-center p-0 sm:items-center sm:p-4">
       <div className="absolute inset-0 bg-black/50" onClick={onClose} aria-hidden />
-      <div className="animate-rise-in relative w-full max-w-md rounded-xl border border-border bg-surface shadow-2xl shadow-black/40 max-h-[90vh] overflow-y-auto">
+      <div className="animate-rise-in relative flex h-[100dvh] w-full max-w-none flex-col overflow-hidden rounded-none border border-border bg-surface shadow-2xl shadow-black/40 safe-top safe-bottom sm:h-auto sm:max-h-[90vh] sm:max-w-md sm:rounded-xl">
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-3.5 border-b border-border">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-border sm:px-5 sm:py-3.5">
           <div className="flex items-center gap-2">
             <CalendarDays size={15} className="text-accent-blue" />
             <h2 className="text-sm font-semibold text-text-primary">{editing ? 'Edit event' : 'New event'}</h2>
           </div>
-          <button onClick={onClose} aria-label="Close" className="p-1 rounded hover:bg-card text-text-muted hover:text-text-primary">
+          <button onClick={onClose} aria-label="Close" className="flex min-h-11 min-w-11 items-center justify-center rounded hover:bg-card text-text-muted hover:text-text-primary sm:min-h-0 sm:min-w-0 sm:p-1">
             <X size={15} />
           </button>
         </div>
 
-        <div className="flex flex-col gap-3 p-5">
+        <div className="flex flex-1 flex-col gap-3 overflow-y-auto p-4 sm:p-5">
           {!writable && (
             <div className="flex items-start gap-2 rounded-lg border border-amber-900/40 bg-amber-950/20 px-3 py-2 text-amber-300">
               <AlertCircle size={13} className="shrink-0 mt-0.5" />
@@ -227,7 +227,7 @@ function EventComposer({ state, onClose, onSaved }: {
           </label>
 
           {/* All-day toggle */}
-          <div className="flex items-center justify-between">
+          <div className="flex min-h-11 items-center justify-between sm:min-h-0">
             <span className="text-xxs font-semibold uppercase tracking-wide text-text-muted">All-day</span>
             <button role="switch" aria-checked={allDay} disabled={!writable}
               onClick={() => setAllDay(v => !v)}
@@ -238,8 +238,8 @@ function EventComposer({ state, onClose, onSaved }: {
           </div>
 
           {/* Date + time */}
-          <div className="grid grid-cols-2 gap-2">
-            <label className={clsx('flex flex-col gap-1', allDay && 'col-span-2')}>
+          <div className="grid grid-cols-1 gap-2 min-[393px]:grid-cols-2">
+            <label className={clsx('flex flex-col gap-1', allDay && 'min-[393px]:col-span-2')}>
               <span className="text-xxs font-semibold uppercase tracking-wide text-text-muted">Date</span>
               <input type="date" value={date} disabled={!writable} onChange={e => setDate(e.target.value)} className={inputCls} />
             </label>
@@ -249,7 +249,7 @@ function EventComposer({ state, onClose, onSaved }: {
                   <span className="text-xxs font-semibold uppercase tracking-wide text-text-muted">Start</span>
                   <input type="time" value={startTime} disabled={!writable} onChange={e => setStartTime(e.target.value)} className={inputCls} />
                 </label>
-                <label className="flex flex-col gap-1 col-start-2">
+                <label className="flex flex-col gap-1 min-[393px]:col-start-2">
                   <span className="text-xxs font-semibold uppercase tracking-wide text-text-muted">End</span>
                   <input type="time" value={endTime} disabled={!writable} onChange={e => setEndTime(e.target.value)} className={inputCls} />
                 </label>
@@ -284,19 +284,19 @@ function EventComposer({ state, onClose, onSaved }: {
         </div>
 
         {/* Footer */}
-        <div className="flex items-center gap-2 px-5 py-3.5 border-t border-border">
+        <div className="flex flex-wrap items-center gap-2 px-4 py-3 border-t border-border safe-bottom sm:px-5 sm:py-3.5">
           {writable && (
             <button onClick={save} disabled={busy || !title.trim()}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-emerald-500/40 bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25 text-xs font-medium disabled:opacity-40">
+              className="flex min-h-11 items-center gap-1.5 px-3 py-2 rounded-lg border border-emerald-500/40 bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25 text-xs font-medium disabled:opacity-40 sm:min-h-0 sm:py-1.5">
               {busy ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />} {editing ? 'Save' : 'Add event'}
             </button>
           )}
-          <button onClick={onClose} className="px-3 py-1.5 rounded-lg border border-border bg-card hover:bg-card-hover text-text-secondary text-xs">
+          <button onClick={onClose} className="min-h-11 px-3 py-2 rounded-lg border border-border bg-card hover:bg-card-hover text-text-secondary text-xs sm:min-h-0 sm:py-1.5">
             {writable ? 'Cancel' : 'Close'}
           </button>
           {editing && writable && (
             <button onClick={remove} disabled={busy}
-              className="ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-red-900/40 bg-red-950/20 text-red-400 hover:bg-red-950/40 text-xs disabled:opacity-50">
+              className="ml-auto flex min-h-11 items-center gap-1.5 px-3 py-2 rounded-lg border border-red-900/40 bg-red-950/20 text-red-400 hover:bg-red-950/40 text-xs disabled:opacity-50 sm:min-h-0 sm:py-1.5">
               <Trash2 size={12} /> Delete
             </button>
           )}
@@ -354,8 +354,8 @@ function MonthCell({ date, events, inMonth, onPick, onAdd }: {
 
 function ConnectBanner() {
   return (
-    <div className="flex items-center gap-3 mx-4 my-3 px-4 py-3 rounded-lg border border-amber-900/40 bg-amber-950/20 text-amber-300">
-      <AlertCircle size={14} className="shrink-0" />
+    <div className="flex items-start gap-3 mx-4 my-3 px-4 py-3 rounded-lg border border-amber-900/40 bg-amber-950/20 text-amber-300">
+      <AlertCircle size={14} className="shrink-0 mt-0.5" />
       <div className="flex-1 min-w-0">
         <p className="text-xs font-medium">Google Calendar needs reconnecting</p>
         <p className="text-xxs opacity-70 mt-0.5">
@@ -416,7 +416,9 @@ function CronPill({ job, busy, onToggle }: { job: AgentCronJob; busy: boolean; o
 // ─── Main view ────────────────────────────────────────────────────────────────
 
 export function ScheduledTasks() {
-  const [viewMode, setViewMode] = useState<ViewMode>('week')
+  const [viewMode, setViewMode] = useState<ViewMode>(() =>
+    typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches ? 'agenda' : 'week',
+  )
   const [anchor, setAnchor]     = useState<Date>(() => new Date())
   const [events, setEvents]     = useState<CalendarEvent[]>([])
   const [loading, setLoading]   = useState(true)
@@ -518,7 +520,7 @@ export function ScheduledTasks() {
   return (
     <div className="flex flex-col h-full overflow-hidden">
       {/* Header */}
-      <div className="flex items-start justify-between px-6 pt-5 pb-4 border-b border-border shrink-0 gap-3">
+      <div className="flex flex-col gap-3 px-4 pt-4 pb-3 border-b border-border shrink-0 sm:flex-row sm:items-start sm:justify-between sm:px-6 sm:pt-5 sm:pb-4">
         <div className="min-w-0">
           <h1 className="text-base font-semibold text-text-primary">Calendar</h1>
           <p className="text-xs text-text-muted mt-0.5">
@@ -532,20 +534,24 @@ export function ScheduledTasks() {
             }
           </p>
         </div>
-        <div className="flex items-center gap-2 flex-wrap justify-end">
+        <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
           {/* Period navigation */}
-          <div className="flex items-center gap-1">
+          <div className="flex w-full items-center gap-1 sm:w-auto">
             <button onClick={() => step(-1)} title="Previous"
-              className="w-7 h-7 flex items-center justify-center rounded border border-border bg-card text-text-muted hover:text-text-primary transition-colors">
+              className="flex h-11 w-11 items-center justify-center rounded border border-border bg-card text-text-muted hover:text-text-primary transition-colors sm:h-7 sm:w-7">
               <ChevronLeft size={14} />
             </button>
             <button onClick={goToday} title="Jump to today"
-              className="px-2.5 h-7 rounded border border-border bg-card text-xs text-text-secondary hover:text-text-primary transition-colors">
+              className="h-11 flex-1 rounded border border-border bg-card px-3 text-xs text-text-secondary hover:text-text-primary transition-colors sm:h-7 sm:flex-none sm:px-2.5">
               Today
             </button>
             <button onClick={() => step(1)} title="Next"
-              className="w-7 h-7 flex items-center justify-center rounded border border-border bg-card text-text-muted hover:text-text-primary transition-colors">
+              className="flex h-11 w-11 items-center justify-center rounded border border-border bg-card text-text-muted hover:text-text-primary transition-colors sm:h-7 sm:w-7">
               <ChevronRight size={14} />
+            </button>
+            <button onClick={refreshAll} disabled={loading} title="Refresh"
+              className="flex h-11 w-11 items-center justify-center rounded border border-border bg-card text-text-muted hover:text-text-secondary transition-colors sm:hidden">
+              <RefreshCw size={12} className={loading || cronLoading ? 'animate-spin' : ''} />
             </button>
           </div>
 
@@ -554,61 +560,65 @@ export function ScheduledTasks() {
           </span>
 
           <button onClick={refreshAll} disabled={loading} title="Refresh"
-            className="w-7 h-7 flex items-center justify-center rounded border border-border bg-card text-text-muted hover:text-text-secondary transition-colors">
+            className="hidden w-7 h-7 items-center justify-center rounded border border-border bg-card text-text-muted hover:text-text-secondary transition-colors sm:flex">
             <RefreshCw size={12} className={loading || cronLoading ? 'animate-spin' : ''} />
           </button>
 
           <button onClick={() => setComposer({ mode: 'create', date: anchor })} title="Add an event"
-            className="flex items-center gap-1.5 px-2.5 h-7 rounded border border-emerald-500/40 bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25 transition-colors text-xs font-medium">
+            className="flex min-h-11 w-full items-center justify-center gap-1.5 rounded border border-emerald-500/40 bg-emerald-500/15 px-3 text-xs font-medium text-emerald-400 transition-colors hover:bg-emerald-500/25 sm:h-7 sm:min-h-0 sm:w-auto sm:px-2.5">
             <Plus size={13} /> New event
           </button>
 
           {/* View switcher */}
-          <div className="flex items-center gap-0.5 bg-card rounded border border-border p-0.5">
-            {VIEW_MODES.map(mode => (
-              <button
-                key={mode}
-                onClick={() => setViewMode(mode)}
-                className={clsx(
-                  'px-2.5 py-1 rounded text-xs font-medium capitalize transition-all',
-                  viewMode === mode ? 'bg-card-hover text-text-primary shadow-sm' : 'text-text-muted hover:text-text-secondary',
-                )}
-              >
-                {mode}
-              </button>
-            ))}
+          <div className="w-full overflow-x-auto sm:w-auto sm:overflow-visible">
+            <div className="flex min-w-max items-center gap-0.5 bg-card rounded border border-border p-0.5">
+              {VIEW_MODES.map(mode => (
+                <button
+                  key={mode}
+                  onClick={() => setViewMode(mode)}
+                  className={clsx(
+                    'min-h-11 px-3 py-1 rounded text-xs font-medium capitalize transition-all sm:min-h-0 sm:px-2.5',
+                    viewMode === mode ? 'bg-card-hover text-text-primary shadow-sm' : 'text-text-muted hover:text-text-secondary',
+                  )}
+                >
+                  {mode}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
       </div>
 
       {/* Mobile period label (header version is hidden < sm) */}
-      <div className="sm:hidden px-6 py-2 border-b border-border shrink-0">
+      <div className="sm:hidden px-4 py-2 border-b border-border shrink-0">
         <span className="text-xs font-medium text-text-secondary">{periodLabel(viewMode, anchor)}</span>
       </div>
 
       {/* Always Running — real recurring agent jobs (OpenClaw / Hermes cron) */}
-      <div className="flex items-center gap-3 px-6 py-3 border-b border-border shrink-0 bg-surface/50">
-        <div className="flex items-center gap-1.5 text-text-muted shrink-0">
+      <div className="flex flex-col gap-2 px-4 py-3 border-b border-border shrink-0 bg-surface/50 sm:flex-row sm:items-center sm:gap-3 sm:px-6">
+        <div className="flex w-full items-center gap-1.5 text-text-muted sm:w-auto sm:shrink-0">
           <Zap size={12} className="text-accent-amber" />
           <span className="text-xs font-medium text-text-secondary">Always Running</span>
           {!cronLoading && cronJobs.length > 0 && (
-            <span className="text-xxs text-text-muted tabular-nums">
+            <span className="ml-auto text-xxs text-text-muted tabular-nums sm:ml-0">
               {cronJobs.filter(j => j.enabled).length}/{cronJobs.length}
             </span>
           )}
         </div>
-        <div className="flex items-center gap-2 flex-wrap min-w-0">
-          {cronLoading ? (
-            Array.from({ length: 3 }).map((_, i) => (
-              <div key={i} className="h-[26px] w-32 rounded-full bg-card border border-border animate-pulse" />
-            ))
-          ) : cronJobs.length === 0 ? (
-            <span className="text-xxs text-text-muted italic">No recurring agent jobs — connect OpenClaw or Hermes in Settings to schedule them.</span>
-          ) : (
-            cronJobs.map(job => (
-              <CronPill key={`${job.source}:${job.id}`} job={job} busy={busyJob === job.id} onToggle={() => toggleJob(job)} />
-            ))
-          )}
+        <div className="min-w-0 w-full overflow-x-auto sm:overflow-visible">
+          <div className="flex w-max items-center gap-2 sm:w-auto sm:flex-wrap">
+            {cronLoading ? (
+              Array.from({ length: 3 }).map((_, i) => (
+                <div key={i} className="h-[26px] w-32 shrink-0 rounded-full bg-card border border-border animate-pulse" />
+              ))
+            ) : cronJobs.length === 0 ? (
+              <span className="max-w-full whitespace-normal text-xxs text-text-muted italic">No recurring agent jobs — connect OpenClaw or Hermes in Settings to schedule them.</span>
+            ) : (
+              cronJobs.map(job => (
+                <CronPill key={`${job.source}:${job.id}`} job={job} busy={busyJob === job.id} onToggle={() => toggleJob(job)} />
+              ))
+            )}
+          </div>
         </div>
       </div>
 
@@ -617,7 +627,7 @@ export function ScheduledTasks() {
 
       {/* ── Day / Week grid ── */}
       {(viewMode === 'day' || viewMode === 'week') && (
-        <div className="flex-1 overflow-auto">
+        <div className="flex-1 max-w-full overflow-auto">
           <div
             className={clsx('grid h-full min-h-0', viewMode === 'week' ? 'grid-cols-7' : 'grid-cols-1')}
             style={{ minWidth: viewMode === 'week' ? '700px' : undefined }}
@@ -638,7 +648,7 @@ export function ScheduledTasks() {
                     {viewMode === 'day' && <span className="text-xs text-text-muted">{format(date, 'MMMM yyyy')}</span>}
                     <span className="ml-auto text-xxs text-text-muted tabular-nums">{dayEvents.length || ''}</span>
                     <button onClick={() => setComposer({ mode: 'create', date })} title="Add event to this day"
-                      className="text-text-muted hover:text-emerald-400 transition-colors shrink-0">
+                      className="flex min-h-11 min-w-11 shrink-0 items-center justify-center text-text-muted hover:text-emerald-400 transition-colors sm:min-h-0 sm:min-w-0">
                       <Plus size={13} />
                     </button>
                   </div>
@@ -665,7 +675,7 @@ export function ScheduledTasks() {
 
       {/* ── Month grid ── */}
       {viewMode === 'month' && (
-        <div className="flex-1 overflow-auto">
+        <div className="flex-1 max-w-full overflow-auto">
           <div className="min-w-[640px] flex flex-col h-full">
             <div className="grid grid-cols-7 border-b border-border shrink-0">
               {DAY_LABELS.map(d => (
@@ -719,7 +729,7 @@ export function ScheduledTasks() {
                         <button
                           onClick={() => setComposer({ mode: 'create', date })}
                           title="Add event"
-                          className="mt-1 opacity-0 group-hover/agenda:opacity-100 text-text-muted hover:text-emerald-400 transition-all"
+                          className="mt-1 flex min-h-11 min-w-11 items-center justify-center text-text-muted opacity-100 transition-all hover:text-emerald-400 sm:min-h-0 sm:min-w-0 sm:opacity-0 sm:group-hover/agenda:opacity-100"
                         >
                           <Plus size={12} />
                         </button>

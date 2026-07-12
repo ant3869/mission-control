@@ -68,10 +68,10 @@ Starting commit: 22f991e4109ee523659dc1872b5c7e7059a00524
   - Implementer: controller after subagent support was unavailable.
   - Commit: pending (`feat(mobile): adapt shopping workflow for touch`)
   - Review: controller review passed; `npm run build`, `npm run test:mobile`, and `npm test` passed. Playwright 360px flow added `USB-C cable !high x2 $12`, opened/edited quantity and price, opened and canceled research guidance without dispatching an agent, marked purchased, switched filters, cleared the temporary purchased item, and confirmed no horizontal overflow.
-- [ ] Task 11: Make Calendar agenda-first and phone-safe.
-  - Starting commit: pending
-  - Commit: pending
-  - Review: pending
+- [x] Task 11: Make Calendar agenda-first and phone-safe.
+  - Starting commit: 7268482adbf5ca6926f4bfdc1bd08a9ffe8422be
+  - Commit: pending (`feat(mobile): make calendar agenda-first on phones`)
+  - Review: controller review passed; `npm run build`, `npm run test:mobile`, `npm test`, and `git diff --check` passed. Playwright 360px real-API pass confirmed phone defaults to Agenda, reconnect banner is readable, header touch targets are 44px, and no page-level horizontal overflow; local Google Calendar credentials are not configured (`503 not_configured`), so real Calendar CRUD/Meet behavior remains unverified. Playwright route-mocked pass exercised create, edit, delete, Meet link opening, Agenda/Day/Month/Week switching, Week/Month internal panning, full-screen composer, temporary event cleanup, and no page-level horizontal overflow.
 - [ ] Task 12: Add server controls, native OAuth, and export to Settings.
   - Starting commit: pending
   - Commit: pending
