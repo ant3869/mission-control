@@ -45,10 +45,12 @@ Starting commit: 22f991e4109ee523659dc1872b5c7e7059a00524
   - Verification: `npm run test:mobile`, `npm test`, and `npm run build` passed.
   - Review: passed by controller; mobile shell mounts only the active view, desktop keeps visited panes mounted, and Android back closes overlays before view history/home/exit fallback.
   - Commit: `feat(mobile): add responsive shell and Android navigation`
-- [ ] Task 7: Make shared top bar, search, tabs, and global CSS phone-native.
-  - Starting commit: pending
-  - Commit: pending
-  - Review: pending
+- [x] Task 7: Make shared top bar, search, tabs, and global CSS phone-native.
+  - Starting commit: 7f3761708b43b775285feef0144af05415b45edc
+  - Implementer: controller after subagent support was unavailable.
+  - Verification: `npm run build`, `npm run test:mobile`, and `npm test` passed; Playwright checked 360, 393-class, and 412 widths for body overflow, search viewport fill, quick-capture bottom sheet, and TabHub horizontal scrolling.
+  - Review: passed by controller; no real critical alert was available from local `/api/alerts/active`, but toast clearance is implemented with the bottom-nav safe-area offset.
+  - Commit: `feat(mobile): adapt shared controls for touch layouts`
 - [ ] Task 8: Adapt Home for Pixel 9.
   - Starting commit: pending
   - Commit: pending

@@ -218,7 +218,7 @@ function AppShell() {
   const mountedViews = isPhone ? new Set<View>([activeView]) : mounted
 
   return (
-    <div className="flex h-full w-full bg-base overflow-hidden">
+    <div className="app-shell flex h-full w-full bg-base overflow-hidden">
       {!isPhone && <Sidebar activeView={activeView} onNavigate={navigate} />}
 
       <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
@@ -226,6 +226,7 @@ function AppShell() {
           title={VIEW_TITLES[activeView]}
           onNavigate={navigate}
           views={(Object.entries(VIEW_TITLES) as [View, string][]).map(([id, label]) => ({ id, label }))}
+          mobile={isPhone}
         />
         <ConnectionBanner onOpenSettings={() => navigate('settings')} />
         <main className="flex-1 overflow-hidden bg-base relative">

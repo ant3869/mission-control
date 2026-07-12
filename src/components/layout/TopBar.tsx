@@ -19,12 +19,14 @@ import {
 } from '../../lib/quickActions'
 import { usePaused, toggleRefreshPaused, isRefreshPaused } from '../../lib/refreshBus'
 import { apiFetch } from '../../lib/apiTransport.js'
+import { useEscapeKey } from '../../hooks/useEscapeKey'
 
 interface NavView { id: View; label: string }
 interface TopBarProps {
   title: string
   onNavigate: (view: View) => void
   views: NavView[]
+  mobile?: boolean
 }
 
 type Row = {
@@ -56,6 +58,7 @@ function GlobalSearch({ onClose, onNavigate, views }: { onClose: () => void; onN
   const debounce              = useRef<ReturnType<typeof setTimeout> | null>(null)
   const qTrimmed              = q.trim()
 
+  useEscapeKey(onClose)
   useEffect(() => { inputRef.current?.focus() }, [])
 
   // Notes (server search) + docs/tasks (fetch once, filter client-side).
@@ -310,8 +313,7 @@ function GlobalSearch({ onClose, onNavigate, views }: { onClose: () => void; onN
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
-      else if (e.key === 'ArrowDown') { e.preventDefault(); setSel(s => Math.min(s + 1, rows.length - 1)) }
+      if (e.key === 'ArrowDown') { e.preventDefault(); setSel(s => Math.min(s + 1, rows.length - 1)) }
       else if (e.key === 'ArrowUp')   { e.preventDefault(); setSel(s => Math.max(s - 1, 0)) }
       else if (e.key === 'Enter')     { e.preventDefault(); void activate() }
     }
@@ -332,7 +334,7 @@ function GlobalSearch({ onClose, onNavigate, views }: { onClose: () => void; onN
             className={clsxRow(idx === sel)}>
             <span className={idx === sel ? 'text-accent-blue shrink-0' : 'text-text-muted shrink-0'}>{r.icon}</span>
             <span className="text-sm text-text-primary truncate flex-1">{r.label}</span>
-            {r.sub && <span className="text-xxs text-text-muted shrink-0">{r.sub}</span>}
+            {r.sub && <span className="hidden max-w-[14rem] truncate text-xxs text-text-muted shrink-0 sm:inline">{r.sub}</span>}
             {actioning === r.id && <Loader2 size={11} className="animate-spin text-text-muted shrink-0" />}
             {idx === sel && <CornerDownLeft size={11} className="text-text-muted shrink-0" />}
           </button>
@@ -356,17 +358,17 @@ function GlobalSearch({ onClose, onNavigate, views }: { onClose: () => void; onN
   const oInventory = oTobuy + tobuyRows.length
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center pt-[15vh] bg-black/60 backdrop-blur-sm" onClick={onClose}>
-      <div className="w-full max-w-lg rounded-xl border border-border bg-card shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center gap-3 px-4 py-3 border-b border-border">
+    <div className="fixed inset-0 z-50 bg-base sm:flex sm:items-start sm:justify-center sm:bg-black/60 sm:pt-[12vh] sm:backdrop-blur-sm" onClick={onClose}>
+      <div className="safe-bottom safe-top flex h-[100dvh] w-full flex-col overflow-hidden bg-surface sm:h-auto sm:max-w-2xl sm:rounded-xl sm:border sm:border-border sm:shadow-2xl" onClick={e => e.stopPropagation()}>
+        <div className="flex shrink-0 items-center gap-3 border-b border-border px-4 py-3">
           <Search size={14} className="text-text-muted shrink-0" />
           <input ref={inputRef} value={q} onChange={e => setQ(e.target.value)}
             placeholder="Search notes, tasks, todos, projects, links, inventory, shopping list…"
-            className="flex-1 bg-transparent text-sm text-text-primary outline-none placeholder:text-text-muted" />
+            className="min-w-0 flex-1 bg-transparent text-base text-text-primary outline-none placeholder:text-text-muted sm:text-sm" />
           {loading
             ? <Loader2 size={13} className="animate-spin text-text-muted shrink-0" />
-            : q ? <button onClick={() => setQ('')}><X size={13} className="text-text-muted hover:text-text-secondary" /></button>
-                : <kbd className="text-xxs text-text-muted bg-base px-1.5 py-0.5 rounded border border-border shrink-0">ESC</kbd>}
+            : q ? <button onClick={() => setQ('')} className="touch-target flex items-center justify-center"><X size={16} className="text-text-muted hover:text-text-secondary" /></button>
+                : <kbd className="hidden text-xxs text-text-muted bg-base px-1.5 py-0.5 rounded border border-border shrink-0 sm:inline">ESC</kbd>}
         </div>
 
         {error && (
@@ -375,7 +377,7 @@ function GlobalSearch({ onClose, onNavigate, views }: { onClose: () => void; onN
           </div>
         )}
 
-        <div className="max-h-80 overflow-y-auto py-1">
+        <div className="min-h-0 flex-1 overflow-y-auto py-1 sm:max-h-80 sm:flex-none">
           {rows.length === 0 ? (
             <p className="px-8 py-8 text-xs text-text-muted text-center">{emptyMessage}</p>
           ) : (
@@ -396,7 +398,7 @@ function GlobalSearch({ onClose, onNavigate, views }: { onClose: () => void; onN
           )}
         </div>
 
-        <div className="flex items-center gap-3 px-4 py-2 border-t border-border text-xxs text-text-muted">
+        <div className="hidden items-center gap-3 border-t border-border px-4 py-2 text-xxs text-text-muted sm:flex">
           <span className="flex items-center gap-1"><kbd className="bg-base px-1 rounded border border-border">↑↓</kbd> navigate</span>
           <span className="flex items-center gap-1"><kbd className="bg-base px-1 rounded border border-border">↵</kbd> run</span>
           <span className="flex items-center gap-1"><kbd className="bg-base px-1 rounded border border-border">esc</kbd> close</span>
@@ -417,7 +419,7 @@ function clsxBtn(active: boolean): string {
 
 function clsxRow(active: boolean): string {
   return [
-    'w-full text-left flex items-center gap-3 px-4 py-2 transition-colors',
+    'w-full min-h-11 text-left flex items-center gap-3 px-4 py-2 transition-colors sm:min-h-0',
     active ? 'bg-card-hover' : 'hover:bg-card-hover/60',
   ].join(' ')
 }
@@ -435,9 +437,16 @@ const DOT_LABEL: Record<ConnectivityIndicator['status'], string> = {
   ok: 'online', degraded: 'degraded', down: 'offline',
 }
 
-function ConnectivityStrip() {
+function ConnectivityStrip({ mobile = false }: { mobile?: boolean }) {
   const [indicators, setIndicators] = useState<ConnectivityIndicator[] | null>(null)
-  const [open, setOpen] = useState(false)
+  const [hoverOpen, setHoverOpen] = useState(false)
+  const [clickOpen, setClickOpen] = useState(false)
+  const open = hoverOpen || clickOpen
+
+  useEscapeKey(() => {
+    setHoverOpen(false)
+    setClickOpen(false)
+  }, open)
 
   useEffect(() => {
     let on = true
@@ -459,11 +468,15 @@ function ConnectivityStrip() {
     dots.some(d => d.status === 'down') ? 'down' : dots.some(d => d.status === 'degraded') ? 'degraded' : 'ok'
 
   return (
-    <div className="relative" onMouseEnter={() => setOpen(true)} onMouseLeave={() => setOpen(false)}>
+    <div className="relative" onMouseEnter={() => setHoverOpen(true)} onMouseLeave={() => setHoverOpen(false)}>
       <button
-        className={clsx('flex items-center gap-1.5 px-2 py-1.5 rounded border transition-colors',
+        type="button"
+        onClick={() => setClickOpen(value => !value)}
+        className={clsx('flex items-center justify-center gap-1.5 rounded border transition-colors',
+          mobile ? 'touch-target h-11 w-11' : 'px-2 py-1.5',
           worst === 'down' ? 'border-red-900/40 bg-red-950/20' : worst === 'degraded' ? 'border-amber-900/40 bg-amber-950/20' : 'border-border bg-card hover:bg-card-hover')}
         aria-label="Connectivity status"
+        aria-expanded={open}
       >
         {dots.map(d => (
           <span key={d.id} className={clsx('w-2 h-2 rounded-full', DOT_COLOR[d.status],
@@ -503,13 +516,8 @@ function QuickTodoCapture({ onClose }: { onClose: () => void }) {
   const [done, setDone] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
+  useEscapeKey(onClose)
   useEffect(() => { inputRef.current?.focus() }, [])
-
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
-    window.addEventListener('keydown', handler)
-    return () => window.removeEventListener('keydown', handler)
-  }, [onClose])
 
   const submit = async () => {
     const title = text.trim()
@@ -523,8 +531,8 @@ function QuickTodoCapture({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center pt-[15vh] bg-black/60 backdrop-blur-sm" onClick={onClose}>
-      <div className="w-full max-w-sm rounded-xl border border-border bg-card shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-sm sm:items-start sm:pt-[15vh]" onClick={onClose}>
+      <div className="safe-bottom w-full overflow-hidden rounded-t-xl border-t border-border bg-card shadow-2xl sm:max-w-sm sm:rounded-xl sm:border" onClick={e => e.stopPropagation()}>
         <div className="flex items-center gap-3 px-4 py-3">
           {done
             ? <Check size={14} className="text-accent-green shrink-0" />
@@ -534,13 +542,18 @@ function QuickTodoCapture({ onClose }: { onClose: () => void }) {
             value={text}
             onChange={e => setText(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); void submit() } }}
-            placeholder="Quick to-do… (Enter to save)"
-            className="flex-1 bg-transparent text-sm text-text-primary outline-none placeholder:text-text-muted"
+            placeholder="Quick to-do..."
+            className="min-w-0 flex-1 bg-transparent text-base text-text-primary outline-none placeholder:text-text-muted sm:text-sm"
             disabled={done}
           />
-          {saving && !done && <Loader2 size={13} className="animate-spin text-text-muted shrink-0" />}
-          {done && <span className="text-xs text-accent-green shrink-0">Saved</span>}
-          {!saving && !done && <kbd className="text-xxs text-text-muted bg-base px-1.5 py-0.5 rounded border border-border shrink-0">ESC</kbd>}
+          <button
+            type="button"
+            onClick={() => { void submit() }}
+            disabled={!text.trim() || saving || done}
+            className="touch-target flex items-center justify-center rounded border border-border bg-card-hover px-3 text-xs font-medium text-text-secondary transition-colors hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {saving && !done ? <Loader2 size={13} className="animate-spin" /> : done ? 'Saved' : 'Save'}
+          </button>
         </div>
       </div>
     </div>
@@ -549,7 +562,7 @@ function QuickTodoCapture({ onClose }: { onClose: () => void }) {
 
 // ─── TopBar ───────────────────────────────────────────────────────────────────
 
-export function TopBar({ title, onNavigate, views }: TopBarProps) {
+export function TopBar({ title, onNavigate, views, mobile = false }: TopBarProps) {
   const [searchOpen, setSearchOpen] = useState(false)
   const [quickTodo, setQuickTodo]   = useState(false)
   const paused = usePaused()
@@ -565,37 +578,50 @@ export function TopBar({ title, onNavigate, views }: TopBarProps) {
 
   return (
     <>
-      <header className="flex items-center justify-between h-12 px-5 border-b border-border bg-surface shrink-0">
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-semibold text-text-primary">{title}</span>
+      <header className={mobile
+        ? 'safe-top flex h-[calc(56px+env(safe-area-inset-top))] shrink-0 items-center justify-between gap-3 border-b border-border bg-surface px-3'
+        : 'flex items-center justify-between h-12 px-5 border-b border-border bg-surface shrink-0'}
+      >
+        <div className={clsx('flex items-center gap-2', mobile && 'min-w-0 flex-1')}>
+          <span className={clsx('text-sm font-semibold text-text-primary', mobile && 'min-w-0 truncate')}>{title}</span>
         </div>
 
-        <div className="flex items-center gap-2">
-          <ConnectivityStrip />
+        <div className={clsx('flex items-center', mobile ? 'shrink-0 gap-1.5' : 'gap-2')}>
+          <ConnectivityStrip mobile={mobile} />
 
           <button onClick={() => setQuickTodo(true)}
-            title="Quick add to-do (Ctrl+T)"
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded border border-border bg-card hover:bg-card-hover text-text-secondary hover:text-text-primary transition-colors text-xs">
-            <Plus size={12} />
-            <span className="hidden sm:inline">To-do</span>
-            <span className="flex items-center justify-center px-1 rounded bg-border text-text-muted font-mono text-xxs hidden sm:flex">^T</span>
+            title={mobile ? 'Quick add to-do' : 'Quick add to-do (Ctrl+T)'}
+            aria-label="Quick add to-do"
+            className={clsx(
+              'flex items-center rounded border border-border bg-card text-text-secondary transition-colors hover:bg-card-hover hover:text-text-primary',
+              mobile ? 'touch-target h-11 w-11 justify-center' : 'gap-1.5 px-2.5 py-1.5 text-xs',
+            )}>
+            <Plus size={mobile ? 18 : 12} />
+            {!mobile && <span className="hidden sm:inline">To-do</span>}
+            {!mobile && <span className="flex items-center justify-center px-1 rounded bg-border text-text-muted font-mono text-xxs hidden sm:flex">^T</span>}
           </button>
 
           <button onClick={() => setSearchOpen(true)}
-            className="flex items-center gap-2 px-3 py-1.5 rounded border border-border bg-card hover:bg-card-hover text-text-secondary hover:text-text-primary transition-colors text-xs">
-            <Search size={12} />
-            <span>Search</span>
-            <span className="flex items-center justify-center px-1 rounded bg-border text-text-muted font-mono text-xxs">⌘K</span>
+            aria-label="Search"
+            className={clsx(
+              'flex items-center rounded border border-border bg-card text-text-secondary transition-colors hover:bg-card-hover hover:text-text-primary',
+              mobile ? 'touch-target h-11 w-11 justify-center' : 'gap-2 px-3 py-1.5 text-xs',
+            )}>
+            <Search size={mobile ? 18 : 12} />
+            {!mobile && <span>Search</span>}
+            {!mobile && <span className="flex items-center justify-center px-1 rounded bg-border text-text-muted font-mono text-xxs">⌘K</span>}
           </button>
 
-          <button
-            onClick={toggleRefreshPaused}
-            title={paused ? 'Auto-refresh paused — resume background polling' : 'Pause all background auto-refresh'}
-            className={clsxBtn(paused)}
-          >
-            {paused ? <Play size={12} /> : <Pause size={12} />}
-            <span>{paused ? 'Paused' : 'Pause'}</span>
-          </button>
+          {!mobile && (
+            <button
+              onClick={toggleRefreshPaused}
+              title={paused ? 'Auto-refresh paused — resume background polling' : 'Pause all background auto-refresh'}
+              className={clsxBtn(paused)}
+            >
+              {paused ? <Play size={12} /> : <Pause size={12} />}
+              <span>{paused ? 'Paused' : 'Pause'}</span>
+            </button>
+          )}
 
         </div>
       </header>

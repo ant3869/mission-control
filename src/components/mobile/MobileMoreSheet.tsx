@@ -1,9 +1,10 @@
-import { X } from 'lucide-react'
+import { Pause, Play, X } from 'lucide-react'
 import { clsx } from 'clsx'
 import type { View } from '../../types'
 import { NAV_SECTIONS } from '../layout/navConfig'
 import { useEscapeKey } from '../../hooks/useEscapeKey'
 import { useNavBadges } from '../../hooks/useNavBadges'
+import { toggleRefreshPaused, usePaused } from '../../lib/refreshBus'
 
 interface MobileMoreSheetProps {
   activeView: View
@@ -13,6 +14,7 @@ interface MobileMoreSheetProps {
 
 export function MobileMoreSheet({ activeView, onNavigate, onClose }: MobileMoreSheetProps) {
   const { getBadge } = useNavBadges()
+  const paused = usePaused()
   useEscapeKey(onClose)
 
   const selectView = (view: View) => {
@@ -48,6 +50,17 @@ export function MobileMoreSheet({ activeView, onNavigate, onClose }: MobileMoreS
             <X size={20} />
           </button>
         </header>
+
+        <div className="border-b border-border bg-surface px-3 py-2">
+          <button
+            type="button"
+            onClick={toggleRefreshPaused}
+            className="touch-target flex min-h-[48px] w-full items-center gap-3 rounded px-3 text-left text-text-secondary transition-colors hover:bg-card hover:text-text-primary"
+          >
+            {paused ? <Play size={19} className="text-text-muted" /> : <Pause size={19} className="text-text-muted" />}
+            <span className="flex-1 text-sm font-medium">{paused ? 'Resume auto-refresh' : 'Pause auto-refresh'}</span>
+          </button>
+        </div>
 
         <nav className="flex-1 overflow-y-auto px-3 py-3">
           {NAV_SECTIONS.map((section, sectionIndex) => (

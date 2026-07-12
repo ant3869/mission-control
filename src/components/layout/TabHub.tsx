@@ -39,10 +39,10 @@ export function TabHub({ view, tabs }: { view: View; tabs: HubTab[] }) {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center gap-1 px-6 border-b border-border shrink-0 overflow-x-auto bg-surface">
+      <div className="scrollbar-none flex items-center gap-1 overflow-x-auto border-b border-border bg-surface px-2 shrink-0 sm:px-6">
         {tabs.map(t => (
           <button key={t.id} onClick={() => { setTab(t.id); writeHubTab(view, t.id) }}
-            className={clsx('flex items-center gap-1.5 px-3 py-2.5 text-xs font-medium border-b-2 -mb-px transition-colors whitespace-nowrap',
+            className={clsx('flex min-h-11 items-center gap-1.5 border-b-2 -mb-px px-4 py-2 text-xs font-medium transition-colors whitespace-nowrap sm:min-h-0 sm:px-3 sm:py-2.5',
               tab === t.id ? 'border-text-primary text-text-primary' : 'border-transparent text-text-muted hover:text-text-secondary')}>
             {t.icon}{t.label}
           </button>
