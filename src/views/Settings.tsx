@@ -3,12 +3,174 @@ import { clsx } from 'clsx'
 import {
   Settings as SettingsIcon, RefreshCw, AlertCircle, CheckCircle2, XCircle,
   Loader, Plug, KeyRound, Save, Zap, CalendarDays, Unplug, Network, Download,
+  Server,
 } from 'lucide-react'
 import {
   settings as settingsApi, auth as authApi, office as officeApi,
   type ConnectorInfo, type ConnectorId, type AuthStatus, type LiveIntegration,
 } from '../lib/api'
 import { apiDownloadUrl } from '../lib/apiTransport.js'
+import { useServerConnection, type ServerProbe } from '../contexts/ServerConnectionContext'
+import { isNativeApp, onAppResume, openExternal } from '../lib/native'
+
+// ─── Server connection card ──────────────────────────────────────────────────
+
+const SERVER_STATUS_META: Record<string, { label: string; cls: string }> = {
+  checking:      { label: 'Checking',      cls: 'bg-card border-border text-text-muted' },
+  online:        { label: 'Online',        cls: 'bg-green-950/50 border-green-900/50 text-green-400' },
+  degraded:      { label: 'Degraded',      cls: 'bg-amber-950/50 border-amber-900/50 text-amber-300' },
+  offline:       { label: 'Offline',       cls: 'bg-red-950/50 border-red-900/50 text-red-400' },
+  misconfigured: { label: 'Needs server',  cls: 'bg-amber-950/50 border-amber-900/50 text-amber-300' },
+}
+
+function errorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message
+  return 'Unable to reach the Mission Control server.'
+}
+
+function ServerConnectionCard() {
+  const connection = useServerConnection()
+  const [editing, setEditing] = useState(false)
+  const [input, setInput] = useState(connection.baseUrl)
+  const [probe, setProbe] = useState<ServerProbe | null>(null)
+  const [testing, setTesting] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null)
+
+  useEffect(() => {
+    if (!editing) setInput(connection.baseUrl)
+  }, [connection.baseUrl, editing])
+
+  const meta = SERVER_STATUS_META[connection.status] ?? SERVER_STATUS_META.offline
+  const displayBase = connection.baseUrl || 'Same origin (/api)'
+  const canSave = Boolean(editing && probe && input.trim() === probe.baseUrl)
+
+  const testServer = async () => {
+    setTesting(true)
+    setMessage(null)
+    try {
+      const candidate = editing ? input : connection.baseUrl || window.location.origin
+      const nextProbe = await connection.test(candidate)
+      setProbe(nextProbe)
+      if (editing) setInput(nextProbe.baseUrl)
+      setMessage({ ok: true, text: `Connected to ${nextProbe.health.hostname || 'server'} in ${nextProbe.latencyMs}ms.` })
+    } catch (err) {
+      setProbe(null)
+      setMessage({ ok: false, text: errorMessage(err) })
+    } finally {
+      setTesting(false)
+    }
+  }
+
+  const saveServer = async () => {
+    if (!canSave) return
+    setSaving(true)
+    setMessage(null)
+    try {
+      const nextProbe = await connection.save(input)
+      setProbe(nextProbe)
+      setEditing(false)
+      setMessage({ ok: true, text: `Saved ${nextProbe.baseUrl}.` })
+    } catch (err) {
+      setMessage({ ok: false, text: errorMessage(err) })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const resetServer = () => {
+    connection.reset()
+    setEditing(false)
+    setProbe(null)
+    setMessage({ ok: true, text: isNativeApp() ? 'Server URL cleared.' : 'Using same-origin API.' })
+  }
+
+  return (
+    <div className="flex flex-col gap-4 rounded-xl border border-border bg-card px-4 py-4 sm:px-6 sm:py-5">
+      <div className="flex items-start gap-3">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-teal-500/30 bg-teal-500/10 text-teal-300">
+          <Server size={18} />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="text-sm font-semibold text-text-primary">Server connection</h2>
+            <span className={clsx('inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-xxs font-semibold', meta.cls)}>
+              {connection.status === 'checking' ? <Loader size={11} className="animate-spin" /> : connection.status === 'online' ? <CheckCircle2 size={11} /> : <AlertCircle size={11} />}
+              {meta.label}
+            </span>
+          </div>
+          <p className="mt-1 break-all font-mono text-xs text-text-secondary">{displayBase}</p>
+          <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xxs text-text-muted">
+            {connection.health?.hostname && <span>Host: {connection.health.hostname}</span>}
+            {connection.health?.version && <span>Version: {connection.health.version}</span>}
+            {connection.latencyMs != null && <span>{connection.latencyMs}ms</span>}
+            {connection.error && <span className="text-red-400">{connection.error}</span>}
+          </div>
+        </div>
+      </div>
+
+      {editing && (
+        <label className="flex flex-col gap-1">
+          <span className="text-xxs font-semibold uppercase tracking-wide text-text-muted">Server URL</span>
+          <input
+            value={input}
+            onChange={event => { setInput(event.target.value); setProbe(null); setMessage(null) }}
+            placeholder="https://hp-nexco.<your-tailnet>.ts.net"
+            className="min-h-11 w-full rounded-lg border border-border bg-base px-3 py-2 text-base text-text-primary outline-none focus:border-teal-400"
+            autoCapitalize="none"
+            autoCorrect="off"
+            inputMode="url"
+            spellCheck={false}
+          />
+          {probe && input.trim() === probe.baseUrl && (
+            <span className="text-xxs text-green-400">
+              Probe OK: {probe.health.hostname || 'server'} · v{probe.health.version || 'unknown'} · {probe.latencyMs}ms
+            </span>
+          )}
+        </label>
+      )}
+
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          onClick={() => void testServer()}
+          disabled={testing || (editing && !input.trim())}
+          className="min-h-11 rounded-lg border border-border bg-base px-4 text-xs font-medium text-text-secondary transition-colors hover:bg-card-hover hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-50 sm:min-h-0 sm:py-1.5"
+        >
+          {testing ? <span className="inline-flex items-center gap-1.5"><Loader size={12} className="animate-spin" /> Testing</span> : 'Test'}
+        </button>
+        {editing ? (
+          <button
+            type="button"
+            onClick={() => void saveServer()}
+            disabled={!canSave || saving}
+            className="min-h-11 rounded-lg border border-teal-500/40 bg-teal-500/15 px-4 text-xs font-medium text-teal-300 transition-colors hover:bg-teal-500/25 disabled:cursor-not-allowed disabled:opacity-50 sm:min-h-0 sm:py-1.5"
+          >
+            {saving ? 'Saving...' : 'Save'}
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={() => { setEditing(true); setInput(connection.baseUrl); setProbe(null); setMessage(null) }}
+            className="min-h-11 rounded-lg border border-border bg-base px-4 text-xs font-medium text-text-secondary transition-colors hover:bg-card-hover hover:text-text-primary sm:min-h-0 sm:py-1.5"
+          >
+            Change
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={resetServer}
+          className="min-h-11 rounded-lg border border-border bg-base px-4 text-xs font-medium text-text-secondary transition-colors hover:bg-card-hover hover:text-text-primary sm:min-h-0 sm:py-1.5"
+        >
+          Reset
+        </button>
+        {message && (
+          <span className={clsx('w-full text-xxs sm:w-auto', message.ok ? 'text-green-400' : 'text-red-400')}>{message.text}</span>
+        )}
+      </div>
+    </div>
+  )
+}
 
 // ─── Status pill ────────────────────────────────────────────────────────────
 
@@ -128,20 +290,20 @@ function ConnectorCard({ info, onSaved }: { info: ConnectorInfo; onSaved: () => 
   }
 
   return (
-    <div className="flex flex-col gap-4 rounded-xl border border-border bg-card p-5">
+    <div className="flex flex-col gap-4 rounded-xl border border-border bg-card px-4 py-4 sm:px-6 sm:py-5">
       {/* Header */}
-      <div className="flex items-start justify-between gap-3">
+      <div className="flex flex-col items-start gap-3 sm:flex-row sm:justify-between">
         <div className="flex items-start gap-3 min-w-0">
           <span className="text-2xl leading-none">{meta.icon}</span>
           <div className="min-w-0">
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <h3 className="text-sm font-semibold text-text-primary">{info.label}</h3>
               <StatusPill status={info.status} />
             </div>
             <p className="text-xxs text-text-muted mt-1 leading-relaxed max-w-md">{meta.blurb}</p>
           </div>
         </div>
-        <label className="flex items-center gap-2 shrink-0 cursor-pointer select-none">
+        <label className="flex min-h-11 items-center gap-2 shrink-0 cursor-pointer select-none sm:min-h-0">
           <span className="text-xxs text-text-muted">{enabled ? 'Enabled' : 'Disabled'}</span>
           <button
             type="button"
@@ -182,7 +344,7 @@ function ConnectorCard({ info, onSaved }: { info: ConnectorInfo; onSaved: () => 
             onChange={e => setBaseUrl(e.target.value)}
             placeholder={meta.urlHint}
             spellCheck={false}
-            className="w-full px-3 py-2 rounded-lg bg-base border border-border text-xs font-mono text-text-primary placeholder:text-text-muted outline-none focus:border-accent-blue/50"
+            className="w-full min-h-11 px-3 py-2 rounded-lg bg-base border border-border text-base sm:text-xs font-mono text-text-primary placeholder:text-text-muted outline-none focus:border-accent-blue/50"
           />
         </label>
         <label className="flex flex-col gap-1">
@@ -197,7 +359,7 @@ function ConnectorCard({ info, onSaved }: { info: ConnectorInfo; onSaved: () => 
             placeholder={info.hasToken ? 'Leave blank to keep current token' : 'Paste token to pull data'}
             spellCheck={false}
             autoComplete="off"
-            className="w-full px-3 py-2 rounded-lg bg-base border border-border text-xs font-mono text-text-primary placeholder:text-text-muted outline-none focus:border-accent-blue/50"
+            className="w-full min-h-11 px-3 py-2 rounded-lg bg-base border border-border text-base sm:text-xs font-mono text-text-primary placeholder:text-text-muted outline-none focus:border-accent-blue/50"
           />
         </label>
 
@@ -215,7 +377,7 @@ function ConnectorCard({ info, onSaved }: { info: ConnectorInfo; onSaved: () => 
                 onChange={e => setApiBaseUrl(e.target.value)}
                 placeholder="http://127.0.0.1:8642/v1"
                 spellCheck={false}
-                className="w-full px-3 py-2 rounded-lg bg-base border border-border text-xs font-mono text-text-primary placeholder:text-text-muted outline-none focus:border-accent-blue/50"
+                className="w-full min-h-11 px-3 py-2 rounded-lg bg-base border border-border text-base sm:text-xs font-mono text-text-primary placeholder:text-text-muted outline-none focus:border-accent-blue/50"
               />
             </label>
             <label className="flex flex-col gap-1">
@@ -230,7 +392,7 @@ function ConnectorCard({ info, onSaved }: { info: ConnectorInfo; onSaved: () => 
                 placeholder={info.hasApiToken ? 'Leave blank to keep current key' : 'Paste HERMES_API_KEY'}
                 spellCheck={false}
                 autoComplete="off"
-                className="w-full px-3 py-2 rounded-lg bg-base border border-border text-xs font-mono text-text-primary placeholder:text-text-muted outline-none focus:border-accent-blue/50"
+                className="w-full min-h-11 px-3 py-2 rounded-lg bg-base border border-border text-base sm:text-xs font-mono text-text-primary placeholder:text-text-muted outline-none focus:border-accent-blue/50"
               />
             </label>
 
@@ -262,12 +424,12 @@ function ConnectorCard({ info, onSaved }: { info: ConnectorInfo; onSaved: () => 
       </div>
 
       {/* Actions */}
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <button
           onClick={save}
           disabled={saving || !dirty}
           className={clsx(
-            'flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors',
+            'flex min-h-11 items-center gap-1.5 px-3 py-2 rounded-lg border text-xs font-medium transition-colors sm:min-h-0 sm:py-1.5',
             dirty
               ? 'border-accent-blue/40 bg-accent-blue/15 text-accent-blue hover:bg-accent-blue/25'
               : 'border-border bg-card text-text-muted cursor-not-allowed',
@@ -278,12 +440,12 @@ function ConnectorCard({ info, onSaved }: { info: ConnectorInfo; onSaved: () => 
         <button
           onClick={test}
           disabled={testing || !baseUrl.trim()}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border bg-card hover:bg-card-hover text-text-secondary hover:text-text-primary transition-colors text-xs disabled:opacity-50"
+          className="flex min-h-11 items-center gap-1.5 px-3 py-2 rounded-lg border border-border bg-card hover:bg-card-hover text-text-secondary hover:text-text-primary transition-colors text-xs disabled:opacity-50 sm:min-h-0 sm:py-1.5"
         >
           {testing ? <Loader size={12} className="animate-spin" /> : <Plug size={12} />} Test connection
         </button>
         {msg && (
-          <span className={clsx('text-xxs ml-1', msg.ok ? 'text-green-400' : 'text-red-400')}>{msg.text}</span>
+          <span className={clsx('w-full text-xxs sm:w-auto sm:ml-1', msg.ok ? 'text-green-400' : 'text-red-400')}>{msg.text}</span>
         )}
       </div>
     </div>
@@ -331,7 +493,7 @@ function GoogleConnectionCard({ status, onChanged }: { status: AuthStatus['googl
   const connected     = state === 'connected'
   const needsReconnect = state === 'reconnect_required' || state === 'missing_scopes' || state === 'auth_error'
 
-  const connect = () => { window.location.href = authApi.googleAuthUrl() }
+  const connect = () => { void openExternal(authApi.googleAuthUrl()) }
   async function disconnect() {
     setBusy(true)
     try { await authApi.disconnect() } catch { /* ignore */ }
@@ -339,7 +501,7 @@ function GoogleConnectionCard({ status, onChanged }: { status: AuthStatus['googl
   }
 
   return (
-    <div className="rounded-xl border border-border bg-card p-4 max-w-2xl">
+    <div className="rounded-xl border border-border bg-card px-4 py-4 sm:px-6 sm:py-5 max-w-2xl">
       <div className="flex items-start gap-3">
         <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-base border border-border shrink-0 text-base select-none">📅</div>
         <div className="flex-1 min-w-0">
@@ -360,21 +522,21 @@ function GoogleConnectionCard({ status, onChanged }: { status: AuthStatus['googl
               : (status?.error || 'Reconnect to restore calendar access.')}
           </p>
 
-          <div className="flex items-center gap-2 mt-3">
+          <div className="flex flex-wrap items-center gap-2 mt-3">
             {connected ? (
               <>
                 <button onClick={connect}
-                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-border bg-base hover:bg-card-hover text-text-secondary hover:text-text-primary text-xs">
+                  className="flex min-h-11 items-center gap-1.5 px-3 py-2 rounded-lg border border-border bg-base hover:bg-card-hover text-text-secondary hover:text-text-primary text-xs sm:min-h-0 sm:px-2.5 sm:py-1.5">
                   <RefreshCw size={11} /> Reconnect
                 </button>
                 <button onClick={disconnect} disabled={busy}
-                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-red-900/40 bg-red-950/20 text-red-400 hover:bg-red-950/40 text-xs disabled:opacity-50">
+                  className="flex min-h-11 items-center gap-1.5 px-3 py-2 rounded-lg border border-red-900/40 bg-red-950/20 text-red-400 hover:bg-red-950/40 text-xs disabled:opacity-50 sm:min-h-0 sm:px-2.5 sm:py-1.5">
                   {busy ? <Loader size={11} className="animate-spin" /> : <Unplug size={11} />} Disconnect
                 </button>
               </>
             ) : (
               <button onClick={connect} disabled={!configured}
-                className={clsx('flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium',
+                className={clsx('flex min-h-11 items-center gap-1.5 px-3 py-2 rounded-lg border text-xs font-medium sm:min-h-0 sm:py-1.5',
                   configured
                     ? (needsReconnect
                         ? 'border-amber-500/40 bg-amber-500/15 text-amber-300 hover:bg-amber-500/25'
@@ -407,7 +569,7 @@ const CAT_LABEL: Record<string, string> = {
 function IntegrationCard({ item }: { item: LiveIntegration }) {
   const st = INT_STATUS_CFG[item.status] ?? INT_STATUS_CFG.pending
   return (
-    <div className="flex items-start gap-3 px-4 py-3 rounded-xl border border-border bg-card hover:bg-card-hover transition-colors">
+    <div className="flex items-start gap-3 rounded-xl border border-border bg-card px-4 py-4 transition-colors hover:bg-card-hover sm:px-6 sm:py-5">
       <span className="text-xl leading-none w-7 text-center shrink-0 mt-0.5">{item.icon}</span>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
@@ -471,6 +633,18 @@ export function Settings() {
   }, [])
 
   useEffect(() => { load(); loadIntegrations() }, [load, loadIntegrations])
+  useEffect(() => onAppResume(load), [load])
+
+  const refreshAll = useCallback(() => {
+    void load()
+    void loadIntegrations()
+  }, [load, loadIntegrations])
+
+  const exportSnapshot = useCallback(() => {
+    const exportUrl = apiDownloadUrl('/api/export')
+    if (isNativeApp()) void openExternal(exportUrl)
+    else window.location.assign(exportUrl)
+  }, [])
 
   const fetchedLabel = fetchedAt
     ? new Date(fetchedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
@@ -479,8 +653,8 @@ export function Settings() {
   return (
     <div className="flex flex-col h-full overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-border shrink-0">
-        <div>
+      <div className="flex flex-col gap-3 px-4 pt-4 pb-3 border-b border-border shrink-0 sm:flex-row sm:items-center sm:justify-between sm:px-6 sm:pt-5 sm:pb-4">
+        <div className="min-w-0">
           <h1 className="text-base font-semibold text-text-primary flex items-center gap-2">
             <SettingsIcon size={16} className="text-text-muted" /> Settings
           </h1>
@@ -488,25 +662,33 @@ export function Settings() {
             Connect your agent platforms — paste a gateway token to pull sessions, agents, cron jobs and analytics.
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           {fetchedLabel && <span className="text-xxs text-text-muted">as of {fetchedLabel}</span>}
-          <button onClick={() => { load(); loadIntegrations() }} disabled={loading}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded border border-border bg-card hover:bg-card-hover text-text-secondary hover:text-text-primary transition-colors text-xs">
+          <button onClick={refreshAll} disabled={loading}
+            className="flex min-h-11 items-center gap-1.5 px-3 py-2 rounded border border-border bg-card hover:bg-card-hover text-text-secondary hover:text-text-primary transition-colors text-xs sm:min-h-0 sm:py-1.5">
             <RefreshCw size={11} className={loading ? 'animate-spin' : ''} /> Refresh
           </button>
         </div>
       </div>
 
       {error && (
-        <div className="flex items-start gap-2 mx-6 mt-4 px-4 py-3 rounded-lg border border-amber-900/40 bg-amber-950/20 text-amber-300">
+        <div className="flex items-start gap-2 mx-4 mt-4 px-4 py-3 rounded-lg border border-amber-900/40 bg-amber-950/20 text-amber-300 sm:mx-6">
           <AlertCircle size={13} className="shrink-0 mt-0.5" />
           <p className="text-xs leading-snug">{error}</p>
         </div>
       )}
 
-      <div className="flex-1 overflow-y-auto px-6 py-5">
-        {/* Agent connectors */}
+      <div className="flex-1 overflow-y-auto px-4 py-4 sm:px-6 sm:py-5">
+        {/* Server connection */}
         <p className="text-xxs font-semibold uppercase tracking-wider text-text-muted mb-3 flex items-center gap-1.5">
+          <Server size={11} /> Server connection
+        </p>
+        <div className="max-w-2xl">
+          <ServerConnectionCard />
+        </div>
+
+        {/* Agent connectors */}
+        <p className="text-xxs font-semibold uppercase tracking-wider text-text-muted mt-8 mb-3 flex items-center gap-1.5">
           <Plug size={11} /> Agent platforms
         </p>
         {loading ? (
@@ -526,7 +708,7 @@ export function Settings() {
         <GoogleConnectionCard status={authStatus?.google} onChanged={load} />
 
         {/* Read-only env credentials */}
-        <p className="text-xxs font-semibold uppercase tracking-wider text-text-muted mt-8 mb-3 flex items-center gap-1.5">
+        <p className="text-xxs font-semibold uppercase tracking-wider text-text-muted mt-8 mb-3 flex flex-wrap items-center gap-1.5">
           <KeyRound size={11} /> Environment credentials
           <span className="font-normal normal-case tracking-normal opacity-60">· edit in .env, then restart the server</span>
         </p>
@@ -539,8 +721,8 @@ export function Settings() {
         </div>
 
         {/* Integrations (office route: MCP servers, plugins, auth connections) */}
-        <div className="flex items-center gap-2 mt-8 mb-3">
-          <p className="text-xxs font-semibold uppercase tracking-wider text-text-muted flex items-center gap-1.5">
+        <div className="flex flex-wrap items-center gap-2 mt-8 mb-3">
+          <p className="text-xxs font-semibold uppercase tracking-wider text-text-muted flex flex-wrap items-center gap-1.5">
             <Network size={11} /> Integrations
             <span className="font-normal normal-case tracking-normal opacity-60">· MCP servers, plugins & connected services</span>
           </p>
@@ -558,24 +740,24 @@ export function Settings() {
         )}
 
         {/* Export & backup */}
-        <p className="text-xxs font-semibold uppercase tracking-wider text-text-muted mt-8 mb-3 flex items-center gap-1.5">
+        <p className="text-xxs font-semibold uppercase tracking-wider text-text-muted mt-8 mb-3 flex flex-wrap items-center gap-1.5">
           <Download size={11} /> Export &amp; backup
           <span className="font-normal normal-case tracking-normal opacity-60">· download a snapshot of your local data</span>
         </p>
-        <div className="flex items-start gap-4 p-4 rounded-lg border border-border bg-card max-w-2xl">
+        <div className="flex flex-col gap-3 rounded-lg border border-border bg-card px-4 py-4 sm:flex-row sm:items-start sm:gap-4 sm:px-6 sm:py-5 max-w-2xl">
           <div className="flex-1 min-w-0">
             <p className="text-sm text-text-primary font-medium">JSON snapshot</p>
             <p className="text-xs text-text-muted mt-0.5">
               Tasks, to-dos, links, to-buy list, alerts, projects and connector config — all in one file. Does not include SQLite databases (inventory, evals, memory) or uploaded attachments.
             </p>
           </div>
-          <a
-            href={apiDownloadUrl('/api/export')}
-            download
-            className="shrink-0 flex items-center gap-1.5 px-3 py-2 rounded border border-border bg-base hover:bg-card-hover text-text-secondary hover:text-text-primary transition-colors text-xs font-medium"
+          <button
+            type="button"
+            onClick={exportSnapshot}
+            className="flex min-h-11 w-full shrink-0 items-center justify-center gap-1.5 rounded border border-border bg-base px-3 py-2 text-xs font-medium text-text-secondary transition-colors hover:bg-card-hover hover:text-text-primary sm:w-auto"
           >
             <Download size={12} /> Download
-          </a>
+          </button>
         </div>
       </div>
     </div>

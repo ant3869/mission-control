@@ -24,7 +24,7 @@ export async function openExternal(url: string): Promise<void> {
   window.open(url, '_blank', 'noopener,noreferrer')
 }
 
-export function onAppResume(callback: () => void): () => void {
+export function onAppResume(callback: () => void | Promise<void>): () => void {
   if (!isNativeApp()) return () => {}
 
   return cleanupWhenReady(CapacitorApp.addListener('resume', callback))

@@ -72,10 +72,10 @@ Starting commit: 22f991e4109ee523659dc1872b5c7e7059a00524
   - Starting commit: 7268482adbf5ca6926f4bfdc1bd08a9ffe8422be
   - Commit: pending (`feat(mobile): make calendar agenda-first on phones`)
   - Review: controller review passed; `npm run build`, `npm run test:mobile`, `npm test`, and `git diff --check` passed. Playwright 360px real-API pass confirmed phone defaults to Agenda, reconnect banner is readable, header touch targets are 44px, and no page-level horizontal overflow; local Google Calendar credentials are not configured (`503 not_configured`), so real Calendar CRUD/Meet behavior remains unverified. Playwright route-mocked pass exercised create, edit, delete, Meet link opening, Agenda/Day/Month/Week switching, Week/Month internal panning, full-screen composer, temporary event cleanup, and no page-level horizontal overflow.
-- [ ] Task 12: Add server controls, native OAuth, and export to Settings.
-  - Starting commit: pending
-  - Commit: pending
-  - Review: pending
+- [x] Task 12: Add server controls, native OAuth, and export to Settings.
+  - Starting commit: 61d486fecdcd1f8679ad9071d870f21ef6d4cee8
+  - Commit: pending (`feat(mobile): add native server OAuth and export settings`)
+  - Review: controller review passed; `npm run build`, `npm run test:mobile`, `npm test` (passed on rerun after the known transient SQLite lock), and `git diff --check` passed. Playwright 360px route-mocked Settings pass covered invalid URL gating, Tailscale HTTPS and LAN HTTP probes/saves, same-origin reset, Google OAuth opening `/api/auth/google`, export download from `/api/export`, 16px server URL input, 44px touch targets, and no horizontal overflow; a focused integration-grid pass confirmed one column below `lg` and two columns at `lg`.
 - [ ] Task 13: Build APK, document Tailscale/LAN setup, and run final verification.
   - Starting commit: pending
   - Commit: pending
