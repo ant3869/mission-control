@@ -24,10 +24,11 @@ Starting commit: 22f991e4109ee523659dc1872b5c7e7059a00524
   - Implementer: multi_agent_v1 Peirce (019f53c9-39c8-7111-adfd-27b199e51b33)
   - Verification: five required literal searches had no output; `npm test`, `npm run test:mobile`, and `npm run build` passed.
   - Review: passed by controller after removing unused stale stream URL constants.
-- [ ] Task 3: Bind Express safely and make CORS testable.
-  - Starting commit: pending
-  - Commit: pending
-  - Review: pending
+- [x] Task 3: Bind Express safely and make CORS testable.
+  - Starting commit: 70bc80b00913f6c64b4afc6536cbbf03a1cac4bb
+  - Implementer: multi_agent_v1 Sartre (019f53dc-cb30-7863-aca6-3e06a65012f7)
+  - Verification: targeted `serverConfig` test, `npm test`, and `npm run build` passed.
+  - Review: passed by controller; CORS callback computes origin policy once.
 - [ ] Task 4: Add native platform services and overlay dismissal.
   - Starting commit: pending
   - Commit: pending

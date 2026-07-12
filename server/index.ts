@@ -1,4 +1,5 @@
 import 'dotenv/config'
+import os from 'node:os'
 import express from 'express'
 import cors from 'cors'
 import { calendarRouter } from './routes/calendar.js'
@@ -42,9 +43,12 @@ import { officeRouter }  from './routes/office.js'
 import { searchRouter }  from './routes/search.js'
 import { exportRouter }  from './routes/export.js'
 import { rateLimit }    from './lib/rateLimit.js'
+import { buildAllowedOrigins, isOriginAllowed, resolveApiHost } from './lib/serverConfig.js'
 
 const app = express()
-const PORT = process.env.API_PORT ?? 3001
+const PORT = Number(process.env.API_PORT ?? 3001)
+const HOST = resolveApiHost()
+const allowedOrigins = buildAllowedOrigins()
 
 // General API rate limit: 300 req/min (protects against runaway loops)
 const generalLimit = rateLimit({ max: 300, windowMs: 60_000 })
@@ -52,12 +56,10 @@ const generalLimit = rateLimit({ max: 300, windowMs: 60_000 })
 const aiLimit = rateLimit({ max: 20, windowMs: 60_000, message: 'AI API rate limit reached — wait 60s.' })
 
 app.use(cors({
-  origin: [
-    'http://localhost:5173',  // Vite dev server
-    'http://localhost',       // Android Capacitor WebView
-    'capacitor://localhost',  // iOS Capacitor WebView
-    'ionic://localhost',      // Ionic/Capacitor legacy scheme
-  ],
+  origin(origin, callback) {
+    const allowed = isOriginAllowed(origin, allowedOrigins)
+    callback(allowed ? null : new Error(`Origin not allowed: ${origin}`), allowed)
+  },
   credentials: true,
 }))
 app.use(express.json())
@@ -103,7 +105,12 @@ app.use('/api/office',  officeRouter)
 app.use('/api/search',  searchRouter)
 app.use('/api/export',  exportRouter)
 
-app.get('/api/health', (_req, res) => res.json({ ok: true, ts: new Date().toISOString() }))
+app.get('/api/health', (_req, res) => res.json({
+  ok: true,
+  ts: new Date().toISOString(),
+  hostname: os.hostname(),
+  version: process.env.npm_package_version ?? 'unknown',
+}))
 
 // Global error handler — catches any unhandled throw from async route handlers.
 // Express 5 propagates async errors automatically; this ensures they're logged
@@ -114,8 +121,8 @@ app.use((err: unknown, _req: import('express').Request, res: import('express').R
   if (!res.headersSent) res.status(500).json({ error: message })
 })
 
-app.listen(PORT, () => {
-  console.log(`Mission Control API → http://localhost:${PORT}`)
+app.listen(PORT, HOST, () => {
+  console.log(`Mission Control API → http://${HOST}:${PORT}`)
   startMemoryCollector()
   if (process.env.DISCORD_BOT_TOKEN) {
     import('./lib/discordBot.js').then(({ startDiscordBot }) => startDiscordBot(PORT))
