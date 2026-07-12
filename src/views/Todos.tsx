@@ -307,7 +307,7 @@ const DETAIL_FIELDS: Array<{ key: DetailKey; label: string; icon: typeof MapPin;
   { key: 'url',      label: 'URL',      icon: Link2,        placeholder: 'https://…',  wide: true, type: 'url' },
 ]
 
-const detailFieldCls = 'w-full pl-7 pr-2 py-1.5 rounded-lg bg-base border border-border text-xs text-text-primary placeholder:text-text-muted outline-none focus:border-accent-blue/50'
+const detailFieldCls = 'w-full min-h-11 pl-7 pr-2 py-2 sm:min-h-0 sm:py-1.5 rounded-lg bg-base border border-border text-base sm:text-xs text-text-primary placeholder:text-text-muted outline-none focus:border-accent-blue/50'
 
 // Editable grid of optional fields + custom key/value pairs. Used in quick-add
 // and the drawer editor. Lightweight by design — collapsed by default elsewhere.
@@ -354,7 +354,7 @@ function DetailsForm({ value, onChange, parseSource }: {
         </button>
       )}
 
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         {DETAIL_FIELDS.map(f => {
           const Icon = f.icon
           return (
@@ -386,13 +386,13 @@ function DetailsForm({ value, onChange, parseSource }: {
                 value={k}
                 onChange={e => setCustom(k, e.target.value, v)}
                 placeholder="Label"
-                className="w-28 shrink-0 px-2 py-1.5 rounded-lg bg-base border border-border text-xs text-text-secondary placeholder:text-text-muted outline-none focus:border-accent-blue/50"
+                className="w-28 shrink-0 px-2 py-2 sm:py-1.5 rounded-lg bg-base border border-border text-base sm:text-xs text-text-secondary placeholder:text-text-muted outline-none focus:border-accent-blue/50"
               />
               <input
                 value={v}
                 onChange={e => setCustom(k, k, e.target.value)}
                 placeholder="Value"
-                className="flex-1 min-w-0 px-2 py-1.5 rounded-lg bg-base border border-border text-xs text-text-primary placeholder:text-text-muted outline-none focus:border-accent-blue/50"
+                className="flex-1 min-w-0 px-2 py-2 sm:py-1.5 rounded-lg bg-base border border-border text-base sm:text-xs text-text-primary placeholder:text-text-muted outline-none focus:border-accent-blue/50"
               />
               <button onClick={() => removeCustom(k)} className="shrink-0 p-1 text-text-muted hover:text-red-400" aria-label="Remove field">
                 <X size={13} />
@@ -445,7 +445,7 @@ function TodoRow({ todo, active, onToggle, onClick, selected, onSelectToggle }: 
 
   return (
     <div className={clsx(
-      'group/row relative flex items-center gap-2.5 w-full transition-colors',
+      'group/row relative flex items-start gap-2.5 w-full transition-colors sm:items-center',
       'before:absolute before:left-0 before:top-0 before:bottom-0 before:w-[2px] before:transition-colors',
       over
         ? 'before:bg-red-500/50'
@@ -457,7 +457,7 @@ function TodoRow({ todo, active, onToggle, onClick, selected, onSelectToggle }: 
       {onSelectToggle && (
         <button
           onClick={e => { e.stopPropagation(); onSelectToggle(todo.id) }}
-          className="shrink-0 pl-3 py-2.5 text-text-muted hover:text-accent-blue transition-colors"
+          className="flex min-h-11 shrink-0 items-center pl-3 pr-1 py-2.5 text-text-muted hover:text-accent-blue transition-colors"
           title={selected ? 'Deselect' : 'Select'}
         >
           {selected
@@ -470,7 +470,7 @@ function TodoRow({ todo, active, onToggle, onClick, selected, onSelectToggle }: 
       <button
         onClick={e => { e.stopPropagation(); onToggle(todo) }}
         className={clsx(
-          'shrink-0 py-2.5 text-text-muted hover:text-emerald-400 transition-colors',
+          'flex min-h-11 shrink-0 items-center px-1 py-2.5 text-text-muted hover:text-emerald-400 transition-colors',
           onSelectToggle ? '' : 'pl-3',
         )}
         title={todo.done ? 'Mark as open' : 'Mark as done'}
@@ -486,10 +486,10 @@ function TodoRow({ todo, active, onToggle, onClick, selected, onSelectToggle }: 
           right so priority pills line up cleanly down the list. */}
       <button
         onClick={onClick}
-        className="flex flex-1 min-w-0 items-center gap-3 pr-4 py-2.5 text-left"
+        className="flex min-h-11 flex-1 min-w-0 flex-col gap-2 pr-3 py-2.5 text-left sm:flex-row sm:items-center sm:gap-3 sm:pr-4"
       >
         {/* Left text column */}
-        <div className="flex flex-col min-w-0 flex-1 gap-0.5">
+        <div className="flex w-full flex-col min-w-0 flex-1 gap-0.5 sm:w-auto">
           <span className={clsx(
             'text-sm truncate leading-tight',
             todo.done ? 'line-through text-text-muted' : 'text-text-primary',
@@ -502,14 +502,14 @@ function TodoRow({ todo, active, onToggle, onClick, selected, onSelectToggle }: 
         </div>
 
         {/* Right badge column — fixed slots keep everything aligned */}
-        <div className="shrink-0 flex items-center gap-2">
+        <div className="flex w-full shrink-0 items-center justify-between gap-2 pl-8 sm:w-auto sm:justify-start sm:pl-0">
           {due && (
             <span className={clsx('flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded border', due.cls)}>
               <CalendarDays size={10} /> {due.label}
             </span>
           )}
           <span className={clsx(
-            'inline-flex justify-center min-w-[68px] text-[10px] px-1.5 py-0.5 rounded border capitalize',
+            'inline-flex justify-center text-[10px] px-1.5 py-0.5 rounded border capitalize sm:min-w-[68px]',
             SEVERITY_STYLE[todo.severity],
           )}>
             {todo.severity}
@@ -583,23 +583,20 @@ function TodoDrawer({ todo, onClose, onToggle, onSave, onDelete, onResearch }: {
 
   const r        = todo.research
   const dueBadgeVal = todo.dueDate && !todo.done ? dueBadge(todo.dueDate) : null
-  const inputCls = 'w-full px-2.5 py-1.5 rounded-lg bg-base border border-border text-xs text-text-primary placeholder:text-text-muted outline-none focus:border-accent-blue/50'
+  const inputCls = 'w-full min-h-11 px-3 py-2 sm:min-h-0 sm:px-2.5 sm:py-1.5 rounded-lg bg-base border border-border text-base sm:text-xs text-text-primary placeholder:text-text-muted outline-none focus:border-accent-blue/50'
 
   return (
     <div className={clsx(
-      'animate-drawer-in flex flex-col h-full border-l border-border bg-surface overflow-y-auto',
-      // Narrow (half-screen): overlay the list instead of crushing it.
-      'absolute inset-y-0 right-0 z-30 w-full max-w-[440px] shadow-2xl shadow-black/40',
-      // Wide: sit side-by-side as a static panel.
-      'lg:static lg:w-[380px] lg:min-w-[380px] lg:max-w-none lg:shadow-none lg:z-auto',
+      'animate-drawer-in fixed inset-0 z-[70] flex h-full w-full max-w-none flex-col border-l-0 bg-surface safe-top safe-bottom shadow-2xl shadow-black/40 overflow-y-auto',
+      'lg:static lg:h-full lg:w-[380px] lg:min-w-[380px] lg:max-w-none lg:border-l lg:z-auto lg:shadow-none',
     )}>
 
       {/* Header */}
-      <div className="flex items-start justify-between px-5 py-4 border-b border-border shrink-0 gap-2">
+      <div className="flex items-start justify-between px-4 py-3 border-b border-border shrink-0 gap-2 sm:px-5 sm:py-4">
         <div className="flex items-center gap-2.5 min-w-0 flex-1">
           <button
             onClick={() => onToggle(todo)}
-            className="shrink-0 text-text-muted hover:text-emerald-400 transition-colors"
+            className="flex min-h-11 min-w-11 shrink-0 items-center justify-center text-text-muted hover:text-emerald-400 transition-colors"
             title={todo.done ? 'Mark as open' : 'Mark as done'}
           >
             {todo.done
@@ -611,12 +608,12 @@ function TodoDrawer({ todo, onClose, onToggle, onSave, onDelete, onResearch }: {
             {todo.title}
           </p>
         </div>
-        <button aria-label="Close" onClick={onClose} className="p-1 rounded hover:bg-card text-text-muted hover:text-text-primary shrink-0">
+        <button aria-label="Close" onClick={onClose} className="flex min-h-11 min-w-11 items-center justify-center rounded hover:bg-card text-text-muted hover:text-text-primary shrink-0">
           <X size={15} />
         </button>
       </div>
 
-      <div className="flex flex-col gap-4 p-5 overflow-y-auto flex-1">
+      <div className="flex flex-col gap-4 px-4 py-3 overflow-y-auto flex-1 sm:px-5 sm:py-4">
 
         {/* Property chips */}
         <div className="flex items-center gap-2 flex-wrap">
@@ -672,7 +669,7 @@ function TodoDrawer({ todo, onClose, onToggle, onSave, onDelete, onResearch }: {
               <div className="flex items-center gap-2">
                 <input type="date" value={due} onChange={e => setDue(e.target.value)} className={clsx(inputCls, 'flex-1')} />
                 {due && (
-                  <button onClick={() => setDue('')} className="text-[10px] text-text-muted hover:text-text-secondary">
+                  <button onClick={() => setDue('')} className="min-h-11 px-2 text-[10px] text-text-muted hover:text-text-secondary sm:min-h-0">
                     clear
                   </button>
                 )}
@@ -684,13 +681,13 @@ function TodoDrawer({ todo, onClose, onToggle, onSave, onDelete, onResearch }: {
               <DetailsForm value={details} onChange={setDetails} parseSource={title} />
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <button onClick={save} disabled={!title.trim()}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-emerald-500/40 bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25 text-xs font-medium disabled:opacity-40">
+                      className="flex min-h-11 items-center gap-1.5 px-3 py-2 rounded-lg border border-emerald-500/40 bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25 text-xs font-medium disabled:opacity-40 sm:min-h-0 sm:py-1.5">
                 <Check size={12} /> Save
               </button>
               <button onClick={() => setEditing(false)}
-                      className="px-3 py-1.5 rounded-lg border border-border bg-card hover:bg-card-hover text-text-secondary text-xs">
+                      className="min-h-11 px-3 py-2 rounded-lg border border-border bg-card hover:bg-card-hover text-text-secondary text-xs sm:min-h-0 sm:py-1.5">
                 Cancel
               </button>
             </div>
@@ -885,15 +882,15 @@ function TodoDrawer({ todo, onClose, onToggle, onSave, onDelete, onResearch }: {
         </div>
 
         {/* Footer actions */}
-        <div className="flex items-center gap-2 pt-2 border-t border-border">
+        <div className="sticky bottom-0 flex flex-wrap items-center gap-2 border-t border-border bg-surface pt-3 pb-2 safe-bottom">
           {!editing && (
             <button onClick={() => setEditing(true)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border bg-card hover:bg-card-hover text-text-secondary hover:text-text-primary text-xs">
+                    className="flex min-h-11 items-center gap-1.5 px-3 py-2 rounded-lg border border-border bg-card hover:bg-card-hover text-text-secondary hover:text-text-primary text-xs">
               <Pencil size={12} /> Edit
             </button>
           )}
           <button onClick={() => onDelete(todo)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-red-900/40 bg-red-950/20 text-red-400 hover:bg-red-950/40 text-xs">
+                  className="flex min-h-11 items-center gap-1.5 px-3 py-2 rounded-lg border border-red-900/40 bg-red-950/20 text-red-400 hover:bg-red-950/40 text-xs">
             <Trash2 size={12} /> Delete
           </button>
         </div>
@@ -1103,38 +1100,38 @@ export default function Todos() {
             </div>
           )}
 
-          <div className="flex items-center gap-2">
+          <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center">
             <input
               ref={inputRef}
               value={title}
               onChange={e => setTitle(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter') handleAdd() }}
               placeholder='Add a to-do… ("renew passport tomorrow !high @long")'
-              className="flex-1 min-w-0 bg-base border border-border rounded-lg px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-border"
+              className="col-span-2 flex-1 min-w-0 bg-base border border-border rounded-lg px-3 py-2 text-base sm:text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-border"
             />
             <select value={severity} onChange={e => setSeverity(e.target.value as Severity)}
-                    className="bg-base border border-border rounded-lg px-2 py-2 text-xs text-text-secondary focus:outline-none" title="Severity">
+                    className="min-h-11 bg-base border border-border rounded-lg px-2 py-2 text-base sm:text-xs text-text-secondary focus:outline-none" title="Severity">
               <option value="low">Low</option>
               <option value="medium">Medium</option>
               <option value="high">High</option>
               <option value="critical">Critical</option>
             </select>
             <select value={horizon} onChange={e => setHorizon(e.target.value as Horizon)}
-                    className="bg-base border border-border rounded-lg px-2 py-2 text-xs text-text-secondary focus:outline-none" title="Time horizon">
+                    className="min-h-11 bg-base border border-border rounded-lg px-2 py-2 text-base sm:text-xs text-text-secondary focus:outline-none" title="Time horizon">
               <option value="short">Short</option>
               <option value="long">Long</option>
             </select>
             <button onClick={handleAdd} disabled={!title.trim() || adding}
-                    className="flex items-center gap-1.5 px-3 py-2 text-xs bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 rounded-lg text-emerald-400 transition-colors disabled:opacity-40">
+                    className="col-span-2 flex min-h-11 items-center justify-center gap-1.5 px-3 py-2 text-xs bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 rounded-lg text-emerald-400 transition-colors disabled:opacity-40 sm:col-span-1">
               {adding ? <Loader2 size={12} className="animate-spin" /> : <Plus size={12} />} Add
             </button>
           </div>
 
           {/* Additional details toggle — keeps simple tasks simple */}
-          <div className="flex items-center gap-2 -mt-1">
+          <div className="flex flex-wrap items-center gap-2 -mt-1">
             <button onClick={() => setShowDetails(v => !v)}
                     className={clsx(
-                      'flex items-center gap-1 text-[11px] transition-colors',
+                      'flex min-h-11 items-center gap-1 text-[11px] transition-colors sm:min-h-0',
                       showDetails ? 'text-text-secondary' : 'text-text-muted hover:text-text-secondary',
                     )}>
               <ChevronDown size={12} className={clsx('transition-transform', showDetails && 'rotate-180')} />
@@ -1147,7 +1144,7 @@ export default function Todos() {
             </button>
             {!showDetails && title.trim() && looksDetailRich(title) && !hasAnyDetail(quickDetails) && (
               <button onClick={() => setShowDetails(true)}
-                      className="flex items-center gap-1 text-[11px] text-violet-300/80 hover:text-violet-200">
+                      className="flex min-h-11 items-center gap-1 text-[11px] text-violet-300/80 hover:text-violet-200 sm:min-h-0">
                 <Wand2 size={11} /> details found in text
               </button>
             )}
@@ -1159,7 +1156,7 @@ export default function Todos() {
             </div>
           )}
 
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1 overflow-x-auto whitespace-nowrap -mx-4 px-4 sm:mx-0 sm:px-0">
             {/* Select-all toggle */}
             {visible.length > 0 && (
               <button
@@ -1174,7 +1171,7 @@ export default function Todos() {
                     setBulkSelected(prev => new Set([...prev, ...visible.map(t => t.id)]))
                   }
                 }}
-                className="shrink-0 mr-1 text-text-muted hover:text-accent-blue transition-colors"
+                className="flex min-h-11 min-w-11 shrink-0 items-center justify-center text-text-muted hover:text-accent-blue transition-colors sm:mr-1 sm:min-h-0 sm:min-w-0"
                 title={allVisibleSelected ? 'Deselect all' : 'Select all visible'}
               >
                 {allVisibleSelected
@@ -1188,7 +1185,7 @@ export default function Todos() {
             {(['open', 'short', 'long', 'done'] as Filter[]).map(f => (
               <button key={f} onClick={() => { setFilter(f); setBulkSelected(new Set()) }}
                       className={clsx(
-                        'px-2.5 py-1 rounded text-xs transition-colors',
+                        'min-h-11 px-2.5 py-1 rounded text-xs transition-colors sm:min-h-0',
                         filter === f ? 'bg-card-hover text-text-primary' : 'text-text-muted hover:text-text-secondary hover:bg-card',
                       )}>
                 {f === 'short' ? 'Short term' : f === 'long' ? 'Long term' : f.charAt(0).toUpperCase() + f.slice(1)}
@@ -1197,7 +1194,7 @@ export default function Todos() {
             ))}
             {filter === 'done' && counts.done > 0 && (
               <button onClick={handleClearDone} disabled={clearing}
-                      className="ml-auto flex items-center gap-1 px-2 py-1 rounded text-xs text-text-muted hover:text-red-400 hover:bg-card transition-colors disabled:opacity-50">
+                      className="ml-2 flex min-h-11 items-center gap-1 px-2 py-1 rounded text-xs text-text-muted hover:text-red-400 hover:bg-card transition-colors disabled:opacity-50 sm:ml-auto sm:min-h-0">
                 {clearing ? <Loader2 size={11} className="animate-spin" /> : <Trash2 size={11} />} Clear completed
               </button>
             )}
@@ -1205,19 +1202,19 @@ export default function Todos() {
 
           {/* Bulk action bar */}
           {bulkSelected.size > 0 && (
-            <div className="flex items-center gap-2 px-2 py-1.5 rounded-lg border border-accent-blue/30 bg-accent-blue/10 text-xs">
+            <div className="sticky bottom-0 z-10 flex flex-wrap items-center gap-2 rounded-lg border border-accent-blue/30 bg-accent-blue/10 px-3 py-2 text-xs sm:static">
               <span className="text-accent-blue font-medium tabular-nums">{bulkSelected.size} selected</span>
-              <div className="flex items-center gap-1 ml-auto">
+              <div className="flex flex-wrap items-center gap-1 sm:ml-auto">
                 <button onClick={handleBulkComplete}
-                        className="flex items-center gap-1 px-2 py-1 rounded bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-400 transition-colors">
+                        className="flex min-h-11 items-center gap-1 px-2 py-1 rounded bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-400 transition-colors sm:min-h-0">
                   <CheckCircle2 size={11} /> Mark done
                 </button>
                 <button onClick={handleBulkDelete}
-                        className="flex items-center gap-1 px-2 py-1 rounded bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 transition-colors">
+                        className="flex min-h-11 items-center gap-1 px-2 py-1 rounded bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 transition-colors sm:min-h-0">
                   <Trash2 size={11} /> Delete
                 </button>
                 <button onClick={() => setBulkSelected(new Set())}
-                        className="flex items-center gap-1 px-2 py-1 rounded text-text-muted hover:text-text-secondary hover:bg-card transition-colors">
+                        className="flex min-h-11 items-center gap-1 px-2 py-1 rounded text-text-muted hover:text-text-secondary hover:bg-card transition-colors sm:min-h-0">
                   <X size={11} /> Clear
                 </button>
               </div>
@@ -1263,7 +1260,7 @@ export default function Todos() {
         <>
           <div
             onClick={() => setSelectedId(null)}
-            className="absolute inset-0 z-20 bg-black/40 lg:hidden"
+            className="fixed inset-0 z-[60] bg-black/40 lg:hidden"
             aria-hidden
           />
           <TodoDrawer

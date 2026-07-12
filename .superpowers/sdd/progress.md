@@ -57,10 +57,12 @@ Starting commit: 22f991e4109ee523659dc1872b5c7e7059a00524
   - Verification: `npm run build`, `npm run test:mobile`, and `npm test` passed; Playwright checked Home at 360x800 and 412x915 with no body/document horizontal overflow and all requested sections present.
   - Review: passed by controller; Home external links now route through `openExternal`.
   - Commit: `feat(mobile): create Pixel-first Home layout`
-- [ ] Task 9: Adapt To-Do, Tasks, Approvals, and Inbox.
-  - Starting commit: pending
-  - Commit: pending
-  - Review: pending
+- [x] Task 9: Adapt To-Do, Tasks, Approvals, and Inbox.
+  - Starting commit: 5ef97b0751c9492ef558ac0ee15bf0e89029c0d0
+  - Implementer: controller after subagent support was unavailable.
+  - Verification: `npm run build`, `npm run test:mobile`, and `npm test` passed; Playwright at 360px added/opened/closed/bulk-completed a To-Do, created and moved a Task through Queue/Active/Blocked/Completed, opened Approval request/note full-screen modals, opened an Inbox item, dispatched browser Escape, confirmed no horizontal overflow, and cleaned up the temporary records.
+  - Review: passed by controller after touch-target and loading-state refinements.
+  - Commit: `feat(mobile): adapt work queue and detail flows`
 - [ ] Task 10: Adapt To-Buy.
   - Starting commit: pending
   - Commit: pending

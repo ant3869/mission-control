@@ -75,14 +75,14 @@ function AddTaskModal({ onClose, onSave }: AddTaskModalProps) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={onClose}>
-      <div className="w-full max-w-md rounded-xl border border-border bg-card shadow-2xl" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex items-stretch justify-center bg-black/60 p-0 backdrop-blur-sm sm:items-center sm:p-4" onClick={onClose}>
+      <div className="flex h-[100dvh] w-full max-w-none flex-col overflow-y-auto rounded-none border border-border bg-card shadow-2xl safe-top safe-bottom sm:h-auto sm:max-w-md sm:rounded-xl" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between px-5 py-4 border-b border-border">
           <h2 className="text-sm font-semibold text-text-primary">New Task</h2>
-          <button aria-label="Close" onClick={onClose} className="text-text-muted hover:text-text-secondary transition-colors"><X size={16} /></button>
+          <button aria-label="Close" onClick={onClose} className="flex min-h-11 min-w-11 items-center justify-center rounded text-text-muted hover:bg-card-hover hover:text-text-secondary transition-colors sm:min-h-0 sm:min-w-0"><X size={16} /></button>
         </div>
 
-        <div className="p-5 flex flex-col gap-4">
+        <div className="p-5 flex flex-1 flex-col gap-4 overflow-y-auto">
           {/* Title */}
           <div>
             <label className="text-xxs text-text-muted uppercase tracking-wide font-medium mb-1.5 block">Title</label>
@@ -92,7 +92,7 @@ function AddTaskModal({ onClose, onSave }: AddTaskModalProps) {
               onChange={e => { setTitle(e.target.value); setError('') }}
               onKeyDown={e => e.key === 'Enter' && submit()}
               placeholder="Task title…"
-              className="w-full px-3 py-2 rounded-lg border border-border bg-base text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-blue-500/60 transition-colors"
+              className="w-full min-h-11 px-3 py-2 rounded-lg border border-border bg-base text-base sm:text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-blue-500/60 transition-colors"
             />
             {error && <p className="text-xxs text-red-400 mt-1">{error}</p>}
           </div>
@@ -105,7 +105,7 @@ function AddTaskModal({ onClose, onSave }: AddTaskModalProps) {
               onChange={e => setDesc(e.target.value)}
               placeholder="Optional description…"
               rows={2}
-              className="w-full px-3 py-2 rounded-lg border border-border bg-base text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-blue-500/60 transition-colors resize-none"
+              className="w-full min-h-11 px-3 py-2 rounded-lg border border-border bg-base text-base sm:text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-blue-500/60 transition-colors resize-none"
             />
           </div>
 
@@ -117,7 +117,7 @@ function AddTaskModal({ onClose, onSave }: AddTaskModalProps) {
                 <button
                   key={p}
                   onClick={() => setPriority(p)}
-                  className={clsx('flex-1 px-2 py-1.5 rounded border text-xxs font-semibold capitalize transition-all',
+                  className={clsx('min-h-11 flex-1 px-2 py-1.5 rounded border text-xxs font-semibold capitalize transition-all sm:min-h-0',
                     priority === p ? priorityConfig[p].badge : 'border-border text-text-muted hover:text-text-secondary')}
                 >
                   {p}
@@ -135,9 +135,9 @@ function AddTaskModal({ onClose, onSave }: AddTaskModalProps) {
                 onChange={e => setTagInput(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); addTag() } }}
                 placeholder="Add tag…"
-                className="flex-1 px-3 py-1.5 rounded-lg border border-border bg-base text-xs text-text-primary placeholder:text-text-muted focus:outline-none focus:border-blue-500/60 transition-colors"
+                className="min-h-11 flex-1 px-3 py-2 sm:py-1.5 rounded-lg border border-border bg-base text-base sm:text-xs text-text-primary placeholder:text-text-muted focus:outline-none focus:border-blue-500/60 transition-colors"
               />
-              <button onClick={addTag} className="px-3 py-1.5 rounded-lg border border-border text-xs text-text-secondary hover:bg-card-hover transition-colors">Add</button>
+              <button onClick={addTag} className="min-h-11 px-3 py-2 sm:py-1.5 rounded-lg border border-border text-xs text-text-secondary hover:bg-card-hover transition-colors sm:min-h-0">Add</button>
             </div>
             {tags.length > 0 && (
               <div className="flex items-center gap-1.5 flex-wrap mt-2">
@@ -152,12 +152,12 @@ function AddTaskModal({ onClose, onSave }: AddTaskModalProps) {
           </div>
         </div>
 
-        <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-border">
-          <button onClick={onClose} className="px-4 py-2 rounded-lg border border-border text-xs text-text-muted hover:text-text-secondary transition-colors">Cancel</button>
+        <div className="sticky bottom-0 flex items-center justify-end gap-2 border-t border-border bg-card px-5 py-4 safe-bottom">
+          <button onClick={onClose} className="min-h-11 px-4 py-2 rounded-lg border border-border text-xs text-text-muted hover:text-text-secondary transition-colors">Cancel</button>
           <button
             onClick={submit}
             disabled={saving || !title.trim()}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-xs font-semibold text-white transition-colors"
+            className="flex min-h-11 items-center gap-1.5 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-xs font-semibold text-white transition-colors"
           >
             {saving ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
             Create Task
@@ -205,12 +205,12 @@ function TaskCard({
           <span className={clsx('w-1.5 h-1.5 rounded-full shrink-0', p.dot, isActive && task.priority === 'urgent' && 'animate-pulse')} />
           {p.label}
         </span>
-        <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-          {task.status !== 'active'    && <button onClick={() => move('active')}    className="text-xxs text-blue-400 hover:underline">Activate</button>}
-          {task.status !== 'queued'    && <button onClick={() => move('queued')}    className="text-xxs text-text-muted hover:underline">Queue</button>}
-          {task.status !== 'blocked'   && <button onClick={() => move('blocked')}   className="text-xxs text-red-400 hover:underline">Block</button>}
-          {task.status !== 'completed' && <button onClick={() => move('completed')} className="text-xxs text-green-400 hover:underline">Done</button>}
-          <button onClick={() => onDelete(task.id)} className="text-xxs text-text-muted hover:text-red-400 transition-colors ml-0.5">
+        <div className="flex flex-wrap items-center gap-2 opacity-100 transition-opacity md:gap-1.5 md:opacity-0 md:group-hover:opacity-100">
+          {task.status !== 'active'    && <button onClick={() => move('active')}    className="min-h-11 rounded border border-blue-900/30 px-2.5 text-xxs text-blue-400 hover:bg-blue-950/20 md:min-h-0 md:border-0 md:px-0 md:hover:bg-transparent md:hover:underline">Activate</button>}
+          {task.status !== 'queued'    && <button onClick={() => move('queued')}    className="min-h-11 rounded border border-border px-2.5 text-xxs text-text-muted hover:bg-card-hover md:min-h-0 md:border-0 md:px-0 md:hover:bg-transparent md:hover:underline">Queue</button>}
+          {task.status !== 'blocked'   && <button onClick={() => move('blocked')}   className="min-h-11 rounded border border-red-900/30 px-2.5 text-xxs text-red-400 hover:bg-red-950/20 md:min-h-0 md:border-0 md:px-0 md:hover:bg-transparent md:hover:underline">Block</button>}
+          {task.status !== 'completed' && <button onClick={() => move('completed')} className="min-h-11 rounded border border-green-900/30 px-2.5 text-xxs text-green-400 hover:bg-green-950/20 md:min-h-0 md:border-0 md:px-0 md:hover:bg-transparent md:hover:underline">Done</button>}
+          <button onClick={() => onDelete(task.id)} className="flex min-h-11 min-w-11 items-center justify-center rounded border border-border text-xxs text-text-muted hover:text-red-400 transition-colors md:ml-0.5 md:min-h-0 md:min-w-0 md:border-0">
             <Trash2 size={10} />
           </button>
         </div>
@@ -287,7 +287,7 @@ function Column({
   const sorted = [...tasks].sort((a, b) => priorityConfig[a.priority].order - priorityConfig[b.priority].order)
 
   return (
-    <div className={clsx('flex flex-col min-w-[280px] flex-1 rounded-xl border bg-surface/40', cfg.col)}>
+    <div className={clsx('flex w-full min-w-0 flex-col rounded-xl border bg-surface/40 md:min-w-[280px] md:flex-1', cfg.col)}>
       <div className="flex items-center justify-between px-4 py-3 border-b border-border">
         <div className="flex items-center gap-2">
           <span className={clsx('text-xs font-semibold', cfg.headerColor)}>{cfg.label}</span>
@@ -325,6 +325,7 @@ export function Tasks() {
   const [error, setError]             = useState<string | null>(null)
   const [showCompleted, setShowCompleted] = useState(false)
   const [showModal, setShowModal]     = useState(false)
+  const [mobileStatus, setMobileStatus] = useState<TaskStatus>('active')
   const [focusedTaskId, setFocusedTaskId] = useState<string | null>(() => readStoredValue(TASK_FOCUS_STORAGE_KEY))
 
   const load = useCallback(async () => {
@@ -371,6 +372,7 @@ export function Tasks() {
     }
 
     clearStoredValue(TASK_FOCUS_STORAGE_KEY)
+    setMobileStatus(task.status)
     if (task.status === 'completed') setShowCompleted(true)
   }, [focusedTaskId, loading, taskList])
 
@@ -422,11 +424,18 @@ export function Tasks() {
   const blockedCount   = taskList.filter(t => t.status === 'blocked').length
   const completedCount = taskList.filter(t => t.status === 'completed').length
   const queuedCount    = taskList.filter(t => t.status === 'queued').length
+  const statusCounts: Record<TaskStatus, number> = {
+    active: activeCount,
+    queued: queuedCount,
+    blocked: blockedCount,
+    completed: completedCount,
+  }
+  const mobileStatuses: TaskStatus[] = ['active', 'queued', 'blocked', 'completed']
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-border shrink-0">
+      <div className="flex flex-col gap-3 border-b border-border px-4 pt-5 pb-4 shrink-0 sm:flex-row sm:items-center sm:justify-between sm:px-6">
         <div>
           <h1 className="text-base font-semibold text-text-primary">Tasks</h1>
           {loading ? (
@@ -444,29 +453,49 @@ export function Tasks() {
             </p>
           )}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={() => setShowCompleted(v => !v)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded border border-border bg-card hover:bg-card-hover text-text-muted hover:text-text-secondary transition-colors text-xs"
+            className="flex min-h-11 items-center gap-1.5 px-3 py-1.5 rounded border border-border bg-card hover:bg-card-hover text-text-muted hover:text-text-secondary transition-colors text-xs sm:min-h-0"
           >
             <ChevronRight size={12} className={clsx('transition-transform', showCompleted && 'rotate-90')} />
             {showCompleted ? 'Hide' : 'Show'} completed
           </button>
           <button
             onClick={() => setShowModal(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded border border-border bg-card hover:bg-card-hover text-text-secondary hover:text-text-primary transition-colors text-xs font-medium"
+            className="flex min-h-11 items-center gap-1.5 px-3 py-1.5 rounded border border-border bg-card hover:bg-card-hover text-text-secondary hover:text-text-primary transition-colors text-xs font-medium sm:min-h-0"
           >
             <Plus size={13} />New Task
           </button>
         </div>
       </div>
 
+      <div className="shrink-0 border-b border-border px-4 py-3 md:hidden">
+        <div className="flex gap-2 overflow-x-auto whitespace-nowrap">
+          {mobileStatuses.map(status => (
+            <button
+              key={status}
+              onClick={() => setMobileStatus(status)}
+              className={clsx(
+                'flex min-h-11 shrink-0 items-center gap-2 rounded-lg border px-3 text-xs font-medium transition-colors',
+                mobileStatus === status
+                  ? 'border-blue-500/40 bg-blue-500/15 text-blue-300'
+                  : 'border-border bg-card text-text-muted hover:bg-card-hover hover:text-text-secondary',
+              )}
+            >
+              {statusConfig[status].label}
+              <span className="rounded bg-base px-1.5 py-0.5 text-xxs tabular-nums">{statusCounts[status]}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
       {/* Board */}
-      <div className="flex-1 overflow-x-auto overflow-y-hidden px-6 py-4">
+      <div className="flex-1 min-h-0 overflow-hidden">
         {loading ? (
-          <div className="flex gap-3 h-full">
+          <div className="flex h-full flex-col gap-3 overflow-y-auto px-4 py-4 md:flex-row md:overflow-x-auto md:overflow-y-hidden md:px-6">
             {(['active', 'queued', 'blocked'] as TaskStatus[]).map(s => (
-              <div key={s} className={clsx('flex flex-col min-w-[280px] flex-1 rounded-xl border bg-surface/40 animate-pulse', statusConfig[s].col)}>
+              <div key={s} className={clsx('flex w-full min-w-0 flex-col rounded-xl border bg-surface/40 animate-pulse md:min-w-[280px] md:flex-1', statusConfig[s].col)}>
                 <div className="px-4 py-3 border-b border-border">
                   <div className="h-3.5 w-24 rounded bg-base" />
                 </div>
@@ -479,18 +508,31 @@ export function Tasks() {
             ))}
           </div>
         ) : (
-          <div className="flex gap-3 h-full min-w-0">
-            {columns.map(status => (
+          <>
+            <div className="h-full overflow-y-auto px-4 py-4 md:hidden">
               <Column
-                key={status}
-                status={status}
-                tasks={taskList.filter(t => t.status === status)}
+                status={mobileStatus}
+                tasks={taskList.filter(t => t.status === mobileStatus)}
                 focusedTaskId={focusedTaskId}
                 onMove={handleMove}
                 onDelete={handleDelete}
               />
-            ))}
-          </div>
+            </div>
+            <div className="hidden h-full overflow-x-auto overflow-y-hidden px-6 py-4 md:block">
+              <div className="flex gap-3 h-full min-w-0">
+                {columns.map(status => (
+                  <Column
+                    key={status}
+                    status={status}
+                    tasks={taskList.filter(t => t.status === status)}
+                    focusedTaskId={focusedTaskId}
+                    onMove={handleMove}
+                    onDelete={handleDelete}
+                  />
+                ))}
+              </div>
+            </div>
+          </>
         )}
       </div>
 

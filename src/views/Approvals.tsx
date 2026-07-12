@@ -67,15 +67,15 @@ function NoteModal({ action, onClose, onConfirm, loading }: NoteModalProps) {
   useEffect(() => { ref.current?.focus() }, [])
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={onClose}>
-      <div className="w-full max-w-sm rounded-xl border border-border bg-card shadow-2xl" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex items-stretch justify-center bg-black/60 p-0 backdrop-blur-sm sm:items-center sm:p-4" onClick={onClose}>
+      <div className="flex h-[100dvh] w-full max-w-none flex-col overflow-y-auto rounded-none border border-border bg-card shadow-2xl safe-top safe-bottom sm:h-auto sm:max-w-md sm:rounded-xl" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between px-5 py-4 border-b border-border">
           <h2 className={clsx('text-sm font-semibold', action === 'approve' ? 'text-green-400' : 'text-red-400')}>
             {action === 'approve' ? 'Approve Request' : 'Reject Request'}
           </h2>
-          <button aria-label="Close" onClick={onClose} className="text-text-muted hover:text-text-secondary"><X size={16} /></button>
+          <button aria-label="Close" onClick={onClose} className="flex min-h-11 min-w-11 items-center justify-center rounded text-text-muted hover:bg-card-hover hover:text-text-secondary sm:min-h-0 sm:min-w-0"><X size={16} /></button>
         </div>
-        <div className="p-5">
+        <div className="flex-1 p-5">
           <label className="text-xxs text-text-muted uppercase tracking-wide font-medium mb-1.5 block">
             Note <span className="normal-case font-normal">(optional)</span>
           </label>
@@ -85,17 +85,17 @@ function NoteModal({ action, onClose, onConfirm, loading }: NoteModalProps) {
             onChange={e => setNote(e.target.value)}
             placeholder="Add a note…"
             rows={3}
-            className="w-full px-3 py-2 rounded-lg border border-border bg-base text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-blue-500/60 transition-colors resize-none"
+            className="w-full min-h-11 px-3 py-2 rounded-lg border border-border bg-base text-base sm:text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-blue-500/60 transition-colors resize-none"
             onKeyDown={e => { if (e.key === 'Enter' && e.metaKey) onConfirm(note) }}
           />
         </div>
-        <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-border">
-          <button onClick={onClose} className="px-4 py-2 rounded-lg border border-border text-xs text-text-muted hover:text-text-secondary transition-colors">Cancel</button>
+        <div className="sticky bottom-0 flex items-center justify-end gap-2 border-t border-border bg-card px-5 py-4 safe-bottom">
+          <button onClick={onClose} className="min-h-11 px-4 py-2 rounded-lg border border-border text-xs text-text-muted hover:text-text-secondary transition-colors">Cancel</button>
           <button
             onClick={() => onConfirm(note)}
             disabled={loading}
             className={clsx(
-              'flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold text-white transition-colors disabled:opacity-40',
+              'flex min-h-11 items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold text-white transition-colors disabled:opacity-40',
               action === 'approve' ? 'bg-green-700 hover:bg-green-600' : 'bg-red-700 hover:bg-red-600',
             )}
           >
@@ -140,21 +140,21 @@ function NewRequestModal({ onClose, onSave }: NewRequestModalProps) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={onClose}>
-      <div className="w-full max-w-lg rounded-xl border border-border bg-card shadow-2xl" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex items-stretch justify-center bg-black/60 p-0 backdrop-blur-sm sm:items-center sm:p-4" onClick={onClose}>
+      <div className="flex h-[100dvh] w-full max-w-none flex-col overflow-y-auto rounded-none border border-border bg-card shadow-2xl safe-top safe-bottom sm:h-auto sm:max-w-lg sm:rounded-xl" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between px-5 py-4 border-b border-border">
           <h2 className="text-sm font-semibold text-text-primary">New Approval Request</h2>
-          <button aria-label="Close" onClick={onClose} className="text-text-muted hover:text-text-secondary"><X size={16} /></button>
+          <button aria-label="Close" onClick={onClose} className="flex min-h-11 min-w-11 items-center justify-center rounded text-text-muted hover:bg-card-hover hover:text-text-secondary sm:min-h-0 sm:min-w-0"><X size={16} /></button>
         </div>
 
-        <div className="p-5 flex flex-col gap-4">
+        <div className="p-5 flex flex-1 flex-col gap-4 overflow-y-auto">
           {/* Type + Urgency */}
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
               <label className="text-xxs text-text-muted uppercase tracking-wide font-medium mb-1.5 block">Type</label>
               <div className="relative">
                 <select value={type} onChange={e => setType(e.target.value as ApprovalType)}
-                  className="w-full appearance-none px-3 py-2 rounded-lg border border-border bg-base text-sm text-text-primary focus:outline-none focus:border-blue-500/60 transition-colors pr-8">
+                  className="w-full min-h-11 appearance-none px-3 py-2 rounded-lg border border-border bg-base text-base sm:text-sm text-text-primary focus:outline-none focus:border-blue-500/60 transition-colors pr-8">
                   {(Object.keys(typeConfig) as ApprovalType[]).map(t => (
                     <option key={t} value={t}>{typeConfig[t].label}</option>
                   ))}
@@ -167,7 +167,7 @@ function NewRequestModal({ onClose, onSave }: NewRequestModalProps) {
               <div className="flex gap-1.5">
                 {(['urgent', 'normal', 'low'] as ApprovalUrgency[]).map(u => (
                   <button key={u} onClick={() => setUrgency(u)}
-                    className={clsx('flex-1 py-1.5 rounded border text-xxs font-semibold capitalize transition-all',
+                    className={clsx('min-h-11 flex-1 py-1.5 rounded border text-xxs font-semibold capitalize transition-all sm:min-h-0',
                       urgency === u
                         ? u === 'urgent' ? 'border-red-900/50 bg-red-950/40 text-red-400'
                           : u === 'normal' ? 'border-amber-900/50 bg-amber-950/40 text-amber-400'
@@ -184,40 +184,40 @@ function NewRequestModal({ onClose, onSave }: NewRequestModalProps) {
             <label className="text-xxs text-text-muted uppercase tracking-wide font-medium mb-1.5 block">Title</label>
             <input ref={inputRef} value={title} onChange={e => { setTitle(e.target.value); setErr('') }}
               placeholder="What needs approval?"
-              className="w-full px-3 py-2 rounded-lg border border-border bg-base text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-blue-500/60 transition-colors" />
+              className="w-full min-h-11 px-3 py-2 rounded-lg border border-border bg-base text-base sm:text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-blue-500/60 transition-colors" />
             {err && <p className="text-xxs text-red-400 mt-1">{err}</p>}
           </div>
 
           <div>
             <label className="text-xxs text-text-muted uppercase tracking-wide font-medium mb-1.5 block">Description</label>
             <textarea value={desc} onChange={e => setDesc(e.target.value)} placeholder="Context and reasoning…" rows={2}
-              className="w-full px-3 py-2 rounded-lg border border-border bg-base text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-blue-500/60 transition-colors resize-none" />
+              className="w-full min-h-11 px-3 py-2 rounded-lg border border-border bg-base text-base sm:text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-blue-500/60 transition-colors resize-none" />
           </div>
 
           <div>
             <label className="text-xxs text-text-muted uppercase tracking-wide font-medium mb-1.5 block">Payload / Detail</label>
             <textarea value={payload} onChange={e => setPayload(e.target.value)} placeholder="Command, diff, content, or raw data…" rows={3}
-              className="w-full px-3 py-2 rounded-lg border border-border bg-base text-xs text-text-primary placeholder:text-text-muted focus:outline-none focus:border-blue-500/60 transition-colors resize-none font-mono" />
+              className="w-full min-h-11 px-3 py-2 rounded-lg border border-border bg-base text-base sm:text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-blue-500/60 transition-colors resize-none font-mono" />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
               <label className="text-xxs text-text-muted uppercase tracking-wide font-medium mb-1.5 block">Agent</label>
               <input value={agent} onChange={e => setAgent(e.target.value)} placeholder="Agent name…"
-                className="w-full px-3 py-2 rounded-lg border border-border bg-base text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-blue-500/60 transition-colors" />
+                className="w-full min-h-11 px-3 py-2 rounded-lg border border-border bg-base text-base sm:text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-blue-500/60 transition-colors" />
             </div>
             <div>
               <label className="text-xxs text-text-muted uppercase tracking-wide font-medium mb-1.5 block">Project</label>
               <input value={project} onChange={e => setProject(e.target.value)} placeholder="Project name…"
-                className="w-full px-3 py-2 rounded-lg border border-border bg-base text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-blue-500/60 transition-colors" />
+                className="w-full min-h-11 px-3 py-2 rounded-lg border border-border bg-base text-base sm:text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-blue-500/60 transition-colors" />
             </div>
           </div>
         </div>
 
-        <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-border">
-          <button onClick={onClose} className="px-4 py-2 rounded-lg border border-border text-xs text-text-muted hover:text-text-secondary transition-colors">Cancel</button>
+        <div className="sticky bottom-0 flex items-center justify-end gap-2 border-t border-border bg-card px-5 py-4 safe-bottom">
+          <button onClick={onClose} className="min-h-11 px-4 py-2 rounded-lg border border-border text-xs text-text-muted hover:text-text-secondary transition-colors">Cancel</button>
           <button onClick={submit} disabled={saving || !title.trim()}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-xs font-semibold text-white transition-colors">
+            className="flex min-h-11 items-center gap-1.5 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-xs font-semibold text-white transition-colors">
             {saving ? <Loader size={12} className="animate-spin" /> : <Plus size={12} />}
             Submit Request
           </button>
@@ -337,7 +337,7 @@ function ApprovalCard({
     )}
     data-approval-id={item.id}>
       {/* Header row */}
-      <div className="flex items-start justify-between gap-2">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex items-center gap-2 flex-wrap">
           <span className={clsx('flex items-center gap-1 px-1.5 py-0.5 rounded border text-xxs font-semibold', type.badge)}>
             {type.icon}{type.label}
@@ -362,7 +362,7 @@ function ApprovalCard({
           {!isPending && (
             <button
               onClick={() => onDelete(item.id)}
-              className="opacity-0 group-hover:opacity-100 text-text-muted hover:text-red-400 transition-all"
+              className="flex min-h-11 min-w-11 items-center justify-center text-text-muted opacity-100 transition-all hover:text-red-400 md:min-h-0 md:min-w-0 md:opacity-0 md:group-hover:opacity-100"
             >
               <Trash2 size={12} />
             </button>
@@ -390,7 +390,7 @@ function ApprovalCard({
       )}
 
       {/* Footer */}
-      <div className="flex items-center justify-between gap-2">
+      <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-2 min-w-0">
           <div className={clsx('w-5 h-5 rounded-full shrink-0 flex items-center justify-center text-white text-xxs font-bold bg-gradient-to-br', agentColor(item.agentName))}>
             {item.agentName.charAt(0).toUpperCase()}
@@ -401,16 +401,16 @@ function ApprovalCard({
         </div>
 
         {isPending && (
-          <div className="flex items-center gap-1.5 shrink-0">
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
             <button
               onClick={() => onAction({ id: item.id, action: 'reject' })}
-              className="flex items-center gap-1 px-2.5 py-1.5 rounded border border-red-900/40 bg-red-950/30 text-red-400 hover:bg-red-950/50 transition-colors text-xs font-medium"
+              className="flex min-h-11 items-center gap-1 px-2.5 py-1.5 rounded border border-red-900/40 bg-red-950/30 text-red-400 hover:bg-red-950/50 transition-colors text-xs font-medium sm:min-h-0"
             >
               <X size={11} />Reject
             </button>
             <button
               onClick={() => onAction({ id: item.id, action: 'approve' })}
-              className="flex items-center gap-1 px-2.5 py-1.5 rounded border border-green-900/40 bg-green-950/30 text-green-400 hover:bg-green-950/50 transition-colors text-xs font-medium"
+              className="flex min-h-11 items-center gap-1 px-2.5 py-1.5 rounded border border-green-900/40 bg-green-950/30 text-green-400 hover:bg-green-950/50 transition-colors text-xs font-medium sm:min-h-0"
             >
               <Check size={11} />Approve
             </button>
@@ -563,7 +563,7 @@ export function Approvals() {
   return (
     <div className="flex flex-col h-full overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-border shrink-0">
+      <div className="flex flex-col gap-3 border-b border-border px-4 pt-5 pb-4 shrink-0 sm:flex-row sm:items-center sm:justify-between sm:px-6">
         <div>
           <h1 className="text-base font-semibold text-text-primary">Approvals</h1>
           {loading ? (
@@ -582,11 +582,11 @@ export function Approvals() {
           )}
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {resolved.length > 0 && (
             <button
               onClick={() => setShowResolved(v => !v)}
-              className="px-3 py-1.5 rounded border border-border bg-card hover:bg-card-hover text-text-muted hover:text-text-secondary transition-colors text-xs"
+              className="min-h-11 px-3 py-1.5 rounded border border-border bg-card hover:bg-card-hover text-text-muted hover:text-text-secondary transition-colors text-xs sm:min-h-0"
             >
               {showResolved ? 'Hide' : 'Show'} resolved ({resolved.length})
             </button>
@@ -594,13 +594,13 @@ export function Approvals() {
           <button
             onClick={() => load(true)}
             disabled={loading}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded border border-border text-xs text-text-muted hover:text-text-secondary hover:bg-card transition-colors disabled:opacity-40"
+            className="flex min-h-11 items-center gap-1.5 px-2.5 py-1.5 rounded border border-border text-xs text-text-muted hover:text-text-secondary hover:bg-card transition-colors disabled:opacity-40 sm:min-h-0"
           >
             {loading ? <Loader size={12} className="animate-spin" /> : <RefreshCw size={12} />}
           </button>
           <button
             onClick={() => setShowModal(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded border border-border bg-card hover:bg-card-hover text-text-secondary hover:text-text-primary transition-colors text-xs font-medium"
+            className="flex min-h-11 items-center gap-1.5 px-3 py-1.5 rounded border border-border bg-card hover:bg-card-hover text-text-secondary hover:text-text-primary transition-colors text-xs font-medium sm:min-h-0"
           >
             <Plus size={13} />New Request
           </button>
@@ -608,7 +608,7 @@ export function Approvals() {
       </div>
 
       {/* Body */}
-      <div className="flex-1 overflow-y-auto px-6 py-5 flex flex-col gap-6">
+      <div className="flex-1 overflow-y-auto px-4 py-5 flex flex-col gap-6 sm:px-6">
         {loading ? (
           <div className="flex flex-col gap-3">
             {[...Array(3)].map((_, i) => <SkeletonCard key={i} />)}

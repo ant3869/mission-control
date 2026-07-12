@@ -154,43 +154,45 @@ export function Inbox() {
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
-      <div className="flex items-center justify-between border-b border-border px-6 pt-5 pb-4 shrink-0">
+      <div className="flex flex-col gap-3 border-b border-border px-4 pt-5 pb-4 shrink-0 sm:flex-row sm:items-center sm:justify-between sm:px-6">
         <div>
           <h1 className="text-base font-semibold text-text-primary">Inbox</h1>
           <p className="mt-0.5 text-xs text-text-muted">
             {loading ? 'Loading…' : `${counts.active} active · ${counts.snoozed} snoozed · ${counts.done} reviewed`}
           </p>
         </div>
-        <button onClick={load} disabled={loading} className="flex items-center gap-1.5 rounded border border-border bg-card px-3 py-1.5 text-xs text-text-secondary hover:bg-card-hover hover:text-text-primary">
+        <button onClick={load} disabled={loading} className="flex min-h-11 items-center gap-1.5 self-start rounded border border-border bg-card px-3 py-1.5 text-xs text-text-secondary hover:bg-card-hover hover:text-text-primary sm:min-h-0 sm:self-auto">
           <RefreshCw size={12} className={clsx(loading && 'animate-spin')} /> Refresh
         </button>
       </div>
 
-      <div className="flex items-center gap-3 border-b border-border px-6 py-3 shrink-0 overflow-x-auto">
-        <div className="relative flex-1 max-w-sm shrink-0">
+      <div className="flex flex-col items-stretch gap-3 border-b border-border px-4 py-3 shrink-0 sm:flex-row sm:items-center sm:overflow-x-auto sm:px-6">
+        <div className="relative w-full sm:max-w-sm sm:shrink-0">
           <Search size={13} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-text-muted" />
           <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search inbox…"
-            className="w-full rounded border border-border bg-card py-1.5 pl-7 pr-3 text-xs text-text-primary placeholder:text-text-muted focus:outline-none focus:border-border" />
+            className="w-full min-h-11 rounded border border-border bg-card py-2 pl-7 pr-3 text-base text-text-primary placeholder:text-text-muted focus:outline-none focus:border-border sm:min-h-0 sm:py-1.5 sm:text-xs" />
         </div>
-        {(['all', 'active', 'snoozed', 'done'] as const).map(status => (
-          <button key={status} onClick={() => setStatusFilter(status)} className={clsx('rounded px-2.5 py-1 text-xs font-medium capitalize shrink-0', statusFilter === status ? 'bg-card-hover text-text-primary' : 'text-text-muted hover:text-text-secondary')}>
-            {status}
-          </button>
-        ))}
+        <div className="flex gap-1 overflow-x-auto whitespace-nowrap">
+          {(['all', 'active', 'snoozed', 'done'] as const).map(status => (
+            <button key={status} onClick={() => setStatusFilter(status)} className={clsx('min-h-11 shrink-0 rounded px-2.5 py-1 text-xs font-medium capitalize sm:min-h-0', statusFilter === status ? 'bg-card-hover text-text-primary' : 'text-text-muted hover:text-text-secondary')}>
+              {status}
+            </button>
+          ))}
+        </div>
       </div>
 
-      <div className="flex items-center gap-1 border-b border-border px-6 py-2.5 shrink-0 overflow-x-auto">
-        <button onClick={() => setKindFilter('all')} className={clsx('rounded px-2.5 py-1 text-xs font-medium', kindFilter === 'all' ? 'bg-card-hover text-text-primary' : 'text-text-muted hover:text-text-secondary')}>
+      <div className="flex items-center gap-1 border-b border-border px-4 py-2.5 shrink-0 overflow-x-auto sm:px-6">
+        <button onClick={() => setKindFilter('all')} className={clsx('min-h-11 shrink-0 rounded px-2.5 py-1 text-xs font-medium sm:min-h-0', kindFilter === 'all' ? 'bg-card-hover text-text-primary' : 'text-text-muted hover:text-text-secondary')}>
           All
         </button>
         {(Object.keys(KIND_META) as InboxKind[]).map(kind => (
-          <button key={kind} onClick={() => setKindFilter(kind)} className={clsx('rounded px-2.5 py-1 text-xs font-medium', kindFilter === kind ? 'bg-card-hover text-text-primary' : 'text-text-muted hover:text-text-secondary')}>
+          <button key={kind} onClick={() => setKindFilter(kind)} className={clsx('min-h-11 shrink-0 rounded px-2.5 py-1 text-xs font-medium sm:min-h-0', kindFilter === kind ? 'bg-card-hover text-text-primary' : 'text-text-muted hover:text-text-secondary')}>
             {KIND_META[kind].label} <span className="ml-1 text-xxs opacity-60">{counts[kind]}</span>
           </button>
         ))}
       </div>
 
-      <div className="flex-1 overflow-y-auto px-6 py-4">
+      <div className="flex-1 overflow-y-auto px-4 py-4 sm:px-6">
         {error && (
           <div className="mb-3 rounded border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-400">
             {friendlyError(error, 'the inbox')}
@@ -210,16 +212,16 @@ export function Inbox() {
         ) : (
           <div className="flex max-w-4xl flex-col gap-2">
             {filtered.map(item => (
-              <div key={item.id} data-inbox-id={item.id} className={clsx('rounded-lg border bg-card p-4 transition-colors hover:bg-card-hover', item.id === focusedItemId && 'ring-1 ring-blue-500/60 bg-card-hover', busyId === item.id && 'opacity-60')}>
-                <div className="flex items-start justify-between gap-3">
+              <div key={item.id} data-inbox-id={item.id} className={clsx('rounded-lg border bg-card p-3 transition-colors hover:bg-card-hover sm:p-4', item.id === focusedItemId && 'ring-1 ring-blue-500/60 bg-card-hover', busyId === item.id && 'opacity-60')}>
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                   <div className="min-w-0 flex-1">
                     <div className="mb-1 flex items-center gap-2 flex-wrap">
                       <span className={clsx('flex items-center gap-1 rounded border px-1.5 py-0.5 text-xxs font-medium', KIND_META[item.kind].badge)}>{KIND_META[item.kind].icon}{KIND_META[item.kind].label}</span>
                       <span className={clsx('rounded border px-1.5 py-0.5 text-xxs font-medium capitalize', PRIORITY_BADGE[item.priority])}>{item.priority}</span>
                       <span className="rounded border border-border bg-base px-1.5 py-0.5 text-xxs text-text-muted">{item.sourceLabel}</span>
-                      <span className="ml-auto flex items-center gap-1 text-xxs text-text-muted"><Clock3 size={10} />{item.eventAgo}</span>
+                      <span className="flex w-full items-center gap-1 text-xxs text-text-muted sm:ml-auto sm:w-auto"><Clock3 size={10} />{item.eventAgo}</span>
                     </div>
-                    <p className="text-sm font-semibold text-text-primary">{item.title}</p>
+                    <p className="text-sm font-semibold text-text-primary break-words">{item.title}</p>
                     <p className="mt-1 text-xs leading-relaxed text-text-secondary whitespace-pre-wrap">{item.summary}</p>
                     {item.badges.length > 0 && (
                       <div className="mt-2 flex flex-wrap gap-1.5">
@@ -230,16 +232,16 @@ export function Inbox() {
                       <p className="mt-2 text-xxs text-emerald-300">Converted to {item.convertedTo.kind}.</p>
                     )}
                   </div>
-                  <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5 max-w-[260px]">
-                    <button onClick={() => openSource(item)} className="rounded border border-border px-2.5 py-1 text-xxs text-text-secondary hover:bg-card-hover">Open</button>
+                  <div className="flex w-full shrink-0 flex-wrap items-center justify-start gap-2 sm:w-auto sm:max-w-[260px] sm:justify-end">
+                    <button onClick={() => openSource(item)} className="min-h-11 rounded border border-border px-2.5 py-1 text-xs text-text-secondary hover:bg-card-hover sm:min-h-0 sm:text-xxs">Open</button>
                     {item.status === 'active' && (
-                      <button onClick={() => patchItem(item.id, { status: 'snoozed', snoozedUntil: snoozeUntil(1) })} className="rounded border border-border px-2.5 py-1 text-xxs text-text-secondary hover:bg-card-hover"><Clock3 size={11} className="inline mr-1" />Snooze</button>
+                      <button onClick={() => patchItem(item.id, { status: 'snoozed', snoozedUntil: snoozeUntil(1) })} className="min-h-11 rounded border border-border px-2.5 py-1 text-xs text-text-secondary hover:bg-card-hover sm:min-h-0 sm:text-xxs"><Clock3 size={11} className="inline mr-1" />Snooze</button>
                     )}
                     {item.status !== 'done' && (
-                      <button onClick={() => patchItem(item.id, { status: 'done' })} className="rounded border border-emerald-900/40 bg-emerald-950/20 px-2.5 py-1 text-xxs text-emerald-300 hover:bg-emerald-950/35"><Check size={11} className="inline mr-1" />Reviewed</button>
+                      <button onClick={() => patchItem(item.id, { status: 'done' })} className="min-h-11 rounded border border-emerald-900/40 bg-emerald-950/20 px-2.5 py-1 text-xs text-emerald-300 hover:bg-emerald-950/35 sm:min-h-0 sm:text-xxs"><Check size={11} className="inline mr-1" />Reviewed</button>
                     )}
                     {item.status !== 'active' && (
-                      <button onClick={() => patchItem(item.id, { status: 'active', clearReviewed: true })} className="rounded border border-border px-2.5 py-1 text-xxs text-text-secondary hover:bg-card-hover"><Undo2 size={11} className="inline mr-1" />Reopen</button>
+                      <button onClick={() => patchItem(item.id, { status: 'active', clearReviewed: true })} className="min-h-11 rounded border border-border px-2.5 py-1 text-xs text-text-secondary hover:bg-card-hover sm:min-h-0 sm:text-xxs"><Undo2 size={11} className="inline mr-1" />Reopen</button>
                     )}
                   </div>
                 </div>
