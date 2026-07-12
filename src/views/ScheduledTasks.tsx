@@ -8,6 +8,7 @@ import {
 import { calendar, agentCron, type CalendarEvent, type CalendarEventInput, type AgentCronJob, type ConnectorId, type CronAction } from '../lib/api'
 import { useEscapeKey } from '../hooks/useEscapeKey'
 import { friendlyError } from '../lib/friendlyError'
+import { apiUrl } from '../lib/apiTransport.js'
 
 const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
@@ -359,7 +360,7 @@ function ConnectBanner() {
         <p className="text-xs font-medium">Google Calendar needs reconnecting</p>
         <p className="text-xxs opacity-70 mt-0.5">
           Not connected, or the saved token expired. Connect from{' '}
-          <a href="/api/auth/google" target="_blank" rel="noreferrer" className="underline hover:opacity-100">
+          <a href={apiUrl('/api/auth/google')} target="_blank" rel="noreferrer" className="underline hover:opacity-100">
             Settings → Google
           </a>{' '}
           to (re)authenticate — the token then refreshes itself.

@@ -13,6 +13,7 @@ import {
   Radio, WifiOff, Pause, ArrowRight, Zap,
 } from 'lucide-react'
 import { usePaused } from '../lib/refreshBus'
+import { apiUrl } from '../lib/apiTransport.js'
 
 type Source = 'openclaw' | 'hermes'
 
@@ -80,7 +81,7 @@ export function ThoughtFlow() {
     if (paused) { setConnected(false); return }
     // Reset cycle state when switching source.
     setStage(-1); setSteps([]); setSessionKey(null); seen.current = new Set()
-    const es = new EventSource(`/api/${source}/stream`)
+    const es = new EventSource(apiUrl(`/api/${source}/stream`))
     es.onopen = () => setConnected(true)
     es.onerror = () => setConnected(false)
     es.onmessage = ev => {

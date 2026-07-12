@@ -16,6 +16,7 @@ import {
 import { useEscapeKey } from '../hooks/useEscapeKey'
 import { isRefreshPaused } from '../lib/refreshBus'
 import { friendlyError } from '../lib/friendlyError'
+import { apiFetch } from '../lib/apiTransport.js'
 
 // ─── Types (mirror server/routes/todos.ts) ────────────────────────────────────
 
@@ -86,40 +87,29 @@ type TodoPatch = Partial<Pick<Todo, 'title' | 'notes' | 'severity' | 'horizon' |
 // ─── API ──────────────────────────────────────────────────────────────────────
 
 async function fetchTodos(): Promise<{ todos: Todo[] }> {
-  const res = await fetch('/api/todos')
-  if (!res.ok) throw new Error(await res.text())
-  return res.json()
+  return apiFetch<{ todos: Todo[] }>('/api/todos')
 }
 
 async function createTodo(body: { title: string; severity: Severity; horizon: Horizon; dueDate?: string; details?: TodoDetails; rawInput?: string }): Promise<{ todo: Todo }> {
-  const res = await fetch('/api/todos', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
-  if (!res.ok) throw new Error(await res.text())
-  return res.json()
+  return apiFetch<{ todo: Todo }>('/api/todos', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
 }
 
 async function patchTodo(id: string, body: TodoPatch): Promise<{ todo: Todo }> {
-  const res = await fetch(`/api/todos/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
-  if (!res.ok) throw new Error(await res.text())
-  return res.json()
+  return apiFetch<{ todo: Todo }>(`/api/todos/${encodeURIComponent(id)}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
 }
 
 async function deleteTodo(id: string): Promise<void> {
-  const res = await fetch(`/api/todos/${id}`, { method: 'DELETE' })
-  if (!res.ok) throw new Error(await res.text())
+  await apiFetch<unknown>(`/api/todos/${encodeURIComponent(id)}`, { method: 'DELETE' })
 }
 
 async function clearDone(): Promise<{ removed: number }> {
-  const res = await fetch('/api/todos/clear-done', { method: 'POST' })
-  if (!res.ok) throw new Error(await res.text())
-  return res.json()
+  return apiFetch<{ removed: number }>('/api/todos/clear-done', { method: 'POST' })
 }
 
 type ResearchSource = 'openclaw' | 'hermes'
 
 async function startResearch(id: string, source: ResearchSource, guidance?: string): Promise<{ todo: Todo }> {
-  const res = await fetch(`/api/todos/${id}/research`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ source, guidance: guidance ?? '' }) })
-  if (!res.ok) throw new Error(await res.text())
-  return res.json()
+  return apiFetch<{ todo: Todo }>(`/api/todos/${encodeURIComponent(id)}/research`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ source, guidance: guidance ?? '' }) })
 }
 
 // ─── Quick-add parsing ────────────────────────────────────────────────────────

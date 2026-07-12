@@ -7,6 +7,7 @@ import {
 } from 'lucide-react'
 import { MiniStat, SegmentBar, HBar, ChartCard } from '../components/charts'
 import { isRefreshPaused } from '../lib/refreshBus'
+import { apiFetch } from '../lib/apiTransport.js'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -39,32 +40,23 @@ interface FiredAlert {
 // ─── API ──────────────────────────────────────────────────────────────────────
 
 async function fetchRules(): Promise<{ rules: AlertRule[] }> {
-  const res = await fetch('/api/alerts/rules')
-  if (!res.ok) throw new Error(await res.text())
-  return res.json()
+  return apiFetch<{ rules: AlertRule[] }>('/api/alerts/rules')
 }
 
 async function fetchActive(): Promise<{ alerts: FiredAlert[] }> {
-  const res = await fetch('/api/alerts/active')
-  if (!res.ok) throw new Error(await res.text())
-  return res.json()
+  return apiFetch<{ alerts: FiredAlert[] }>('/api/alerts/active')
 }
 
 async function createRule(body: Partial<AlertRule>): Promise<{ rule: AlertRule }> {
-  const res = await fetch('/api/alerts/rules', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
-  if (!res.ok) throw new Error(await res.text())
-  return res.json()
+  return apiFetch<{ rule: AlertRule }>('/api/alerts/rules', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
 }
 
 async function updateRule(id: string, body: Partial<AlertRule>): Promise<{ rule: AlertRule }> {
-  const res = await fetch(`/api/alerts/rules/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
-  if (!res.ok) throw new Error(await res.text())
-  return res.json()
+  return apiFetch<{ rule: AlertRule }>(`/api/alerts/rules/${encodeURIComponent(id)}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
 }
 
 async function deleteRule(id: string): Promise<void> {
-  const res = await fetch(`/api/alerts/rules/${id}`, { method: 'DELETE' })
-  if (!res.ok) throw new Error(await res.text())
+  await apiFetch<unknown>(`/api/alerts/rules/${encodeURIComponent(id)}`, { method: 'DELETE' })
 }
 
 // Curated starter rules — sensible defaults so the page is useful out of the box.

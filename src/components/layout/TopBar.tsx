@@ -18,6 +18,7 @@ import {
   openDocFile, openDocsTab, openInboxItem, openNotePage, openTasksTab,
 } from '../../lib/quickActions'
 import { usePaused, toggleRefreshPaused, isRefreshPaused } from '../../lib/refreshBus'
+import { apiFetch } from '../../lib/apiTransport.js'
 
 interface NavView { id: View; label: string }
 interface TopBarProps {
@@ -66,12 +67,12 @@ function GlobalSearch({ onClose, onNavigate, views }: { onClose: () => void; onN
       const term = qTrimmed.toLowerCase()
       try {
         const [n, d, t, a, i, s] = await Promise.allSettled([
-          fetch(`/api/notes/pages?search=${encodeURIComponent(qTrimmed)}`).then(r => r.json()),
-          fetch('/api/docs/files').then(r => r.json()),
-          fetch('/api/tasks').then(r => r.json()),
+          apiFetch<{ pages?: any[] }>(`/api/notes/pages?search=${encodeURIComponent(qTrimmed)}`),
+          apiFetch<{ files?: any[] }>('/api/docs/files'),
+          apiFetch<{ tasks?: any[] }>('/api/tasks'),
           approvals.list(),
           inbox.list(),
-          fetch(`/api/search?q=${encodeURIComponent(qTrimmed)}`).then(r => r.json()),
+          apiFetch<{ results?: Record<string, any[]> }>(`/api/search?q=${encodeURIComponent(qTrimmed)}`),
         ])
         setNotes(n.status === 'fulfilled'
           ? (n.value.pages ?? []).slice(0, 5).map((p: any): Row => ({

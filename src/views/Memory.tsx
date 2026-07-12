@@ -19,13 +19,14 @@ import { TabHub, type HubTab } from '../components/layout/TabHub'
 import { MiniStat, ChartCard, Histogram, HBar, fmtNum } from '../components/charts'
 import { usePaused } from '../lib/refreshBus'
 import {
-  memoryOps, MEMORY_STREAM_URL,
+  memoryOps,
   type MemorySource, type MemoryEvent, type MemoryEventType,
   type MemoryOpsOverview, type MemoryHealth, type MemoryFileInfo,
   type DailyLogMeta, type DreamMeta, type DreamEvent, type RecallSummary,
   type DailySearchHit, type DailyIndexMeta, type MemoryDiskSummary,
   type RagSearchHit,
 } from '../lib/api'
+import { apiUrl } from '../lib/apiTransport.js'
 
 // ─── Shared config ──────────────────────────────────────────────────────────────
 
@@ -192,7 +193,7 @@ function ActivityTab({ source, seed }: { source: MemorySource; seed: MemoryEvent
 
   useEffect(() => {
     if (paused) { setConnected(false); return }
-    const es = new EventSource(MEMORY_STREAM_URL)
+    const es = new EventSource(apiUrl('/api/memory/stream'))
     es.onmessage = ev => {
       try {
         const e = JSON.parse(ev.data) as MemoryEvent

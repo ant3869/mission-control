@@ -25,6 +25,7 @@ import { Histogram, SegmentBar, Donut, fmtNum } from '../components/charts'
 import { isRefreshPaused } from '../lib/refreshBus'
 import { openInboxItem as focusInboxItem, openTasksTab, openHubTab } from '../lib/quickActions'
 import type { View } from '../types'
+import { apiFetch } from '../lib/apiTransport.js'
 
 // ─── Theme accents (mirror tailwind.config.js — never introduce new colors) ───
 
@@ -461,8 +462,8 @@ export function Home({ onNavigate }: { onNavigate: (view: View) => void }) {
     const todayKey = `${_now.getFullYear()}-${pad2(_now.getMonth() + 1)}-${pad2(_now.getDate())}`
     const localDateKey = (iso: string) => { const d = new Date(iso); return `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}` }
     const [tRes, alRes, apRes, inRes, liRes, prRes, usRes, syRes, hbRes, calRes] = await Promise.allSettled([
-      fetch('/api/todos').then(r => r.json()),
-      fetch('/api/alerts/active').then(r => r.json()),
+      apiFetch<{ todos?: HomeTodo[] }>('/api/todos'),
+      apiFetch<{ alerts?: FiredAlert[] }>('/api/alerts/active'),
       approvalsApi.list(),
       inbox.list(),
       links.list(),

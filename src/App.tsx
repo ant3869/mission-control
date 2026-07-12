@@ -8,6 +8,7 @@ import { Home } from './views/Home'                       // eager — default l
 import type { View } from './types'
 import { NAVIGATE_EVENT, openHubTab } from './lib/quickActions'
 import { startDataRefresh, DATA_REFRESH_EVENT } from './lib/dataRefresh'
+import { apiFetch } from './lib/apiTransport.js'
 
 // Lazy views: each becomes its own chunk, fetched on first navigation, so the
 // initial bundle is just the shell + landing page instead of all ~25 views.
@@ -97,8 +98,7 @@ function CriticalAlertToast({ activeView, onNavigate }: { activeView: View; onNa
     const poll = async () => {
       if (activeView === 'home' || activeView === 'health') return
       try {
-        const res  = await fetch('/api/alerts/active')
-        const data = await res.json()
+        const data = await apiFetch<{ alerts?: FiredAlert[] }>('/api/alerts/active')
         const critical: FiredAlert[] = (data.alerts ?? []).filter((a: FiredAlert) => a.severity === 'critical')
         const unseen = critical.find(a => !seenRef.current.has(`${a.ruleId}-${a.firedAt}`))
         if (unseen) {

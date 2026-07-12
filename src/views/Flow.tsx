@@ -11,6 +11,7 @@ import {
 } from 'lucide-react'
 import { MiniStat, Histogram, SegmentBar, ChartCard, fmtNum, type Bar } from '../components/charts'
 import { metrics } from '../lib/api'
+import { apiFetch } from '../lib/apiTransport.js'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -63,21 +64,15 @@ interface FlowSummary {
 // ─── API ──────────────────────────────────────────────────────────────────────
 
 async function fetchRuns(source: Source, limit: number): Promise<FlowRunsResponse> {
-  const res = await fetch(`/api/flow/runs?source=${source}&limit=${limit}`)
-  if (!res.ok) throw new Error(await res.text())
-  return res.json()
+  return apiFetch<FlowRunsResponse>(`/api/flow/runs?source=${encodeURIComponent(source)}&limit=${limit}`)
 }
 
 async function fetchRun(source: string, id: string): Promise<FlowDetailResponse> {
-  const res = await fetch(`/api/flow/runs/${source}/${encodeURIComponent(id)}`)
-  if (!res.ok) throw new Error(await res.text())
-  return res.json()
+  return apiFetch<FlowDetailResponse>(`/api/flow/runs/${encodeURIComponent(source)}/${encodeURIComponent(id)}`)
 }
 
 async function fetchSummary(): Promise<FlowSummary> {
-  const res = await fetch('/api/flow/summary')
-  if (!res.ok) throw new Error(await res.text())
-  return res.json()
+  return apiFetch<FlowSummary>('/api/flow/summary')
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────

@@ -19,10 +19,11 @@ Starting commit: 22f991e4109ee523659dc1872b5c7e7059a00524
   - Implementer: multi_agent_v1 Dirac (019f538e-749d-7233-a39a-4d0ac3492c17)
   - Verification: `npm run test:mobile`, `npm test`, and `npm run build` passed.
   - Review: passed by controller; no Critical or Important findings.
-- [ ] Task 2: Migrate every direct API and SSE call.
-  - Starting commit: pending
-  - Commit: pending
-  - Review: pending
+- [x] Task 2: Migrate every direct API and SSE call.
+  - Starting commit: 9c80e1540c5266451ea76fc7f1002e3cf3e9091f
+  - Implementer: multi_agent_v1 Peirce (019f53c9-39c8-7111-adfd-27b199e51b33)
+  - Verification: five required literal searches had no output; `npm test`, `npm run test:mobile`, and `npm run build` passed.
+  - Review: passed by controller after removing unused stale stream URL constants.
 - [ ] Task 3: Bind Express safely and make CORS testable.
   - Starting commit: pending
   - Commit: pending

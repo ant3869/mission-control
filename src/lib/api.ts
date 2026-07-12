@@ -5,12 +5,11 @@
  * origin while desktop/dev keeps same-origin /api paths.
  */
 
-import { apiFetch, apiUrl, ApiError, getApiBaseUrl } from './apiTransport.js'
+import { apiFetch, apiUrl, ApiError } from './apiTransport.js'
 import type { TraceRun } from '../components/trace/types'
 export type { TraceRun, TraceSpan, SpanKind, SpanStatus } from '../components/trace/types'
 
 export { apiUrl, ApiError }
-export const API_BASE = getApiBaseUrl()
 
 async function get<T>(path: string, params?: Record<string, string | number>): Promise<T> {
   const query = new URLSearchParams()
@@ -966,8 +965,6 @@ export interface MemoryDiskSummary {
   fetchedAt: string
 }
 
-export const MEMORY_STREAM_URL = `${API_BASE}/api/memory/stream`
-
 export const memoryOps = {
   overview:      (source: MemorySource, force = false) =>
     get<MemoryOpsOverview>('/memory/overview', { source, ...(force ? { force: 1 } : {}) }),
@@ -1639,9 +1636,6 @@ export interface WatchEvent {
   meta?:      WatchEventMeta
   source:     WatchSource
 }
-
-// EventSource URL (not a fetch — opened with `new EventSource(...)`)
-export const WATCH_STREAM_URL = `${API_BASE}/api/watch/stream`
 
 export const watchHeatmap = () => get<{ hours: number[]; error?: string }>('/watch/heatmap')
 

@@ -8,6 +8,7 @@ import {
   settings as settingsApi, auth as authApi, office as officeApi,
   type ConnectorInfo, type ConnectorId, type AuthStatus, type LiveIntegration,
 } from '../lib/api'
+import { apiDownloadUrl } from '../lib/apiTransport.js'
 
 // ─── Status pill ────────────────────────────────────────────────────────────
 
@@ -569,7 +570,7 @@ export function Settings() {
             </p>
           </div>
           <a
-            href="/api/export"
+            href={apiDownloadUrl('/api/export')}
             download
             className="shrink-0 flex items-center gap-1.5 px-3 py-2 rounded border border-border bg-base hover:bg-card-hover text-text-secondary hover:text-text-primary transition-colors text-xs font-medium"
           >

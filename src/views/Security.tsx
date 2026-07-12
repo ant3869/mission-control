@@ -7,6 +7,7 @@ import {
 } from 'lucide-react'
 import { MiniStat, Gauge, HBar, ChartCard } from '../components/charts'
 import { isRefreshPaused } from '../lib/refreshBus'
+import { apiFetch } from '../lib/apiTransport.js'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -60,21 +61,15 @@ interface SecurityEvent {
 // ─── API ──────────────────────────────────────────────────────────────────────
 
 async function fetchPosture(): Promise<PostureResponse> {
-  const res = await fetch('/api/security/posture')
-  if (!res.ok) throw new Error(await res.text())
-  return res.json()
+  return apiFetch<PostureResponse>('/api/security/posture')
 }
 
 async function fetchDiagnostics(source: string): Promise<{ probes: DiagProbe[]; fetchedAt: string }> {
-  const res = await fetch(`/api/security/diagnostics/${encodeURIComponent(source)}`)
-  if (!res.ok) throw new Error(await res.text())
-  return res.json()
+  return apiFetch<{ probes: DiagProbe[]; fetchedAt: string }>(`/api/security/diagnostics/${encodeURIComponent(source)}`)
 }
 
 async function fetchSecurityEvents(): Promise<{ events: SecurityEvent[] }> {
-  const res = await fetch('/api/security/events')
-  if (!res.ok) throw new Error(await res.text())
-  return res.json()
+  return apiFetch<{ events: SecurityEvent[] }>('/api/security/events')
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────

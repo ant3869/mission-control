@@ -12,13 +12,12 @@ import {
 import { FlowGraph, EDGE_COLOR, EDGE_LABEL } from '../components/FlowGraph'
 import { MiniStat, fmtNum } from '../components/charts'
 import type { FlowGraph as FlowGraphData, FlowNode, FlowEdge, FlowRange, FlowEdgeKind, FlowNodeType } from '../types'
+import { apiFetch } from '../lib/apiTransport.js'
 
 // ─── API ──────────────────────────────────────────────────────────────────────
 
 async function fetchGraph(range: FlowRange): Promise<FlowGraphData> {
-  const res = await fetch(`/api/flowmap/graph?range=${range}`)
-  if (!res.ok) throw new Error(await res.text())
-  return res.json()
+  return apiFetch<FlowGraphData>(`/api/flowmap/graph?range=${encodeURIComponent(range)}`)
 }
 
 // ─── Legend ─────────────────────────────────────────────────────────────────

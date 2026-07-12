@@ -8,6 +8,7 @@ import {
 } from 'lucide-react'
 import { clsx } from 'clsx'
 import type { View } from '../../types'
+import { apiFetch } from '../../lib/apiTransport.js'
 
 interface SidebarProps {
   activeView: View
@@ -73,12 +74,12 @@ export function Sidebar({ activeView, onNavigate }: SidebarProps) {
     const fetchCounts = async () => {
       try {
         const [tRes, aRes, dRes, iRes, bRes, hRes] = await Promise.all([
-          fetch('/api/tasks').then(r => r.json()),
-          fetch('/api/approvals').then(r => r.json()),
-          fetch('/api/todos').then(r => r.json()),
-          fetch('/api/inbox').then(r => r.json()),
-          fetch('/api/tobuy').then(r => r.json()),
-          fetch('/api/alerts/active').then(r => r.json()),
+          apiFetch<{ tasks?: Array<{ status: string }> }>('/api/tasks'),
+          apiFetch<{ approvals?: Array<{ status: string }> }>('/api/approvals'),
+          apiFetch<{ todos?: Array<{ done: boolean }> }>('/api/todos'),
+          apiFetch<{ counts?: { active?: number } }>('/api/inbox'),
+          apiFetch<{ items?: Array<{ purchased: boolean }> }>('/api/tobuy'),
+          apiFetch<{ alerts?: Array<{ severity: string }> }>('/api/alerts/active'),
         ])
         const activeTasks = (tRes.tasks ?? []).filter(
           (t: { status: string }) => t.status !== 'completed',

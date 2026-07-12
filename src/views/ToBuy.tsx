@@ -15,6 +15,7 @@ import {
 import { useEscapeKey } from '../hooks/useEscapeKey'
 import { isRefreshPaused } from '../lib/refreshBus'
 import { friendlyError } from '../lib/friendlyError'
+import { apiFetch } from '../lib/apiTransport.js'
 
 // ─── Types (mirror server/routes/tobuy.ts) ────────────────────────────────────
 
@@ -53,40 +54,29 @@ type BuyPatch = Partial<Pick<BuyItem, 'title' | 'notes' | 'priority' | 'quantity
 // ─── API ──────────────────────────────────────────────────────────────────────
 
 async function fetchItems(): Promise<{ items: BuyItem[] }> {
-  const res = await fetch('/api/tobuy')
-  if (!res.ok) throw new Error(await res.text())
-  return res.json()
+  return apiFetch<{ items: BuyItem[] }>('/api/tobuy')
 }
 
 async function createItem(body: { title: string; priority: Priority; quantity?: number; estimatedPrice?: number }): Promise<{ item: BuyItem }> {
-  const res = await fetch('/api/tobuy', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
-  if (!res.ok) throw new Error(await res.text())
-  return res.json()
+  return apiFetch<{ item: BuyItem }>('/api/tobuy', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
 }
 
 async function patchItem(id: string, body: BuyPatch): Promise<{ item: BuyItem }> {
-  const res = await fetch(`/api/tobuy/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
-  if (!res.ok) throw new Error(await res.text())
-  return res.json()
+  return apiFetch<{ item: BuyItem }>(`/api/tobuy/${encodeURIComponent(id)}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
 }
 
 async function deleteItem(id: string): Promise<void> {
-  const res = await fetch(`/api/tobuy/${id}`, { method: 'DELETE' })
-  if (!res.ok) throw new Error(await res.text())
+  await apiFetch<unknown>(`/api/tobuy/${encodeURIComponent(id)}`, { method: 'DELETE' })
 }
 
 async function clearPurchased(): Promise<{ removed: number }> {
-  const res = await fetch('/api/tobuy/clear-purchased', { method: 'POST' })
-  if (!res.ok) throw new Error(await res.text())
-  return res.json()
+  return apiFetch<{ removed: number }>('/api/tobuy/clear-purchased', { method: 'POST' })
 }
 
 type ResearchSource = 'openclaw' | 'hermes'
 
 async function startResearch(id: string, source: ResearchSource, guidance?: string): Promise<{ item: BuyItem }> {
-  const res = await fetch(`/api/tobuy/${id}/research`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ source, guidance: guidance ?? '' }) })
-  if (!res.ok) throw new Error(await res.text())
-  return res.json()
+  return apiFetch<{ item: BuyItem }>(`/api/tobuy/${encodeURIComponent(id)}/research`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ source, guidance: guidance ?? '' }) })
 }
 
 // ─── Quick-add parsing ────────────────────────────────────────────────────────

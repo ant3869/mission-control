@@ -2,10 +2,9 @@
 // data:changed events as a DOM CustomEvent so any mounted view can
 // call its load() without polling.
 //
-// In Capacitor builds VITE_API_BASE_URL must point at the server host so
-// the EventSource URL resolves correctly from the native WebView origin.
+// apiUrl resolves the stream against the runtime-configured API base for mobile.
 
-import { API_BASE } from './api.js'
+import { API_BASE_CHANGED_EVENT, apiUrl } from './apiTransport.js'
 
 export const DATA_REFRESH_EVENT    = 'mc:data'
 export const DATA_CONNECT_EVENT    = 'mc:data:connect'
@@ -30,7 +29,7 @@ export function startDataRefresh(): () => void {
 
   function connect() {
     if (dead) return
-    es = new EventSource(`${API_BASE}/api/watch/stream`)
+    es = new EventSource(apiUrl('/api/watch/stream'))
 
     es.onopen = () => {
       retryDelay = 5_000
@@ -63,11 +62,21 @@ export function startDataRefresh(): () => void {
     }
   }
 
+  function reconnect() {
+    es?.close()
+    es = null
+    if (retryTimer) clearTimeout(retryTimer)
+    retryDelay = 5_000
+    connect()
+  }
+
   connect()
+  window.addEventListener(API_BASE_CHANGED_EVENT, reconnect)
 
   return () => {
     dead = true
     if (retryTimer) clearTimeout(retryTimer)
+    window.removeEventListener(API_BASE_CHANGED_EVENT, reconnect)
     es?.close()
     started = false
   }

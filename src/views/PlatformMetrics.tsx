@@ -13,6 +13,7 @@ import {
   metrics as metricsApi, openclawChats, hermesChats, watchHeatmap, budgets as budgetsApi,
   type PlatformMetrics, type ConnectorId, type MetricBreakdown, type MetricSessionRow, type MetricSubAgent, type BudgetLimits, type LiveChatMessage,
 } from '../lib/api'
+import { apiUrl } from '../lib/apiTransport.js'
 import BrainView from './Brain'
 import FlowView from './Flow'
 import AlertsView from './Alerts'
@@ -476,7 +477,7 @@ function useEventStream(source: ConnectorId, enabled: boolean) {
   useEffect(() => {
     if (!enabled) { setEvents([]); setConnected(false); return }
     let es: EventSource | null = null
-    try { es = new EventSource(`/api/${source}/stream`) } catch { return }
+    try { es = new EventSource(apiUrl(`/api/${source}/stream`)) } catch { return }
     es.onopen = () => setConnected(true)
     es.onerror = () => setConnected(false)
     es.onmessage = e => {

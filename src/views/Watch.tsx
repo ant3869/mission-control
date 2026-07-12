@@ -6,8 +6,9 @@ import {
   MessageSquare, Send, Activity, AlertTriangle,
   Wifi, WifiOff, Brain, Zap, Clock, Cpu, Pause,
 } from 'lucide-react'
-import { WATCH_STREAM_URL, type WatchEvent, type WatchSource } from '../lib/api'
+import type { WatchEvent, WatchSource } from '../lib/api'
 import { usePaused } from '../lib/refreshBus'
+import { apiUrl } from '../lib/apiTransport.js'
 
 // ─── Status classification ────────────────────────────────────────────────────
 
@@ -225,7 +226,7 @@ export function Watch() {
 
   useEffect(() => {
     if (paused) { setConnected(false); return }   // Pause freezes the live stream
-    const es = new EventSource(WATCH_STREAM_URL)
+    const es = new EventSource(apiUrl('/api/watch/stream'))
 
     es.onmessage = (ev) => {
       try {

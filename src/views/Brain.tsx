@@ -8,6 +8,7 @@ import {
   Zap, Activity, Cpu, AlertCircle, BarChart3, PieChart, Layers,
 } from 'lucide-react'
 import { MiniStat, Histogram, Donut, ChartCard, type Bar, type Segment } from '../components/charts'
+import { apiFetch } from '../lib/apiTransport.js'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -54,15 +55,11 @@ interface StatsResponse {
 async function fetchBrainEvents(source: Source, limit: number, typeFilter: string): Promise<BrainResponse> {
   const params = new URLSearchParams({ source, limit: String(limit) })
   if (typeFilter && typeFilter !== 'all') params.set('type', typeFilter)
-  const res = await fetch(`/api/brain/events?${params}`)
-  if (!res.ok) throw new Error(await res.text())
-  return res.json()
+  return apiFetch<BrainResponse>(`/api/brain/events?${params}`)
 }
 
 async function fetchBrainStats(): Promise<StatsResponse> {
-  const res = await fetch('/api/brain/stats')
-  if (!res.ok) throw new Error(await res.text())
-  return res.json()
+  return apiFetch<StatsResponse>('/api/brain/stats')
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
