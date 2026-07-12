@@ -34,10 +34,11 @@ Starting commit: 22f991e4109ee523659dc1872b5c7e7059a00524
   - Implementer: multi_agent_v1 Franklin (019f53e3-754a-7f82-8a87-8f9584729fa1)
   - Verification: `npm run test:mobile`, `npm run build`, `npx cap sync android`, and `npm test` passed.
   - Review: passed by controller after adding Escape `preventDefault()`.
-- [ ] Task 5: Add server setup and global connection state.
-  - Starting commit: pending
-  - Commit: pending
-  - Review: pending
+- [x] Task 5: Add server setup and global connection state.
+  - Starting commit: 5ed12643784b49d87fedb99bd85d31f276325a22
+  - Implementer: controller after multi_agent_v1 Russell hit usage limit (019f5421-67fb-7162-aa19-9cfbad1a513f)
+  - Verification: `npm run test:mobile`, `npm test`, and `npm run build` passed.
+  - Review: passed by controller; native misconfiguration gate prevents shell/SSE startup until server URL is saved.
 - [ ] Task 6: Build shared navigation, mobile shell, history, and Android back.
   - Starting commit: pending
   - Commit: pending

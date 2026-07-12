@@ -9,6 +9,9 @@ import type { View } from './types'
 import { NAVIGATE_EVENT, openHubTab } from './lib/quickActions'
 import { startDataRefresh, DATA_REFRESH_EVENT } from './lib/dataRefresh'
 import { apiFetch } from './lib/apiTransport.js'
+import { useServerConnection } from './contexts/ServerConnectionContext'
+import { ServerSetupScreen } from './components/mobile/ServerSetupScreen'
+import { ConnectionBanner } from './components/layout/ConnectionBanner'
 
 // Lazy views: each becomes its own chunk, fetched on first navigation, so the
 // initial bundle is just the shell + landing page instead of all ~25 views.
@@ -142,7 +145,7 @@ function CriticalAlertToast({ activeView, onNavigate }: { activeView: View; onNa
   )
 }
 
-export default function App() {
+function AppShell() {
   const [activeView, setActiveView] = useState<View>(initialView)
   const [mounted, setMounted]       = useState<Set<View>>(() => new Set([activeView]))
 
@@ -200,6 +203,7 @@ export default function App() {
           onNavigate={navigate}
           views={(Object.entries(VIEW_TITLES) as [View, string][]).map(([id, label]) => ({ id, label }))}
         />
+        <ConnectionBanner onOpenSettings={() => navigate('settings')} />
         <main className="flex-1 overflow-hidden bg-base relative">
 
           <ViewPane view="home"        active={activeView} mounted={mounted}><Home onNavigate={navigate} /></ViewPane>
@@ -227,4 +231,10 @@ export default function App() {
       <CriticalAlertToast activeView={activeView} onNavigate={navigate} />
     </div>
   )
+}
+
+export default function App() {
+  const connection = useServerConnection()
+  if (connection.status === 'misconfigured') return <ServerSetupScreen />
+  return <AppShell />
 }
