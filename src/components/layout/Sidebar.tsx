@@ -1,14 +1,9 @@
-import { useState, useEffect } from 'react'
-import {
-  ListTodo, BookOpen, FolderKanban, Radar,
-  MessageSquare, Calendar, Brain, Wallet,
-  Activity, Target, Package, Lightbulb,
-  Cog, ChevronLeft, ChevronRight, FlaskConical,
-  HeartPulse, House, ShoppingCart, Newspaper, Link,
-} from 'lucide-react'
+import { useState } from 'react'
+import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { clsx } from 'clsx'
 import type { View } from '../../types'
-import { apiFetch } from '../../lib/apiTransport.js'
+import { useNavBadges } from '../../hooks/useNavBadges'
+import { NAV_SECTIONS } from './navConfig'
 
 interface SidebarProps {
   activeView: View
@@ -17,110 +12,13 @@ interface SidebarProps {
 
 const iconSize = 15
 
-type NavItem = { id: View; label: string; icon: React.ReactNode }
-type NavSection = { label: string; items: NavItem[] }
-
-const NAV: NavSection[] = [
-  {
-    label: 'Work',
-    items: [
-      { id: 'home',     label: 'Home',     icon: <House         size={iconSize} /> },
-      { id: 'todos',    label: 'To-Do',    icon: <ListTodo      size={iconSize} /> },
-      { id: 'tobuy',    label: 'To-Buy',   icon: <ShoppingCart  size={iconSize} /> },
-      { id: 'spend',    label: 'Financials', icon: <Wallet        size={iconSize} /> },
-      { id: 'council',  label: 'Chats',    icon: <MessageSquare size={iconSize} /> },
-      { id: 'calendar', label: 'Calendar', icon: <Calendar      size={iconSize} /> },
-    ],
-  },
-  {
-    label: 'Knowledge',
-    items: [
-      { id: 'docs',   label: 'Docs',   icon: <BookOpen  size={iconSize} /> },
-      { id: 'links',  label: 'Links',  icon: <Link      size={iconSize} /> },
-      { id: 'news',   label: 'News',   icon: <Newspaper size={iconSize} /> },
-      { id: 'memory', label: 'Memory', icon: <Brain     size={iconSize} /> },
-    ],
-  },
-  {
-    label: 'Build',
-    items: [
-      { id: 'projects',  label: 'Projects',  icon: <FolderKanban size={iconSize} /> },
-      { id: 'inventory', label: 'Inventory', icon: <Package      size={iconSize} /> },
-      { id: 'factory',   label: 'Ideas',     icon: <Lightbulb    size={iconSize} /> },
-    ],
-  },
-  {
-    label: 'AI Ops',
-    items: [
-      { id: 'activity',    label: 'Activity',   icon: <Activity     size={iconSize} /> },
-      { id: 'usage',       label: 'Usage',      icon: <Radar        size={iconSize} /> },
-      { id: 'harness',     label: 'Benchmarks', icon: <FlaskConical size={iconSize} /> },
-      { id: 'evaluations', label: 'Evals',      icon: <Target       size={iconSize} /> },
-      { id: 'health',      label: 'Health',     icon: <HeartPulse   size={iconSize} /> },
-    ],
-  },
-]
+const sidebarSections = NAV_SECTIONS.filter((section) => section.label !== 'Settings')
+const settingsItem = NAV_SECTIONS.flatMap((section) => section.items).find((item) => item.id === 'settings')!
+const SettingsIcon = settingsItem.Icon
 
 export function Sidebar({ activeView, onNavigate }: SidebarProps) {
-  const [collapsed, setCollapsed]           = useState(false)
-  const [tasksBadge,     setTasksBadge]     = useState<number | undefined>(undefined)
-  const [approvalsBadge, setApprovalsBadge] = useState<number | undefined>(undefined)
-  const [inboxBadge,     setInboxBadge]     = useState<number | undefined>(undefined)
-  const [todosBadge,     setTodosBadge]     = useState<number | undefined>(undefined)
-  const [toBuyBadge,     setToBuyBadge]     = useState<number | undefined>(undefined)
-  const [healthBadge,    setHealthBadge]    = useState<number | undefined>(undefined)
-
-  useEffect(() => {
-    const fetchCounts = async () => {
-      try {
-        const [tRes, aRes, dRes, iRes, bRes, hRes] = await Promise.all([
-          apiFetch<{ tasks?: Array<{ status: string }> }>('/api/tasks'),
-          apiFetch<{ approvals?: Array<{ status: string }> }>('/api/approvals'),
-          apiFetch<{ todos?: Array<{ done: boolean }> }>('/api/todos'),
-          apiFetch<{ counts?: { active?: number } }>('/api/inbox'),
-          apiFetch<{ items?: Array<{ purchased: boolean }> }>('/api/tobuy'),
-          apiFetch<{ alerts?: Array<{ severity: string }> }>('/api/alerts/active'),
-        ])
-        const activeTasks = (tRes.tasks ?? []).filter(
-          (t: { status: string }) => t.status !== 'completed',
-        ).length
-        const pendingApprovals = (aRes.approvals ?? []).filter(
-          (a: { status: string }) => a.status === 'pending',
-        ).length
-        const openTodos = (dRes.todos ?? []).filter(
-          (t: { done: boolean }) => !t.done,
-        ).length
-        const activeInbox = Number(iRes.counts?.active ?? 0)
-        const openToBuy = (bRes.items ?? []).filter(
-          (i: { purchased: boolean }) => !i.purchased,
-        ).length
-        const criticalAlerts = (hRes.alerts ?? []).filter(
-          (a: { severity: string }) => a.severity === 'critical' || a.severity === 'warning',
-        ).length
-        setTasksBadge(activeTasks > 0 ? activeTasks : undefined)
-        setApprovalsBadge(pendingApprovals > 0 ? pendingApprovals : undefined)
-        setInboxBadge(activeInbox > 0 ? activeInbox : undefined)
-        setTodosBadge(openTodos > 0 ? openTodos : undefined)
-        setToBuyBadge(openToBuy > 0 ? openToBuy : undefined)
-        setHealthBadge(criticalAlerts > 0 ? criticalAlerts : undefined)
-      } catch { /* ignore — badges just won't show */ }
-    }
-    fetchCounts()
-    const timer = setInterval(fetchCounts, 30_000)
-    return () => clearInterval(timer)
-  }, [])
-
-  const getBadge = (id: View): number | undefined => {
-    // The To-Do nav item now hosts To-Do + Tasks + Approvals + Inbox, so roll all
-    // their open counts into its single badge.
-    if (id === 'todos') {
-      const total = (todosBadge ?? 0) + (tasksBadge ?? 0) + (approvalsBadge ?? 0) + (inboxBadge ?? 0)
-      return total > 0 ? total : undefined
-    }
-    if (id === 'tobuy') return toBuyBadge
-    if (id === 'health') return healthBadge
-    return undefined
-  }
+  const [collapsed, setCollapsed] = useState(false)
+  const { getBadge } = useNavBadges()
 
   return (
     <aside
@@ -149,7 +47,7 @@ export function Sidebar({ activeView, onNavigate }: SidebarProps) {
 
       {/* Nav */}
       <nav className="flex flex-col flex-1 py-1.5 gap-0.5 overflow-y-auto min-h-0 px-1.5">
-        {NAV.map((section, si) => (
+        {sidebarSections.map((section, si) => (
           <div key={section.label} className="flex flex-col gap-0.5">
             {/* Section divider/label */}
             {si > 0 && (
@@ -183,7 +81,7 @@ export function Sidebar({ activeView, onNavigate }: SidebarProps) {
                     'shrink-0 transition-colors',
                     isActive ? 'text-text-primary' : 'text-text-muted group-hover:text-text-secondary',
                   )}>
-                    {item.icon}
+                    <item.Icon size={iconSize} />
                   </span>
                   {!collapsed && (
                     <>
@@ -234,10 +132,10 @@ export function Sidebar({ activeView, onNavigate }: SidebarProps) {
             'shrink-0 transition-colors',
             activeView === 'settings' ? 'text-text-primary' : 'text-text-muted group-hover:text-text-secondary',
           )}>
-            <Cog size={iconSize} />
+            <SettingsIcon size={iconSize} />
           </span>
           {!collapsed && (
-            <span className="flex-1 text-sm font-medium leading-none">Settings</span>
+            <span className="flex-1 text-sm font-medium leading-none">{settingsItem.label}</span>
           )}
         </button>
       </div>

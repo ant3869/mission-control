@@ -1,16 +1,23 @@
-import { useState, useEffect, useRef, lazy, Suspense } from 'react'
+import { useCallback, useEffect, useRef, useState, lazy, Suspense } from 'react'
 import { clsx } from 'clsx'
 import { Loader2, ShieldAlert, X } from 'lucide-react'
 import { Sidebar } from './components/layout/Sidebar'
 import { TopBar } from './components/layout/TopBar'
+import { VIEW_TITLES } from './components/layout/navConfig'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { Home } from './views/Home'                       // eager — default landing view
 import type { View } from './types'
 import { NAVIGATE_EVENT, openHubTab } from './lib/quickActions'
 import { startDataRefresh, DATA_REFRESH_EVENT } from './lib/dataRefresh'
 import { apiFetch } from './lib/apiTransport.js'
+import { closeTopOverlay } from './lib/overlayStack'
+import { exitAndroidApp, onAndroidBack } from './lib/native'
+import { popView, pushView } from './lib/viewHistory'
+import { useMediaQuery } from './hooks/useMediaQuery'
 import { useServerConnection } from './contexts/ServerConnectionContext'
 import { ServerSetupScreen } from './components/mobile/ServerSetupScreen'
+import { MobileBottomNav } from './components/mobile/MobileBottomNav'
+import { MobileMoreSheet } from './components/mobile/MobileMoreSheet'
 import { ConnectionBanner } from './components/layout/ConnectionBanner'
 
 // Lazy views: each becomes its own chunk, fetched on first navigation, so the
@@ -34,28 +41,6 @@ const Spend             = lazy(() => import('./views/Spend').then(m => ({ defaul
 const Activity          = lazy(() => import('./views/Activity').then(m => ({ default: m.Activity })))
 const Usage             = lazy(() => import('./views/Usage').then(m => ({ default: m.Usage })))
 const Health            = lazy(() => import('./views/Health').then(m => ({ default: m.Health })))
-
-const VIEW_TITLES: Record<View, string> = {
-  home:        'Home',
-  todos:       'To-Do',
-  tobuy:       'To-Buy',
-  spend:       'Financials',
-  council:     'Chats',
-  calendar:    'Scheduled Tasks',
-  docs:        'Docs & Notes',
-  links:       'Links',
-  news:        'News',
-  memory:      'Memory',
-  projects:    'Projects & Pipeline',
-  inventory:   'Inventory',
-  factory:     'Idea Factory',
-  activity:    'Activity',
-  usage:       'Usage',
-  harness:     'Harness Benchmarks',
-  evaluations: 'Evaluations',
-  health:      'Health',
-  settings:    'Settings',
-}
 
 // Render each view once (on first visit) and keep it mounted — hidden via CSS.
 // This preserves all local state (scroll position, forms, filters) across navigation.
@@ -129,7 +114,7 @@ function CriticalAlertToast({ activeView, onNavigate }: { activeView: View; onNa
   if (!toast) return null
 
   return (
-    <div className="fixed bottom-4 right-4 z-50 flex items-start gap-3 max-w-sm w-full rounded-xl border border-red-800/60 bg-red-950/90 shadow-2xl px-4 py-3 backdrop-blur-sm animate-in slide-in-from-bottom-2 duration-200">
+    <div className="fixed bottom-[calc(5rem+env(safe-area-inset-bottom))] left-4 right-4 z-50 flex w-auto max-w-sm items-start gap-3 rounded-xl border border-red-800/60 bg-red-950/90 px-4 py-3 shadow-2xl backdrop-blur-sm animate-in slide-in-from-bottom-2 duration-200 md:bottom-4 md:left-auto md:w-full">
       <ShieldAlert size={16} className="text-red-400 shrink-0 mt-0.5" />
       <div className="flex-1 min-w-0">
         <p className="text-xs font-semibold text-red-300 uppercase tracking-wider">Critical alert</p>
@@ -148,12 +133,33 @@ function CriticalAlertToast({ activeView, onNavigate }: { activeView: View; onNa
 function AppShell() {
   const [activeView, setActiveView] = useState<View>(initialView)
   const [mounted, setMounted]       = useState<Set<View>>(() => new Set([activeView]))
+  const [moreOpen, setMoreOpen]     = useState(false)
+  const isPhone                     = useMediaQuery('(max-width: 767px)')
+  const activeViewRef               = useRef(activeView)
+  const historyRef                  = useRef<View[]>([])
 
-  const navigate = (view: View) => {
-    setMounted(prev => new Set([...prev, view]))
+  useEffect(() => {
+    activeViewRef.current = activeView
+  }, [activeView])
+
+  const replaceView = useCallback((view: View) => {
+    activeViewRef.current = view
+    setMounted(prev => {
+      if (isPhone) return new Set([view])
+      if (prev.has(view)) return prev
+      return new Set([...prev, view])
+    })
     setActiveView(view)
     try { localStorage.setItem(VIEW_STORAGE_KEY, view) } catch { /* ignore */ }
-  }
+  }, [isPhone])
+
+  const navigate = useCallback((view: View) => {
+    const current = activeViewRef.current
+    if (view === current) return
+
+    historyRef.current = pushView(historyRef.current, current, view)
+    replaceView(view)
+  }, [replaceView])
 
   // Start the SSE data-refresh connection once for the lifetime of the app.
   useEffect(() => startDataRefresh(), [])
@@ -175,7 +181,7 @@ function AppShell() {
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [])
+  }, [navigate])
 
   // Reflect the active view in the browser tab title (history + tab identification).
   useEffect(() => { document.title = `${VIEW_TITLES[activeView]} · Mission Control` }, [activeView])
@@ -185,17 +191,35 @@ function AppShell() {
       const custom = event as CustomEvent<{ view?: View }>
       const view = custom.detail?.view
       if (!view) return
-      setMounted(prev => new Set([...prev, view]))
-      setActiveView(view)
-      try { localStorage.setItem(VIEW_STORAGE_KEY, view) } catch { /* ignore */ }
+      navigate(view)
     }
     window.addEventListener(NAVIGATE_EVENT, handler as EventListener)
     return () => window.removeEventListener(NAVIGATE_EVENT, handler as EventListener)
-  }, [])
+  }, [navigate])
+
+  useEffect(() => onAndroidBack(() => {
+    if (closeTopOverlay()) return
+
+    const popped = popView(historyRef.current)
+    historyRef.current = popped.history
+    if (popped.view) {
+      replaceView(popped.view)
+      return
+    }
+
+    if (activeViewRef.current !== 'home') {
+      replaceView('home')
+      return
+    }
+
+    void exitAndroidApp()
+  }), [replaceView])
+
+  const mountedViews = isPhone ? new Set<View>([activeView]) : mounted
 
   return (
     <div className="flex h-full w-full bg-base overflow-hidden">
-      <Sidebar activeView={activeView} onNavigate={navigate} />
+      {!isPhone && <Sidebar activeView={activeView} onNavigate={navigate} />}
 
       <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
         <TopBar
@@ -205,29 +229,43 @@ function AppShell() {
         />
         <ConnectionBanner onOpenSettings={() => navigate('settings')} />
         <main className="flex-1 overflow-hidden bg-base relative">
+          <div className={clsx('absolute inset-0', isPhone && 'bottom-[calc(4rem+env(safe-area-inset-bottom))]')}>
 
-          <ViewPane view="home"        active={activeView} mounted={mounted}><Home onNavigate={navigate} /></ViewPane>
-          <ViewPane view="todos"       active={activeView} mounted={mounted}><TodoTasks /></ViewPane>
-          <ViewPane view="tobuy"       active={activeView} mounted={mounted}><ToBuy /></ViewPane>
-          <ViewPane view="spend"       active={activeView} mounted={mounted}><Spend /></ViewPane>
-          <ViewPane view="council"     active={activeView} mounted={mounted}><Chats /></ViewPane>
-          <ViewPane view="calendar"    active={activeView} mounted={mounted}><ScheduledTasks /></ViewPane>
-          <ViewPane view="docs"        active={activeView} mounted={mounted}><DocsNotes /></ViewPane>
-          <ViewPane view="links"       active={activeView} mounted={mounted}><Links /></ViewPane>
-          <ViewPane view="news"        active={activeView} mounted={mounted}><News /></ViewPane>
-          <ViewPane view="memory"      active={activeView} mounted={mounted}><Memory /></ViewPane>
-          <ViewPane view="projects"    active={activeView} mounted={mounted}><ProjectsPipeline /></ViewPane>
-          <ViewPane view="inventory"   active={activeView} mounted={mounted}><Inventory /></ViewPane>
-          <ViewPane view="factory"     active={activeView} mounted={mounted}><Factory /></ViewPane>
-          <ViewPane view="activity"    active={activeView} mounted={mounted}><Activity /></ViewPane>
-          <ViewPane view="usage"       active={activeView} mounted={mounted}><Usage /></ViewPane>
-          <ViewPane view="harness"     active={activeView} mounted={mounted}><HarnessBenchmarks /></ViewPane>
-          <ViewPane view="evaluations" active={activeView} mounted={mounted}><Evaluations /></ViewPane>
-          <ViewPane view="health"      active={activeView} mounted={mounted}><Health /></ViewPane>
-          <ViewPane view="settings"    active={activeView} mounted={mounted}><Settings /></ViewPane>
+            <ViewPane view="home"        active={activeView} mounted={mountedViews}><Home onNavigate={navigate} /></ViewPane>
+            <ViewPane view="todos"       active={activeView} mounted={mountedViews}><TodoTasks /></ViewPane>
+            <ViewPane view="tobuy"       active={activeView} mounted={mountedViews}><ToBuy /></ViewPane>
+            <ViewPane view="spend"       active={activeView} mounted={mountedViews}><Spend /></ViewPane>
+            <ViewPane view="council"     active={activeView} mounted={mountedViews}><Chats /></ViewPane>
+            <ViewPane view="calendar"    active={activeView} mounted={mountedViews}><ScheduledTasks /></ViewPane>
+            <ViewPane view="docs"        active={activeView} mounted={mountedViews}><DocsNotes /></ViewPane>
+            <ViewPane view="links"       active={activeView} mounted={mountedViews}><Links /></ViewPane>
+            <ViewPane view="news"        active={activeView} mounted={mountedViews}><News /></ViewPane>
+            <ViewPane view="memory"      active={activeView} mounted={mountedViews}><Memory /></ViewPane>
+            <ViewPane view="projects"    active={activeView} mounted={mountedViews}><ProjectsPipeline /></ViewPane>
+            <ViewPane view="inventory"   active={activeView} mounted={mountedViews}><Inventory /></ViewPane>
+            <ViewPane view="factory"     active={activeView} mounted={mountedViews}><Factory /></ViewPane>
+            <ViewPane view="activity"    active={activeView} mounted={mountedViews}><Activity /></ViewPane>
+            <ViewPane view="usage"       active={activeView} mounted={mountedViews}><Usage /></ViewPane>
+            <ViewPane view="harness"     active={activeView} mounted={mountedViews}><HarnessBenchmarks /></ViewPane>
+            <ViewPane view="evaluations" active={activeView} mounted={mountedViews}><Evaluations /></ViewPane>
+            <ViewPane view="health"      active={activeView} mounted={mountedViews}><Health /></ViewPane>
+            <ViewPane view="settings"    active={activeView} mounted={mountedViews}><Settings /></ViewPane>
 
+          </div>
         </main>
       </div>
+      {isPhone && (
+        <>
+          <MobileBottomNav activeView={activeView} onNavigate={navigate} onOpenMore={() => setMoreOpen(true)} />
+          {moreOpen && (
+            <MobileMoreSheet
+              activeView={activeView}
+              onNavigate={navigate}
+              onClose={() => setMoreOpen(false)}
+            />
+          )}
+        </>
+      )}
       <CriticalAlertToast activeView={activeView} onNavigate={navigate} />
     </div>
   )

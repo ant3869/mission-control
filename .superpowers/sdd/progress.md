@@ -39,10 +39,12 @@ Starting commit: 22f991e4109ee523659dc1872b5c7e7059a00524
   - Implementer: controller after multi_agent_v1 Russell hit usage limit (019f5421-67fb-7162-aa19-9cfbad1a513f)
   - Verification: `npm run test:mobile`, `npm test`, and `npm run build` passed.
   - Review: passed by controller; native misconfiguration gate prevents shell/SSE startup until server URL is saved.
-- [ ] Task 6: Build shared navigation, mobile shell, history, and Android back.
-  - Starting commit: pending
-  - Commit: pending
-  - Review: pending
+- [x] Task 6: Build shared navigation, mobile shell, history, and Android back.
+  - Starting commit: 8ffaaffdcbfa28d9c7638e2614c8f385565be6e7
+  - Implementer: controller after subagent support was unavailable.
+  - Verification: `npm run test:mobile`, `npm test`, and `npm run build` passed.
+  - Review: passed by controller; mobile shell mounts only the active view, desktop keeps visited panes mounted, and Android back closes overlays before view history/home/exit fallback.
+  - Commit: `feat(mobile): add responsive shell and Android navigation`
 - [ ] Task 7: Make shared top bar, search, tabs, and global CSS phone-native.
   - Starting commit: pending
   - Commit: pending
