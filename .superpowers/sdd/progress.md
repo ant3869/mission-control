@@ -97,4 +97,5 @@ Starting commit: 22f991e4109ee523659dc1872b5c7e7059a00524
   - Final fix pass removed trailing whitespace from the approved design spec before the committed branch check.
 - [x] Whole-branch review and final fix pass.
   - Review evidence: Capacitor keeps HTTPS WebView origin with runtime API setup, Express defaults to loopback, Tailscale Serve and trusted-LAN fallback are documented, no secret-pattern hits were found, and ADB reported no connected devices.
-- [ ] Push `mobile/capacitor-responsive-design` to origin.
+- [x] Push `mobile/capacitor-responsive-design` to origin.
+  - Final verification: pushed `7bfd13f` to `origin/mobile/capacitor-responsive-design`; follow-up ledger-only push recorded after this checklist update.
