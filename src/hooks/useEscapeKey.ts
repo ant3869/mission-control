@@ -4,13 +4,28 @@
 //          expectation for any overlay. Wire `useEscapeKey(onClose)` at the top
 //          of an overlay component so Esc dismisses it, not just a backdrop click.
 
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
+import { registerOverlay } from '../lib/overlayStack'
 
 export function useEscapeKey(onEscape: () => void, active = true): void {
+  const onEscapeRef = useRef(onEscape)
+  onEscapeRef.current = onEscape
+
   useEffect(() => {
     if (!active) return
-    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onEscape() }
+    const close = () => onEscapeRef.current()
+    const unregister = registerOverlay(close)
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        close()
+      }
+    }
+
     window.addEventListener('keydown', handler)
-    return () => window.removeEventListener('keydown', handler)
-  }, [onEscape, active])
+    return () => {
+      unregister()
+      window.removeEventListener('keydown', handler)
+    }
+  }, [active])
 }

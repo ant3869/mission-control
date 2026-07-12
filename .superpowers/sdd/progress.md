@@ -29,10 +29,11 @@ Starting commit: 22f991e4109ee523659dc1872b5c7e7059a00524
   - Implementer: multi_agent_v1 Sartre (019f53dc-cb30-7863-aca6-3e06a65012f7)
   - Verification: targeted `serverConfig` test, `npm test`, and `npm run build` passed.
   - Review: passed by controller; CORS callback computes origin policy once.
-- [ ] Task 4: Add native platform services and overlay dismissal.
-  - Starting commit: pending
-  - Commit: pending
-  - Review: pending
+- [x] Task 4: Add native platform services and overlay dismissal.
+  - Starting commit: ef090906f6db9bcefbe40e26466f7cb97265141b
+  - Implementer: multi_agent_v1 Franklin (019f53e3-754a-7f82-8a87-8f9584729fa1)
+  - Verification: `npm run test:mobile`, `npm run build`, `npx cap sync android`, and `npm test` passed.
+  - Review: passed by controller after adding Escape `preventDefault()`.
 - [ ] Task 5: Add server setup and global connection state.
   - Starting commit: pending
   - Commit: pending

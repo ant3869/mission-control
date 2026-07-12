@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!-- Cleartext stays enabled for private LAN API bases; validateApiBase rejects public HTTP origins, and HTTPS remains required for non-private hosts. -->
     <application
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
