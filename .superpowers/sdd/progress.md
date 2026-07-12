@@ -51,10 +51,12 @@ Starting commit: 22f991e4109ee523659dc1872b5c7e7059a00524
   - Verification: `npm run build`, `npm run test:mobile`, and `npm test` passed; Playwright checked 360, 393-class, and 412 widths for body overflow, search viewport fill, quick-capture bottom sheet, and TabHub horizontal scrolling.
   - Review: passed by controller; no real critical alert was available from local `/api/alerts/active`, but toast clearance is implemented with the bottom-nav safe-area offset.
   - Commit: `feat(mobile): adapt shared controls for touch layouts`
-- [ ] Task 8: Adapt Home for Pixel 9.
-  - Starting commit: pending
-  - Commit: pending
-  - Review: pending
+- [x] Task 8: Adapt Home for Pixel 9.
+  - Starting commit: 4d3f0e8fdb3c9991c3104fd719220de9e16fc536
+  - Implementer: controller after subagent support was unavailable.
+  - Verification: `npm run build`, `npm run test:mobile`, and `npm test` passed; Playwright checked Home at 360x800 and 412x915 with no body/document horizontal overflow and all requested sections present.
+  - Review: passed by controller; Home external links now route through `openExternal`.
+  - Commit: `feat(mobile): create Pixel-first Home layout`
 - [ ] Task 9: Adapt To-Do, Tasks, Approvals, and Inbox.
   - Starting commit: pending
   - Commit: pending

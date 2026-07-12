@@ -26,6 +26,7 @@ import { isRefreshPaused } from '../lib/refreshBus'
 import { openInboxItem as focusInboxItem, openTasksTab, openHubTab } from '../lib/quickActions'
 import type { View } from '../types'
 import { apiFetch } from '../lib/apiTransport.js'
+import { openExternal } from '../lib/native'
 
 // ─── Theme accents (mirror tailwind.config.js — never introduce new colors) ───
 
@@ -234,7 +235,7 @@ function RadarSweep({ alert }: { alert: boolean }) {
     { top: '68%', left: '66%', color: alert ? ACCENT.amber : ACCENT.green,  delay: '1.7s' },
   ]
   return (
-    <div className="relative w-[116px] h-[116px] shrink-0 select-none" aria-hidden>
+    <div className="relative w-[92px] h-[92px] sm:w-[116px] sm:h-[116px] shrink-0 select-none" aria-hidden>
       {/* rings + crosshair, in border tones */}
       <svg viewBox="0 0 116 116" className="absolute inset-0">
         {[18, 35, 52].map(r => (
@@ -271,7 +272,7 @@ function StatTile({ icon, label, sub, value, accent, delay, onClick }: {
   return (
     <button
       onClick={onClick}
-      className="home-rise group flex flex-col gap-1.5 px-5 py-4 rounded-xl bg-card border border-border hover:bg-card-hover hover:-translate-y-0.5 transition-all duration-200 text-left"
+      className="home-rise group flex flex-col gap-1.5 px-3 py-3 sm:px-5 sm:py-4 rounded-xl bg-card border border-border hover:bg-card-hover hover:-translate-y-0.5 transition-all duration-200 text-left"
       style={{ animationDelay: `${delay}ms` }}
     >
       <div className="flex items-center gap-2 text-text-muted">
@@ -279,7 +280,7 @@ function StatTile({ icon, label, sub, value, accent, delay, onClick }: {
         <span className="text-[10px] font-semibold uppercase tracking-wider">{label}</span>
         <ArrowUpRight size={12} className="ml-auto opacity-0 group-hover:opacity-100 transition-opacity" />
       </div>
-      <span className="text-3xl font-bold tabular-nums leading-none" style={{ color: accent }}>{Math.round(n)}</span>
+      <span className="text-2xl sm:text-3xl font-bold tabular-nums leading-none" style={{ color: accent }}>{Math.round(n)}</span>
       <span className="text-[10px] text-text-muted truncate">{sub}</span>
     </button>
   )
@@ -390,7 +391,9 @@ function fmtCountdown(ms: number): string {
   return `${Math.floor(h / 24)}d ${h % 24}h`
 }
 
-function HeartbeatWidget({ job, now, onOpen }: { job: AgentCronJob | null; now: Date; onOpen: () => void }) {
+function HeartbeatWidget({ job, now, onOpen, className }: {
+  job: AgentCronJob | null; now: Date; onOpen: () => void; className?: string
+}) {
   const lastMs = job?.lastRunAt ? new Date(job.lastRunAt).getTime() : 0
   const nextMs = job?.nextRunAt ? new Date(job.nextRunAt).getTime() : 0
   const sinceLast = lastMs ? now.getTime() - lastMs : Infinity
@@ -402,7 +405,7 @@ function HeartbeatWidget({ job, now, onOpen }: { job: AgentCronJob | null; now: 
   return (
     <button
       onClick={onOpen}
-      className="home-rise group flex flex-col gap-2 px-5 py-4 rounded-xl bg-card border border-border hover:bg-card-hover transition-all duration-200 text-left"
+      className={clsx('home-rise group flex flex-col gap-2 px-3 py-3 sm:px-5 sm:py-4 rounded-xl bg-card border border-border hover:bg-card-hover transition-all duration-200 text-left', className)}
       style={{ animationDelay: '300ms' }}
     >
       <div className="flex items-center gap-2 text-text-muted">
@@ -610,12 +613,12 @@ export function Home({ onNavigate }: { onNavigate: (view: View) => void }) {
 
       {/* ─── Hero ───────────────────────────────────────────────────────────── */}
       <header className="relative overflow-hidden bg-surface border-b border-border">
-        <div className="relative max-w-[1400px] mx-auto px-5 lg:px-8 pt-8 pb-6">
-          <div className="flex flex-wrap items-start justify-between gap-x-10 gap-y-6">
+        <div className="relative max-w-[1400px] mx-auto px-4 sm:px-5 lg:px-8 pt-5 sm:pt-8 pb-4 sm:pb-6">
+          <div className="flex flex-col sm:flex-row sm:flex-wrap items-start justify-between gap-5 sm:gap-x-10 sm:gap-y-6">
 
             {/* Left: greeting + status */}
             <div className="min-w-0 home-rise">
-              <h1 className="text-3xl lg:text-4xl font-bold tracking-tight text-text-primary">
+              <h1 className="text-2xl sm:text-3xl lg:text-4xl font-semibold tracking-tight text-text-primary">
                 {greeting()}, Ant.
               </h1>
               <p className="mt-2 text-sm text-text-secondary">
@@ -624,19 +627,19 @@ export function Home({ onNavigate }: { onNavigate: (view: View) => void }) {
 
               {/* live status pill */}
               <div
-                className="mt-4 inline-flex items-center gap-2 px-3 py-1.5 rounded-full"
+                className="mt-4 inline-flex max-w-full flex-wrap items-center gap-2 px-3 py-1.5 rounded-full"
                 style={{ backgroundColor: `${statusColor}14` }}
               >
                 <span className="relative flex w-2 h-2">
                   <span className="absolute inline-flex w-full h-full rounded-full opacity-60 animate-ping" style={{ backgroundColor: statusColor }} />
                   <span className="relative inline-flex w-2 h-2 rounded-full" style={{ backgroundColor: statusColor }} />
                 </span>
-                <span className="text-xs font-medium" style={{ color: statusColor }}>{statusText}</span>
+                <span className="min-w-0 text-xs font-medium" style={{ color: statusColor }}>{statusText}</span>
               </div>
             </div>
 
             {/* Right: radar + next event + spend */}
-            <div className="flex items-center gap-6 home-rise" style={{ animationDelay: '120ms' }}>
+            <div className="flex w-full items-center justify-between gap-3 sm:w-auto sm:gap-6 home-rise" style={{ animationDelay: '120ms' }}>
               <RadarSweep alert={criticalAttn} />
               <div className="flex flex-col gap-3.5">
                 <NextEventChip events={todayEvents} now={clock} onNavigate={onNavigate} />
@@ -645,7 +648,7 @@ export function Home({ onNavigate }: { onNavigate: (view: View) => void }) {
                     <TrendingUp size={10} /> Claude Code value · 7d
                     <ArrowUpRight size={10} className="opacity-0 group-hover:opacity-100 transition-opacity" />
                   </p>
-                  <p className="text-3xl font-bold tabular-nums leading-none mt-1 text-accent-green">
+                  <p className="text-2xl sm:text-3xl font-bold tabular-nums leading-none mt-1 text-accent-green">
                     {usage ? `$${spend.toFixed(2)}` : '—'}
                   </p>
                   <p className="text-[10px] text-text-muted tabular-nums mt-1">
@@ -695,7 +698,7 @@ export function Home({ onNavigate }: { onNavigate: (view: View) => void }) {
             sub={`${projects.length} total tracked`}
             value={activeProjects} accent={ACCENT.teal}
             delay={240} onClick={() => onNavigate('projects')} />
-          <HeartbeatWidget job={heartbeatJob} now={clock} onOpen={() => openHubTab('activity', 'live')} />
+          <HeartbeatWidget job={heartbeatJob} now={clock} onOpen={() => openHubTab('activity', 'live')} className="col-span-2 xl:col-span-1" />
         </div>
 
         {/* ─── Priority queue ──────────────────────────────────────────────── */}
@@ -738,7 +741,7 @@ export function Home({ onNavigate }: { onNavigate: (view: View) => void }) {
                       <span className="text-sm font-semibold text-text-primary truncate">{lead.title}</span>
                       <span className="text-[11px] text-text-muted truncate mt-0.5">{lead.sub}</span>
                     </span>
-                    <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wider px-2 py-1 rounded" style={{ color: lead.color, backgroundColor: `${lead.color}18` }}>
+                    <span className="hidden shrink-0 text-[10px] font-semibold uppercase tracking-wider px-2 py-1 rounded min-[393px]:inline-flex" style={{ color: lead.color, backgroundColor: `${lead.color}18` }}>
                       Act first
                     </span>
                     <ArrowUpRight size={12} className="text-text-muted shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
@@ -817,11 +820,13 @@ export function Home({ onNavigate }: { onNavigate: (view: View) => void }) {
                     </div>
                     <div className="flex items-center gap-1.5 shrink-0">
                       {ev.meetLink && (
-                        <a href={ev.meetLink} target="_blank" rel="noreferrer"
+                        <button
+                          type="button"
                           className="flex items-center gap-1 px-2 py-0.5 rounded border border-border bg-base text-[10px] text-accent-blue hover:bg-card-hover transition-colors"
-                          onClick={e => e.stopPropagation()}>
+                          onClick={e => { e.stopPropagation(); void openExternal(ev.meetLink!) }}
+                        >
                           <Video size={9} /> Join
-                        </a>
+                        </button>
                       )}
                     </div>
                   </li>
@@ -839,7 +844,7 @@ export function Home({ onNavigate }: { onNavigate: (view: View) => void }) {
           <div className="flex items-center gap-2 px-4 py-3 border-b border-border-subtle">
             <Inbox size={13} className="text-accent-blue" />
             <h2 className="text-xs font-semibold uppercase tracking-wider text-text-muted">Capture & triage</h2>
-            <span className="ml-auto text-[10px] text-text-muted">Launcher, inbox, and links in one place</span>
+            <span className="ml-auto hidden text-[10px] text-text-muted sm:inline">Launcher, inbox, and links in one place</span>
           </div>
 
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-px bg-border-subtle">
@@ -857,7 +862,7 @@ export function Home({ onNavigate }: { onNavigate: (view: View) => void }) {
                   { label: 'Snoozed', value: snoozedInbox, color: ACCENT.blue },
                   { label: 'Approvals', value: pending.length, color: ACCENT.purple },
                 ].map(stat => (
-                  <div key={stat.label} className="rounded-lg border border-border-subtle bg-base px-3 py-2">
+                  <div key={stat.label} className="rounded-lg border border-border-subtle bg-base px-2 py-2 sm:px-3">
                     <p className="text-[10px] font-semibold uppercase tracking-wider text-text-muted">{stat.label}</p>
                     <p className="mt-1 text-lg font-bold tabular-nums leading-none" style={{ color: stat.color }}>{stat.value}</p>
                   </div>
@@ -912,7 +917,7 @@ export function Home({ onNavigate }: { onNavigate: (view: View) => void }) {
                   { label: 'Pinned', value: pinnedLinks, color: ACCENT.amber },
                   { label: 'Unread', value: savedLinks.filter(link => !link.openedAt).length, color: ACCENT.teal },
                 ].map(stat => (
-                  <div key={stat.label} className="rounded-lg border border-border-subtle bg-base px-3 py-2">
+                  <div key={stat.label} className="rounded-lg border border-border-subtle bg-base px-2 py-2 sm:px-3">
                     <p className="text-[10px] font-semibold uppercase tracking-wider text-text-muted">{stat.label}</p>
                     <p className="mt-1 text-lg font-bold tabular-nums leading-none" style={{ color: stat.color }}>{stat.value}</p>
                   </div>
@@ -926,7 +931,7 @@ export function Home({ onNavigate }: { onNavigate: (view: View) => void }) {
                   {topLinks.map(link => (
                     <li key={link.id}>
                       <button
-                        onClick={() => window.open(link.url, '_blank', 'noopener,noreferrer')}
+                        onClick={() => { void openExternal(link.url) }}
                         className="group flex items-start gap-2.5 w-full rounded-lg px-2.5 py-2 hover:bg-card-hover transition-colors text-left"
                       >
                         <Link2 size={13} className="mt-0.5 shrink-0 text-accent-blue" />
@@ -1061,7 +1066,7 @@ export function Home({ onNavigate }: { onNavigate: (view: View) => void }) {
                     { label: 'Value',  value: `$${usage.totalCost.toFixed(2)}`, icon: <Coins size={11} />, color: ACCENT.green },
                     { label: 'Runs',   value: fmtNum(usage.totalRuns),          icon: <Zap size={11} />,   color: ACCENT.blue },
                   ].map(s => (
-                    <div key={s.label} className="px-3 py-2.5 rounded-lg bg-base border border-border-subtle">
+                    <div key={s.label} className="px-2 py-2 sm:px-3 sm:py-2.5 rounded-lg bg-base border border-border-subtle">
                       <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-text-muted">{s.icon}{s.label}</div>
                       <p className="mt-1 text-xl font-bold tabular-nums leading-none" style={{ color: s.color }}>{s.value}</p>
                     </div>
