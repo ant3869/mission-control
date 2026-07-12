@@ -8,7 +8,8 @@
     "server": "tsx watch --ignore data/ server/index.ts",
     "build": "vite build --emptyOutDir false",
     "preview": "vite preview",
-    "test": "node --import tsx --test \"server/**/*.test.ts\"",
+    "test": "node --import tsx --test \"server/**/*.test.ts\" \"src/**/*.test.ts\"",
+    "test:mobile": "node --import tsx --test \"src/**/*.test.ts\"",
     "cap:sync": "npm run build && npx cap sync",
     "cap:android": "npm run build && npx cap sync android && npx cap open android",
     "cap:ios": "npm run build && npx cap sync ios && npx cap open ios"

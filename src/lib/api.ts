@@ -1,63 +1,50 @@
 /**
  * Typed API client for the Mission Control Express backend.
  * In dev, calls go through Vite's /api proxy → localhost:3001.
- * In Capacitor mobile builds, set VITE_API_BASE_URL=http://<server-ip>:3001
- * so relative paths resolve to the real server instead of the native origin.
+ * In mobile builds, apiTransport can point requests at a saved runtime server
+ * origin while desktop/dev keeps same-origin /api paths.
  */
 
+import { apiFetch, apiUrl, ApiError, getApiBaseUrl } from './apiTransport.js'
 import type { TraceRun } from '../components/trace/types'
 export type { TraceRun, TraceSpan, SpanKind, SpanStatus } from '../components/trace/types'
 
-// Empty string → use relative paths (web/dev). Absolute URL → mobile/remote.
-export const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '')
-
-export class ApiError extends Error {
-  constructor(public status: number, message: string) {
-    super(message)
-    this.name = 'ApiError'
-  }
-}
+export { apiUrl, ApiError }
+export const API_BASE = getApiBaseUrl()
 
 async function get<T>(path: string, params?: Record<string, string | number>): Promise<T> {
-  const origin = API_BASE || window.location.origin
-  const url = new URL(`/api${path}`, origin)
-  if (params) {
-    for (const [k, v] of Object.entries(params)) {
-      url.searchParams.set(k, String(v))
-    }
-  }
-  const res  = await fetch(url.toString())
-  const json = await res.json().catch(() => ({ error: res.statusText }))
-  if (!res.ok) throw new ApiError(res.status, json.error ?? res.statusText)
-  return json as T
+  const query = new URLSearchParams()
+  for (const [key, value] of Object.entries(params ?? {})) query.set(key, String(value))
+  const suffix = query.toString()
+  return apiFetch<T>(`/api${path}${suffix ? `?${suffix}` : ''}`)
 }
 
-async function post<T>(path: string, body: unknown): Promise<T> {
-  const res  = await fetch(`${API_BASE}/api${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
-  const json = await res.json().catch(() => ({ error: res.statusText }))
-  if (!res.ok) throw new ApiError(res.status, json.error ?? res.statusText)
-  return json as T
+function post<T>(path: string, body: unknown): Promise<T> {
+  return apiFetch<T>(`/api${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
 }
 
-async function patch<T>(path: string, body: unknown): Promise<T> {
-  const res  = await fetch(`${API_BASE}/api${path}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
-  const json = await res.json().catch(() => ({ error: res.statusText }))
-  if (!res.ok) throw new ApiError(res.status, json.error ?? res.statusText)
-  return json as T
+function patch<T>(path: string, body: unknown): Promise<T> {
+  return apiFetch<T>(`/api${path}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
 }
 
-async function put<T>(path: string, body: unknown): Promise<T> {
-  const res  = await fetch(`${API_BASE}/api${path}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
-  const json = await res.json().catch(() => ({ error: res.statusText }))
-  if (!res.ok) throw new ApiError(res.status, json.error ?? res.statusText)
-  return json as T
+function put<T>(path: string, body: unknown): Promise<T> {
+  return apiFetch<T>(`/api${path}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
 }
 
-async function del<T>(path: string): Promise<T> {
-  const res  = await fetch(`${API_BASE}/api${path}`, { method: 'DELETE' })
-  const json = await res.json().catch(() => ({ error: res.statusText }))
-  if (!res.ok) throw new ApiError(res.status, json.error ?? res.statusText)
-  return json as T
+function del<T>(path: string): Promise<T> {
+  return apiFetch<T>(`/api${path}`, { method: 'DELETE' })
 }
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
@@ -85,7 +72,7 @@ export interface AuthStatus {
 
 export const auth = {
   status:        (force = false) => get<AuthStatus>('/auth/status', force ? { force: 1 } : undefined),
-  googleAuthUrl: ()              => '/api/auth/google',
+  googleAuthUrl: ()              => apiUrl('/api/auth/google'),
   disconnect:    ()             => post<{ ok: boolean }>('/auth/google/disconnect', {}),
 }
 
