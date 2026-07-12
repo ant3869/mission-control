@@ -66,28 +66,35 @@ Starting commit: 22f991e4109ee523659dc1872b5c7e7059a00524
 - [x] Task 10: Adapt To-Buy.
   - Starting commit: ac24d44a3f0af48a5982e74c519d708102007692
   - Implementer: controller after subagent support was unavailable.
-  - Commit: pending (`feat(mobile): adapt shopping workflow for touch`)
+  - Commit: `7268482` (`feat(mobile): adapt shopping workflow for touch`)
   - Review: controller review passed; `npm run build`, `npm run test:mobile`, and `npm test` passed. Playwright 360px flow added `USB-C cable !high x2 $12`, opened/edited quantity and price, opened and canceled research guidance without dispatching an agent, marked purchased, switched filters, cleared the temporary purchased item, and confirmed no horizontal overflow.
 - [x] Task 11: Make Calendar agenda-first and phone-safe.
   - Starting commit: 7268482adbf5ca6926f4bfdc1bd08a9ffe8422be
-  - Commit: pending (`feat(mobile): make calendar agenda-first on phones`)
+  - Commit: `61d486f` (`feat(mobile): make calendar agenda-first on phones`)
   - Review: controller review passed; `npm run build`, `npm run test:mobile`, `npm test`, and `git diff --check` passed. Playwright 360px real-API pass confirmed phone defaults to Agenda, reconnect banner is readable, header touch targets are 44px, and no page-level horizontal overflow; local Google Calendar credentials are not configured (`503 not_configured`), so real Calendar CRUD/Meet behavior remains unverified. Playwright route-mocked pass exercised create, edit, delete, Meet link opening, Agenda/Day/Month/Week switching, Week/Month internal panning, full-screen composer, temporary event cleanup, and no page-level horizontal overflow.
 - [x] Task 12: Add server controls, native OAuth, and export to Settings.
   - Starting commit: 61d486fecdcd1f8679ad9071d870f21ef6d4cee8
-  - Commit: pending (`feat(mobile): add native server OAuth and export settings`)
+  - Commit: `d3add39` (`feat(mobile): add native server OAuth and export settings`)
   - Review: controller review passed; `npm run build`, `npm run test:mobile`, `npm test` (passed on rerun after the known transient SQLite lock), and `git diff --check` passed. Playwright 360px route-mocked Settings pass covered invalid URL gating, Tailscale HTTPS and LAN HTTP probes/saves, same-origin reset, Google OAuth opening `/api/auth/google`, export download from `/api/export`, 16px server URL input, 44px touch targets, and no horizontal overflow; a focused integration-grid pass confirmed one column below `lg` and two columns at `lg`.
 - [x] Task 13: Build APK, document Tailscale/LAN setup, and run final verification.
   - Starting commit: d3add3926f6739e125ef2500a99a660e3c9eec31
-  - Commit: pending (`docs(mobile): add Pixel 9 build and secure access runbook`)
+  - Commit: `99fceb6` (`docs(mobile): add Pixel 9 build and secure access runbook`)
   - Review: controller review passed; docs cover Tailscale Serve HTTPS, no Funnel/router forwarding, trusted-LAN fallback, private-profile firewall rule, Android prerequisites, CLI build, ADB install, and Pixel 9 physical matrix. `npm test`, `npm run build`, `npx cap sync android`, and `.\gradlew.bat testDebugUnitTest assembleDebug` passed with `ANDROID_HOME` set to the local Android SDK. APK generated at `android/app/build/outputs/apk/debug/app-debug.apk` (13,057,005 bytes). `adb devices -l` reported no connected devices, so Pixel 9 install and physical checks were not run.
 
 ## Final Gate
 
-- [ ] Complete frontend/server test suite.
-- [ ] Production Vite build.
-- [ ] Capacitor Android sync.
-- [ ] Android debug build.
-- [ ] Literal raw-API search checks.
-- [ ] `git status`, `git log --oneline main..HEAD`, and `git diff --check main...HEAD`.
-- [ ] Whole-branch review and final fix pass.
+- [x] Complete frontend/server test suite.
+  - Final verification: `npm test` passed with 210 tests.
+- [x] Production Vite build.
+  - Final verification: `npm run build` passed.
+- [x] Capacitor Android sync.
+  - Final verification: `npx cap sync android` passed after the production build.
+- [x] Android debug build.
+  - Final verification: `.\gradlew.bat testDebugUnitTest assembleDebug` passed with `ANDROID_HOME` set to the local Android SDK; APK generated at `android/app/build/outputs/apk/debug/app-debug.apk` (13,057,005 bytes).
+- [x] Literal raw-API search checks.
+  - Final verification: fixed-string searches found no raw relative frontend API fetch, EventSource, OAuth link, or export download URL.
+- [x] `git status`, `git log --oneline main..HEAD`, and `git diff --check main...HEAD`.
+  - Final fix pass removed trailing whitespace from the approved design spec before the committed branch check.
+- [x] Whole-branch review and final fix pass.
+  - Review evidence: Capacitor keeps HTTPS WebView origin with runtime API setup, Express defaults to loopback, Tailscale Serve and trusted-LAN fallback are documented, no secret-pattern hits were found, and ADB reported no connected devices.
 - [ ] Push `mobile/capacitor-responsive-design` to origin.

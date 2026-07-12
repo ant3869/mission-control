@@ -1,8 +1,8 @@
 # Mission Control Capacitor Responsive Mobile Design
 
-**Date:** 2026-07-11  
-**Target device:** Google Pixel 9  
-**Primary platform:** Android through Capacitor 8  
+**Date:** 2026-07-11
+**Target device:** Google Pixel 9
+**Primary platform:** Android through Capacitor 8
 **Repository:** `ant3869/mission-control`
 
 ## 1. Goal
