@@ -76,10 +76,10 @@ Starting commit: 22f991e4109ee523659dc1872b5c7e7059a00524
   - Starting commit: 61d486fecdcd1f8679ad9071d870f21ef6d4cee8
   - Commit: pending (`feat(mobile): add native server OAuth and export settings`)
   - Review: controller review passed; `npm run build`, `npm run test:mobile`, `npm test` (passed on rerun after the known transient SQLite lock), and `git diff --check` passed. Playwright 360px route-mocked Settings pass covered invalid URL gating, Tailscale HTTPS and LAN HTTP probes/saves, same-origin reset, Google OAuth opening `/api/auth/google`, export download from `/api/export`, 16px server URL input, 44px touch targets, and no horizontal overflow; a focused integration-grid pass confirmed one column below `lg` and two columns at `lg`.
-- [ ] Task 13: Build APK, document Tailscale/LAN setup, and run final verification.
-  - Starting commit: pending
-  - Commit: pending
-  - Review: pending
+- [x] Task 13: Build APK, document Tailscale/LAN setup, and run final verification.
+  - Starting commit: d3add3926f6739e125ef2500a99a660e3c9eec31
+  - Commit: pending (`docs(mobile): add Pixel 9 build and secure access runbook`)
+  - Review: controller review passed; docs cover Tailscale Serve HTTPS, no Funnel/router forwarding, trusted-LAN fallback, private-profile firewall rule, Android prerequisites, CLI build, ADB install, and Pixel 9 physical matrix. `npm test`, `npm run build`, `npx cap sync android`, and `.\gradlew.bat testDebugUnitTest assembleDebug` passed with `ANDROID_HOME` set to the local Android SDK. APK generated at `android/app/build/outputs/apk/debug/app-debug.apk` (13,057,005 bytes). `adb devices -l` reported no connected devices, so Pixel 9 install and physical checks were not run.
 
 ## Final Gate
 

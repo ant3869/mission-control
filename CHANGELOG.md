@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [Unreleased]
+
+### Added
+
+- **Runtime server configuration for mobile.** The app now centralizes API transport, validates HTTPS and private-LAN HTTP origins, exposes first-launch server setup for native Android, and adds Settings controls to test, change, and reset the server URL.
+- **Responsive mobile shell.** Capacitor lifecycle hooks, Android back handling, mobile navigation, overlay dismissal, and phone-safe shared controls bring the daily workflow to a Pixel-first layout while preserving the desktop sidebar.
+- **Daily-use screen adaptations.** Home, To-Do, Tasks, Approvals, Inbox, To-Buy, Calendar, and Settings were adapted for touch targets, bottom navigation, full-screen mobile dialogs, agenda-first calendar use, and no page-level horizontal scrolling at phone widths.
+- **Secure Android access runbook.** Added Pixel 9 setup documentation for Tailscale Serve HTTPS, trusted-LAN fallback, Android prerequisites, Capacitor sync, CLI Gradle builds, ADB install, and physical verification.
+- **Android debug build metadata.** Android version metadata now targets debug APK output at `android/app/build/outputs/apk/debug/app-debug.apk` with version code `2` and version name `0.17.0`.
+
+---
+
 ## [0.17.0] — 2026-06-28
 
 ### Added

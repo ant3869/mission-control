@@ -198,6 +198,12 @@ npm run dev
 npm run build
 ```
 
+### Android (Pixel 9)
+
+Mission Control ships as a Capacitor Android app with runtime server setup. Use Tailscale Serve HTTPS for normal Pixel 9 access, and use private-LAN HTTP only as a trusted home-network fallback.
+
+See [docs/mobile/PIXEL9_SETUP.md](docs/mobile/PIXEL9_SETUP.md) for the Android prerequisites, secure server-access commands, Capacitor sync, debug APK build, and Pixel 9 validation matrix.
+
 ---
 
 ## License

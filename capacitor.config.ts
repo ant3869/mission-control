@@ -5,7 +5,7 @@ const config: CapacitorConfig = {
   appName: 'Mission Control',
   webDir: 'dist',
   server: {
-    // Use https scheme on Android so cookies/storage behave like a normal web origin.
+    // Keep the WebView origin HTTPS; the API server URL is configured at runtime.
     androidScheme: 'https',
   },
 }
