@@ -63,10 +63,11 @@ Starting commit: 22f991e4109ee523659dc1872b5c7e7059a00524
   - Verification: `npm run build`, `npm run test:mobile`, and `npm test` passed; Playwright at 360px added/opened/closed/bulk-completed a To-Do, created and moved a Task through Queue/Active/Blocked/Completed, opened Approval request/note full-screen modals, opened an Inbox item, dispatched browser Escape, confirmed no horizontal overflow, and cleaned up the temporary records.
   - Review: passed by controller after touch-target and loading-state refinements.
   - Commit: `feat(mobile): adapt work queue and detail flows`
-- [ ] Task 10: Adapt To-Buy.
-  - Starting commit: pending
-  - Commit: pending
-  - Review: pending
+- [x] Task 10: Adapt To-Buy.
+  - Starting commit: ac24d44a3f0af48a5982e74c519d708102007692
+  - Implementer: controller after subagent support was unavailable.
+  - Commit: pending (`feat(mobile): adapt shopping workflow for touch`)
+  - Review: controller review passed; `npm run build`, `npm run test:mobile`, and `npm test` passed. Playwright 360px flow added `USB-C cable !high x2 $12`, opened/edited quantity and price, opened and canceled research guidance without dispatching an agent, marked purchased, switched filters, cleared the temporary purchased item, and confirmed no horizontal overflow.
 - [ ] Task 11: Make Calendar agenda-first and phone-safe.
   - Starting commit: pending
   - Commit: pending

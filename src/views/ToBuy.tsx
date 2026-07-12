@@ -140,7 +140,7 @@ function AgentSourcePicker({ value, onChange }: { value: ResearchSource; onChang
           key={s}
           onClick={() => onChange(s)}
           className={clsx(
-            'px-2 py-0.5 rounded transition-colors',
+            'min-h-11 px-2 py-0.5 rounded transition-colors sm:min-h-0',
             value === s ? 'bg-violet-500/25 text-violet-100' : 'text-violet-400/60 hover:text-violet-300',
           )}
         >
@@ -168,16 +168,16 @@ function RefineBox({ value, onChange, onRun, onCancel, placeholder }: {
         onChange={e => onChange(e.target.value)}
         rows={3}
         placeholder={placeholder}
-        className="w-full px-2.5 py-1.5 rounded-lg bg-base border border-border text-xs text-text-primary placeholder:text-text-muted outline-none focus:border-violet-500/50 resize-none"
+        className="w-full min-h-11 px-3 py-2 rounded-lg bg-base border border-border text-base sm:text-xs text-text-primary placeholder:text-text-muted outline-none focus:border-violet-500/50 resize-none"
         onKeyDown={e => { if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') onRun() }}
       />
       <div className="flex items-center gap-2">
         <button onClick={onRun}
-                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-violet-500/40 bg-violet-500/20 text-violet-100 hover:bg-violet-500/30 text-xs">
+                className="flex min-h-11 items-center gap-1.5 px-2.5 py-1 rounded-lg border border-violet-500/40 bg-violet-500/20 text-violet-100 hover:bg-violet-500/30 text-xs sm:min-h-0">
           <Sparkles size={11} /> Re-run research
         </button>
         <button onClick={onCancel}
-                className="px-2.5 py-1 rounded-lg border border-border bg-card hover:bg-card-hover text-text-secondary text-xs">
+                className="min-h-11 px-2.5 py-1 rounded-lg border border-border bg-card hover:bg-card-hover text-text-secondary text-xs sm:min-h-0">
           Cancel
         </button>
         <span className="ml-auto text-[10px] text-text-muted">⌘↵</span>
@@ -210,7 +210,7 @@ function BuyRow({ item, active, onToggle, onClick }: {
 
   return (
     <div className={clsx(
-      'relative flex items-center gap-2.5 w-full transition-colors',
+      'relative flex items-start gap-2.5 w-full transition-colors sm:items-center',
       'before:absolute before:left-0 before:top-0 before:bottom-0 before:w-[2px] before:transition-colors',
       active ? 'before:bg-sky-400' : 'before:bg-transparent',
       active ? 'bg-card-hover' : 'bg-card hover:bg-card-hover',
@@ -218,7 +218,7 @@ function BuyRow({ item, active, onToggle, onClick }: {
       {/* Circle toggle — mark purchased */}
       <button
         onClick={e => { e.stopPropagation(); onToggle(item) }}
-        className="shrink-0 pl-3 py-2.5 text-text-muted hover:text-emerald-400 transition-colors"
+        className="flex min-h-11 shrink-0 items-center pl-3 pr-1 py-2.5 text-text-muted hover:text-emerald-400 transition-colors"
         title={item.purchased ? 'Mark as not bought' : 'Mark as bought'}
       >
         {item.purchased
@@ -231,10 +231,10 @@ function BuyRow({ item, active, onToggle, onClick }: {
           badge column (mirrors the To-Do layout). */}
       <button
         onClick={onClick}
-        className="flex flex-1 min-w-0 items-center gap-3 pr-4 py-2.5 text-left"
+        className="flex min-h-11 flex-1 min-w-0 flex-col gap-2 pr-3 py-2.5 text-left sm:flex-row sm:items-center sm:gap-3 sm:pr-4"
       >
         {/* Left text column */}
-        <div className="flex flex-col min-w-0 flex-1 gap-0.5">
+        <div className="flex w-full flex-col min-w-0 flex-1 gap-0.5 sm:w-auto">
           <span className={clsx(
             'text-sm truncate leading-tight',
             item.purchased ? 'line-through text-text-muted' : 'text-text-primary',
@@ -247,14 +247,14 @@ function BuyRow({ item, active, onToggle, onClick }: {
         </div>
 
         {/* Right badge column — fixed slots keep everything aligned */}
-        <div className="shrink-0 flex items-center gap-2">
+        <div className="flex w-full shrink-0 flex-wrap items-center justify-between gap-2 pl-8 sm:w-auto sm:justify-start sm:pl-0">
           {item.estimatedPrice > 0 && (
             <span className="text-xs text-text-secondary tabular-nums" title={item.quantity > 1 ? `${money(item.estimatedPrice)} each` : undefined}>
               {money(line)}
             </span>
           )}
           <span className={clsx(
-            'inline-flex justify-center min-w-[60px] text-[10px] px-1.5 py-0.5 rounded border capitalize',
+            'inline-flex justify-center text-[10px] px-1.5 py-0.5 rounded border capitalize sm:min-w-[60px]',
             PRIORITY_STYLE[item.priority],
           )}>
             {item.priority}
@@ -324,23 +324,20 @@ function BuyDrawer({ item, onClose, onToggle, onSave, onDelete, onResearch }: {
 
   const r        = item.research
   const line     = item.estimatedPrice * item.quantity
-  const inputCls = 'w-full px-2.5 py-1.5 rounded-lg bg-base border border-border text-xs text-text-primary placeholder:text-text-muted outline-none focus:border-accent-blue/50'
+  const inputCls = 'w-full min-h-11 px-3 py-2 sm:min-h-0 sm:px-2.5 sm:py-1.5 rounded-lg bg-base border border-border text-base sm:text-xs text-text-primary placeholder:text-text-muted outline-none focus:border-accent-blue/50'
 
   return (
     <div className={clsx(
-      'animate-drawer-in flex flex-col h-full border-l border-border bg-surface overflow-y-auto',
-      // Narrow (half-screen): overlay the list instead of crushing it.
-      'absolute inset-y-0 right-0 z-30 w-full max-w-[440px] shadow-2xl shadow-black/40',
-      // Wide: sit side-by-side as a static panel.
-      'lg:static lg:w-[380px] lg:min-w-[380px] lg:max-w-none lg:shadow-none lg:z-auto',
+      'animate-drawer-in fixed inset-0 z-[70] flex h-full w-full max-w-none flex-col border-l-0 bg-surface safe-top safe-bottom shadow-2xl shadow-black/40 overflow-y-auto',
+      'lg:static lg:h-full lg:w-[380px] lg:min-w-[380px] lg:max-w-none lg:border-l lg:z-auto lg:shadow-none',
     )}>
 
       {/* Header */}
-      <div className="flex items-start justify-between px-5 py-4 border-b border-border shrink-0 gap-2">
+      <div className="flex items-start justify-between px-4 py-3 border-b border-border shrink-0 gap-2 sm:px-5 sm:py-4">
         <div className="flex items-center gap-2.5 min-w-0 flex-1">
           <button
             onClick={() => onToggle(item)}
-            className="shrink-0 text-text-muted hover:text-emerald-400 transition-colors"
+            className="flex min-h-11 min-w-11 shrink-0 items-center justify-center text-text-muted hover:text-emerald-400 transition-colors"
             title={item.purchased ? 'Mark as not bought' : 'Mark as bought'}
           >
             {item.purchased
@@ -352,12 +349,12 @@ function BuyDrawer({ item, onClose, onToggle, onSave, onDelete, onResearch }: {
             {item.title}
           </p>
         </div>
-        <button aria-label="Close" onClick={onClose} className="p-1 rounded hover:bg-card text-text-muted hover:text-text-primary shrink-0">
+        <button aria-label="Close" onClick={onClose} className="flex min-h-11 min-w-11 items-center justify-center rounded hover:bg-card text-text-muted hover:text-text-primary shrink-0">
           <X size={15} />
         </button>
       </div>
 
-      <div className="flex flex-col gap-4 p-5 overflow-y-auto flex-1">
+      <div className="flex flex-col gap-4 px-4 py-3 overflow-y-auto flex-1 sm:px-5 sm:py-4">
 
         {/* Property chips */}
         <div className="flex items-center gap-2 flex-wrap">
@@ -372,7 +369,7 @@ function BuyDrawer({ item, onClose, onToggle, onSave, onDelete, onResearch }: {
               {money(item.estimatedPrice)}{item.quantity > 1 ? ` ea · ${money(line)} total` : ''}
             </span>
           )}
-          <span className="ml-auto text-[10px] text-text-muted" title={item.createdAt}>
+          <span className="w-full text-[10px] text-text-muted sm:ml-auto sm:w-auto" title={item.createdAt}>
             {fmtAgo(item.createdAt)}
           </span>
         </div>
@@ -390,7 +387,7 @@ function BuyDrawer({ item, onClose, onToggle, onSave, onDelete, onResearch }: {
               <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={3}
                         className={clsx(inputCls, 'resize-none')} placeholder="Additional context…" />
             </label>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
               <label className="flex flex-col gap-1">
                 <span className="text-xxs font-semibold uppercase tracking-wide text-text-muted">Priority</span>
                 <select value={priority} onChange={e => setPriority(e.target.value as Priority)} className={inputCls}>
@@ -408,13 +405,13 @@ function BuyDrawer({ item, onClose, onToggle, onSave, onDelete, onResearch }: {
                 <input type="number" min={0} step="0.01" value={price} onChange={e => setPrice(e.target.value)} placeholder="0" className={inputCls} />
               </label>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <button onClick={save} disabled={!title.trim()}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-emerald-500/40 bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25 text-xs font-medium disabled:opacity-40">
+                      className="flex min-h-11 items-center gap-1.5 px-3 py-2 rounded-lg border border-emerald-500/40 bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25 text-xs font-medium disabled:opacity-40 sm:min-h-0 sm:py-1.5">
                 <Check size={12} /> Save
               </button>
               <button onClick={() => setEditing(false)}
-                      className="px-3 py-1.5 rounded-lg border border-border bg-card hover:bg-card-hover text-text-secondary text-xs">
+                      className="min-h-11 px-3 py-2 rounded-lg border border-border bg-card hover:bg-card-hover text-text-secondary text-xs sm:min-h-0 sm:py-1.5">
                 Cancel
               </button>
             </div>
@@ -437,13 +434,13 @@ function BuyDrawer({ item, onClose, onToggle, onSave, onDelete, onResearch }: {
             </div>
           ) : r.status === 'done' ? (
             <div className="animate-rise-in flex flex-col gap-3">
-              <div className="flex items-center justify-between gap-2">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <span className="flex items-center gap-1.5 text-xs font-medium text-violet-200">
                   <Sparkles size={13} className="text-violet-400" /> Shopping research
                 </span>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <AgentSourcePicker value={source} onChange={setSource} />
-                  <button onClick={() => setRefining(v => !v)} className="text-[10px] text-violet-400/70 hover:text-violet-300">
+                  <button onClick={() => setRefining(v => !v)} className="min-h-11 text-[10px] text-violet-400/70 hover:text-violet-300 sm:min-h-0">
                     {refining ? 'close' : 're-run'}
                   </button>
                 </div>
@@ -483,9 +480,9 @@ function BuyDrawer({ item, onClose, onToggle, onSave, onDelete, onResearch }: {
                   <div className="flex flex-col gap-1">
                     {r.buyLinks.map((l, i) => (
                       <a key={i} href={l.url} target="_blank" rel="noopener noreferrer"
-                         className="flex items-center gap-1.5 text-xs text-accent-blue hover:underline w-fit">
+                         className="flex max-w-full min-w-0 items-start gap-1.5 text-xs text-accent-blue hover:underline">
                         <ExternalLink size={11} className="shrink-0" />
-                        <span className="truncate">{l.title || l.url}</span>
+                        <span className="min-w-0 break-words">{l.title || l.url}</span>
                         {l.price && <span className="text-text-muted shrink-0">· {l.price}</span>}
                       </a>
                     ))}
@@ -499,7 +496,7 @@ function BuyDrawer({ item, onClose, onToggle, onSave, onDelete, onResearch }: {
                     {r.localOptions.map((o, i) => (
                       <div key={i} className="flex items-start gap-1.5 text-xs text-text-secondary">
                         <MapPin size={11} className="shrink-0 mt-0.5 text-text-muted" />
-                        <span><span className="text-text-primary">{o.store}</span>{o.note ? ` — ${o.note}` : ''}</span>
+                        <span className="min-w-0 break-words"><span className="text-text-primary">{o.store}</span>{o.note ? ` — ${o.note}` : ''}</span>
                       </div>
                     ))}
                   </div>
@@ -510,8 +507,8 @@ function BuyDrawer({ item, onClose, onToggle, onSave, onDelete, onResearch }: {
                   <p className="text-xxs font-semibold uppercase tracking-wide text-text-muted mb-1.5">Key specs</p>
                   <div className="flex flex-col rounded-lg border border-border overflow-hidden">
                     {Object.entries(r.data).map(([k, v], i) => (
-                      <div key={k} className={clsx('flex gap-2 px-3 py-1.5 text-xxs', i % 2 ? 'bg-base' : 'bg-card')}>
-                        <span className="text-text-muted w-28 shrink-0">{k}</span>
+                      <div key={k} className={clsx('flex flex-col gap-1 px-3 py-1.5 text-xxs sm:flex-row sm:gap-2', i % 2 ? 'bg-base' : 'bg-card')}>
+                        <span className="text-text-muted sm:w-28 sm:shrink-0">{k}</span>
                         <span className="text-text-secondary break-words">{String(v)}</span>
                       </div>
                     ))}
@@ -529,16 +526,16 @@ function BuyDrawer({ item, onClose, onToggle, onSave, onDelete, onResearch }: {
             />
           ) : (
             <div className="flex flex-col gap-2.5">
-              <button onClick={() => onResearch(item, source)} className="flex items-center gap-2 text-xs text-violet-200 hover:text-violet-100 w-full text-left">
+              <button onClick={() => onResearch(item, source)} className="flex min-h-11 items-center gap-2 text-xs text-violet-200 hover:text-violet-100 w-full text-left">
                 <Sparkles size={13} className="text-violet-400 shrink-0" />
                 {r.status === 'failed' ? 'Research failed — click to retry' : 'Ask an agent to research where to buy & price'}
               </button>
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <span className="text-[10px] text-text-muted">via</span>
                   <AgentSourcePicker value={source} onChange={setSource} />
                 </div>
-                <button onClick={() => setRefining(true)} className="text-[10px] text-violet-400/70 hover:text-violet-300">
+                <button onClick={() => setRefining(true)} className="min-h-11 text-[10px] text-violet-400/70 hover:text-violet-300 sm:min-h-0">
                   {r.status === 'failed' ? 'refine & retry' : 'add guidance'}
                 </button>
               </div>
@@ -550,15 +547,15 @@ function BuyDrawer({ item, onClose, onToggle, onSave, onDelete, onResearch }: {
         </div>
 
         {/* Footer actions */}
-        <div className="flex items-center gap-2 pt-2 border-t border-border">
+        <div className="sticky bottom-0 flex flex-wrap items-center gap-2 border-t border-border bg-surface pt-3 pb-2 safe-bottom">
           {!editing && (
             <button onClick={() => setEditing(true)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border bg-card hover:bg-card-hover text-text-secondary hover:text-text-primary text-xs">
+                    className="flex min-h-11 items-center gap-1.5 px-3 py-2 rounded-lg border border-border bg-card hover:bg-card-hover text-text-secondary hover:text-text-primary text-xs">
               <Pencil size={12} /> Edit
             </button>
           )}
           <button onClick={() => onDelete(item)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-red-900/40 bg-red-950/20 text-red-400 hover:bg-red-950/40 text-xs">
+                  className="flex min-h-11 items-center gap-1.5 px-3 py-2 rounded-lg border border-red-900/40 bg-red-950/20 text-red-400 hover:bg-red-950/40 text-xs">
             <Trash2 size={12} /> Delete
           </button>
         </div>
@@ -684,7 +681,7 @@ export default function ToBuy() {
       <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
 
         {/* Header */}
-        <div className="flex items-center justify-between px-4 lg:px-6 py-4 border-b border-border shrink-0">
+        <div className="flex flex-col gap-3 px-4 lg:px-6 py-4 border-b border-border shrink-0 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-3">
             <ShoppingCart size={18} className="text-sky-400" />
             <h1 className="text-base font-semibold text-text-primary">To-Buy</h1>
@@ -694,15 +691,17 @@ export default function ToBuy() {
               </span>
             )}
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex w-full items-center justify-between gap-3 sm:w-auto sm:justify-end">
             {openTotal > 0 && (
               <span className="text-xs text-text-secondary tabular-nums" title="Estimated total of unbought items">
                 Est. total <span className="text-text-primary font-semibold">{money(openTotal)}</span>
               </span>
             )}
             <button onClick={() => load()} disabled={loading}
-                    className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs bg-card hover:bg-card-hover border border-border rounded text-text-secondary transition-colors disabled:opacity-50">
-              <RefreshCw size={11} className={clsx(loading && 'animate-spin')} /> Refresh
+                    aria-label="Refresh"
+                    className="flex min-h-11 min-w-11 items-center justify-center gap-1.5 px-2.5 py-1.5 text-xs bg-card hover:bg-card-hover border border-border rounded text-text-secondary transition-colors disabled:opacity-50 sm:min-h-0 sm:min-w-0">
+              <RefreshCw size={11} className={clsx(loading && 'animate-spin')} />
+              <span className="hidden sm:inline">Refresh</span>
             </button>
           </div>
         </div>
@@ -716,32 +715,32 @@ export default function ToBuy() {
             </div>
           )}
 
-          <div className="flex items-center gap-2">
+          <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center">
             <input
               ref={inputRef}
               value={title}
               onChange={e => setTitle(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter') handleAdd() }}
               placeholder='Add something to buy… ("cordless power drill !high x1 $89")'
-              className="flex-1 min-w-0 bg-base border border-border rounded-lg px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-border"
+              className="col-span-2 flex-1 min-w-0 bg-base border border-border rounded-lg px-3 py-2 text-base sm:text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-border"
             />
             <select value={priority} onChange={e => setPriority(e.target.value as Priority)}
-                    className="bg-base border border-border rounded-lg px-2 py-2 text-xs text-text-secondary focus:outline-none" title="Priority">
+                    className="min-h-11 bg-base border border-border rounded-lg px-2 py-2 text-base sm:text-xs text-text-secondary focus:outline-none" title="Priority">
               <option value="low">Low</option>
               <option value="medium">Medium</option>
               <option value="high">High</option>
             </select>
             <button onClick={handleAdd} disabled={!title.trim() || adding}
-                    className="flex items-center gap-1.5 px-3 py-2 text-xs bg-sky-500/15 hover:bg-sky-500/25 border border-sky-500/30 rounded-lg text-sky-400 transition-colors disabled:opacity-40">
+                    className="flex min-h-11 items-center justify-center gap-1.5 px-3 py-2 text-xs bg-sky-500/15 hover:bg-sky-500/25 border border-sky-500/30 rounded-lg text-sky-400 transition-colors disabled:opacity-40">
               {adding ? <Loader2 size={12} className="animate-spin" /> : <Plus size={12} />} Add
             </button>
           </div>
 
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1 overflow-x-auto whitespace-nowrap -mx-4 px-4 sm:mx-0 sm:px-0">
             {(['open', 'bought'] as Filter[]).map(f => (
               <button key={f} onClick={() => setFilter(f)}
                       className={clsx(
-                        'px-2.5 py-1 rounded text-xs transition-colors',
+                        'min-h-11 px-2.5 py-1 rounded text-xs transition-colors sm:min-h-0',
                         filter === f ? 'bg-card-hover text-text-primary' : 'text-text-muted hover:text-text-secondary hover:bg-card',
                       )}>
                 {f === 'open' ? 'To buy' : 'Bought'}
@@ -750,7 +749,7 @@ export default function ToBuy() {
             ))}
             {filter === 'bought' && counts.bought > 0 && (
               <button onClick={handleClearBought} disabled={clearing}
-                      className="ml-auto flex items-center gap-1 px-2 py-1 rounded text-xs text-text-muted hover:text-red-400 hover:bg-card transition-colors disabled:opacity-50">
+                      className="ml-2 flex min-h-11 items-center gap-1 px-2 py-1 rounded text-xs text-text-muted hover:text-red-400 hover:bg-card transition-colors disabled:opacity-50 sm:ml-auto sm:min-h-0">
                 {clearing ? <Loader2 size={11} className="animate-spin" /> : <Trash2 size={11} />} Clear bought
               </button>
             )}
@@ -793,7 +792,7 @@ export default function ToBuy() {
         <>
           <div
             onClick={() => setSelectedId(null)}
-            className="absolute inset-0 z-20 bg-black/40 lg:hidden"
+            className="fixed inset-0 z-[60] bg-black/40 lg:hidden"
             aria-hidden
           />
           <BuyDrawer
